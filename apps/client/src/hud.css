@@ -125,3 +125,4 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .rgb-login button{justify-self:center}
 #rgbPlayer{color:var(--bone)}
 #olMsg{margin-top:10px}
+.rgb-register{justify-self:center;color:var(--gold)}

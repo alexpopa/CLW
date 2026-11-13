@@ -145,6 +145,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
             <label>Email<input name="email" type="email" autocomplete="username" maxlength="320" required></label>
             <label>Password<input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
             <button type="submit" class="ghost">Sign in with RGBoner</button>
+            <a class="rgb-register" href="https://retrogameboner.com/login?mode=register" target="_blank" rel="noopener noreferrer">Create an RGBoner account</a>
           </form>` : `
           ${user ? '<div class="row"><span id="rgbPlayer"></span><form method="post" action="/auth/logout"><button class="ghost">Sign out</button></form></div>' : ""}
           <div class="row">${hostedAccounts ? "" : '<input id="olName" maxlength="20" placeholder="Your name" autocomplete="off" spellcheck="false">'}
