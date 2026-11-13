@@ -141,7 +141,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
         </dl></details>
         <button id="startBtn">Play singleplayer</button>
         <div class="online"><div class="sub">Multiplayer</div>
-          ${hostedAccounts && !user ? `<form id="rgbLogin" class="rgb-login" method="post" action="/auth/login">
+          ${hostedAccounts && !user ? `<form id="rgbLogin" class="rgb-login" method="post" action="/auth/challenge">
             <label>Email<input name="email" type="email" autocomplete="username" maxlength="320" required></label>
             <label>Password<input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
             <button type="submit" class="ghost">Sign in with RGBoner</button>
@@ -166,14 +166,24 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
           msg.textContent = "Signing in…";
           const data = new FormData(form);
           try {
-            const response = await fetch("/auth/login", {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ email: data.get("email"), password: data.get("password") }),
+            const flow = await fetch("/auth/challenge", { method: "POST" });
+            if (!flow.ok) throw new Error("Sign-in is temporarily unavailable.");
+            const { endpoint, challenge } = await flow.json();
+            const response = await fetch(endpoint, {
+              method: "POST", credentials: "omit", redirect: "error",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email: data.get("email"), password: data.get("password"), challenge }),
             });
             if (!response.ok) {
               const result = await response.json().catch(() => null);
               throw new Error(result?.error ?? "Sign-in is temporarily unavailable.");
             }
+            const { assertion } = await response.json();
+            const complete = await fetch("/auth/complete", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ assertion }),
+            });
+            if (!complete.ok) throw new Error("Could not complete sign-in. Try again.");
             const account = await fetch("/me", { cache: "no-store" });
             if (!account.ok) throw new Error("Could not load your account. Try again.");
             const player: UserIdentity = await account.json();

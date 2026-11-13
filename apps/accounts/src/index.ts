@@ -10,7 +10,6 @@ interface Env {
     batch(statements: Statement[]): Promise<unknown>;
   };
   RGBONER_ORIGIN: string;
-  RGBONER_CONNECT_ORIGIN?: string;
   CLW_ORIGIN: string;
   RGBONER_SSO_SECRET: string;
   MATCH_SERVER_URL?: string;
@@ -171,34 +170,12 @@ export default {
 
         return createSession(claims, env);
       }
-      if (route === "POST /auth/login") {
-        const raw = await request.text();
-        if (raw.length > 4096) return Response.json({ error: "Invalid sign-in." }, { status: 400, headers });
-        let body: { email?: unknown; password?: unknown } | null;
-        try { body = JSON.parse(raw); } catch { body = null; }
-        if (typeof body?.email !== "string" || typeof body.password !== "string") {
-          return Response.json({ error: "Enter your email and password." }, { status: 400, headers });
-        }
+      if (route === "POST /auth/challenge") {
         const verifier = randomToken();
-        const response = await fetch(new URL("/connect/line-wars", env.RGBONER_CONNECT_ORIGIN ?? env.RGBONER_ORIGIN), {
-          method: "POST",
-          redirect: "error",
-          headers: { Authorization: `Bearer ${env.RGBONER_SSO_SECRET}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ email: body.email, password: body.password, challenge: await digest(verifier) }),
-        });
-        if (!response.ok) {
-          const errors: Record<number, string> = {
-            401: "Incorrect email or password.",
-            403: "Verify your email in RGBoner before signing in.",
-            429: "Too many sign-in attempts. Try again later.",
-          };
-          const error = errors[response.status];
-          return Response.json({ error: error ?? "Sign-in is temporarily unavailable." }, { status: error ? response.status : 503, headers });
-        }
-        const { assertion } = await response.json() as { assertion?: unknown };
-        const claims = typeof assertion === "string" ? await verify(assertion, verifier, env) : null;
-        if (!claims) return new Response(null, { status: 503, headers });
-        return createSession(claims, env);
+        return Response.json({
+          challenge: await digest(verifier),
+          endpoint: new URL("/connect/line-wars", env.RGBONER_ORIGIN).href,
+        }, { headers: { ...headers, "Set-Cookie": cookie("__Host-clw-flow", verifier, 900) } });
       }
       if (route === "POST /auth/logout") {
         const token = readCookie(request, "__Host-clw-session");

@@ -4,9 +4,9 @@ Players use their existing verified RGBoner account. RGBoner is the Social Links
 
 ## Browser flow
 
-1. The Gravemarch home page offers Play singleplayer and an RGBoner email and password form. The form posts to the same-origin `POST /auth/login`.
-2. The CLW Worker forwards those credentials over HTTPS to RGBoner's authenticated connector. RGBoner verifies the password, email verification and rate limit using the same code as its own sign-in. It returns a signed, one-minute assertion bound to a fresh challenge.
-3. The CLW Worker verifies the assertion and consumes the challenge in D1 as it creates a seven-day HttpOnly session. CLW stores only the hash of the session token. CLW does not store the password or create an RGBoner browser session.
+1. The Gravemarch home page offers Play singleplayer and an RGBoner email and password form. The form first obtains a browser-bound challenge from `POST /auth/challenge`.
+2. The browser submits the credentials and challenge directly over HTTPS to RGBoner's connector. RGBoner verifies the password, email verification and rate limit using the same code as its own sign-in. It returns a signed, one-minute assertion bound to a fresh challenge.
+3. The browser submits the assertion to `POST /auth/complete`. The CLW Worker verifies it and consumes the challenge in D1 as it creates a seven-day HttpOnly session. CLW stores only the hash of the session token. CLW does not store the password or create an RGBoner browser session.
 4. `GET /me` returns the player identity and unlocks the multiplayer lobby controls. `POST /auth/logout` revokes the CLW session and returns to the home page.
 
 The earlier redirect connector still supports completing sign-ins already in progress. The old `/login` and `/account` pages redirect home.
