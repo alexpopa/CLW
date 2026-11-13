@@ -1,3 +1,4 @@
+import type { UserIdentity } from "@lw/protocol";
 import "@fontsource/cinzel/400.css";
 import "@fontsource/cinzel/600.css";
 import "@fontsource/cinzel/700.css";
@@ -116,32 +117,77 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
     c.strokeRect(v.camFrac[0] * w + 0.75, 0.75, Math.max(4, (v.camFrac[1] - v.camFrac[0]) * w - 1.5), h - 1.5);
   }
 
+  let menuRender = 0;
+  let account: UserIdentity | undefined;
   return {
     actions: act,
     toast(msg: string): void {
       const el = $("toast"); el.textContent = msg; el.classList.add("show");
       clearTimeout(toastTimer); toastTimer = window.setTimeout(() => el.classList.remove("show"), 2600);
     },
-    showStart(notice?: string): void {
+    clearAccount(): void { account = undefined; },
+    showStart(notice?: string, user?: UserIdentity): void {
+      if (user) account = user;
+      user = account;
+      const render = ++menuRender;
       $("overlay").className = "show";
       $("overlay").innerHTML = `<div class="panel"><h1>Gravemarch</h1><div class="sub">A war of lines</div><div class="orn"></div>
-        <dl>
+        <details class="rules"><summary>How to play</summary><dl>
           <dt>Muster</dt><dd>Choose a unit (keys 1–6) and set its chantry on your ground. Every chantry sends one soldier at each toll of the bell, for the rest of the war.</dd>
           <dt>Shrines</dt><dd>You begin with the shrine nearest your cathedral, guarded by two towers. Claim the others by marching over them; the enemy home shrine falls only after both its towers, and two more towers guard each base. Each shrine you hold pays gold.</dd>
           <dt>Tithe &amp; Rite</dt><dd>Raise the tithe (E) to earn more from every shrine you hold. Perform the Second Rite (R) to unlock stronger units.</dd>
           <dt>Survey</dt><dd>Drag, scroll, use A / D or the arrow keys, or click the map strip. Space returns to your cathedral.</dd>
           <dt>Victory</dt><dd>Bring down the enemy cathedral at the far end of the lane.</dd>
-        </dl>
-        <button id="startBtn">Begin the march</button>
-        <div class="online"><div class="sub">Or face another player</div>
-          ${hostedAccounts ? '<p><a href="/account">RGBoner account</a></p>' : ""}
+        </dl></details>
+        <button id="startBtn">Play singleplayer</button>
+        <div class="online"><div class="sub">Multiplayer</div>
+          ${hostedAccounts && !user ? `<form id="rgbLogin" class="rgb-login" method="post" action="/auth/login">
+            <label>Email<input name="email" type="email" autocomplete="username" maxlength="320" required></label>
+            <label>Password<input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
+            <button type="submit" class="ghost">Sign in with RGBoner</button>
+          </form>` : `
+          ${user ? '<div class="row"><span id="rgbPlayer"></span><form method="post" action="/auth/logout"><button class="ghost">Sign out</button></form></div>' : ""}
           <div class="row">${hostedAccounts ? "" : '<input id="olName" maxlength="20" placeholder="Your name" autocomplete="off" spellcheck="false">'}
             <button id="olHost" class="ghost">Host a match</button>
             <input id="olCode" maxlength="4" placeholder="Code" autocomplete="off" spellcheck="false">
-            <button id="olJoin" class="ghost">Join</button></div>
-          <div id="olMsg"></div></div></div>`;
+            <button id="olJoin" class="ghost">Join</button></div>`}
+          <div id="olMsg" role="status"></div></div></div>`;
       $("startBtn").onclick = () => act.start();
-      const name = root.querySelector<HTMLInputElement>("#olName"), code = $<HTMLInputElement>("olCode"), msg = $("olMsg");
+      const msg = $("olMsg");
+      msg.textContent = notice ?? "";
+      if (hostedAccounts && !user) {
+        const form = $<HTMLFormElement>("rgbLogin");
+        const button = form.querySelector("button")!;
+        const overlay = $("overlay");
+        const visible = () => menuRender === render && overlay.classList.contains("show") && form.isConnected;
+        form.onsubmit = async event => {
+          event.preventDefault();
+          button.disabled = true;
+          msg.textContent = "Signing in…";
+          const data = new FormData(form);
+          try {
+            const response = await fetch("/auth/login", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email: data.get("email"), password: data.get("password") }),
+            });
+            if (!response.ok) {
+              const result = await response.json().catch(() => null);
+              throw new Error(result?.error ?? "Sign-in is temporarily unavailable.");
+            }
+            const account = await fetch("/me", { cache: "no-store" });
+            if (!account.ok) throw new Error("Could not load your account. Try again.");
+            const player: UserIdentity = await account.json();
+            if (visible()) this.showStart(undefined, player);
+          } catch (error) {
+            if (visible()) msg.textContent = error instanceof Error ? error.message : "Sign-in is temporarily unavailable.";
+          } finally {
+            button.disabled = false;
+          }
+        };
+        return;
+      }
+      if (user) $("rgbPlayer").textContent = user.displayName;
+      const name = root.querySelector<HTMLInputElement>("#olName"), code = $<HTMLInputElement>("olCode");
       try { if (name) name.value = localStorage.getItem("lw.name") ?? ""; } catch { /* private window */ }
       msg.textContent = notice ?? "";
       const who = () => name?.value.trim() || "Wanderer";

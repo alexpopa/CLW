@@ -59,7 +59,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
       return;
     }
     if (attempt !== connectionAttempt) return;
-    if (!credentials) { location.assign("/login"); return; }
+    if (!credentials) { hud.clearAccount(); hud.showStart("Sign in to play online."); return; }
     const mine: Net = net = new Net(credentials, code ? { t: "joinLobby", lobbyId: code } : { t: "createLobby", settings: { teamSize: 1, aiFill: false } }, {
       lobby: id => hud.showLobby(id, "Awaiting a challenger"),
       start: (config, slot, who) => { online = true; names = who; begin(createGame(config), slot); hud.toast(`You face ${who[1 - slot] ?? "a stranger"}`); },
@@ -113,6 +113,14 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   addEventListener("resize", () => view.resize());
   view.camX = 0; view.clampCam();
   hud.showStart();
+  if (hostedAccounts) {
+    fetch("/me", { cache: "no-store" }).then(async response => {
+      if (response.ok) {
+        const user = await response.json();
+        if (!running && connectionAttempt === 0) hud.showStart(undefined, user);
+      }
+    }).catch(() => {});
+  }
 
   // ---- input ----
   const canvas = view.canvas;

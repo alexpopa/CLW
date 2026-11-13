@@ -4,10 +4,12 @@ Players use their existing verified RGBoner account. RGBoner is the Social Links
 
 ## Browser flow
 
-1. CLW serves a plain sign-in page at `/login`. Its same-origin `POST /auth/start` sets a short-lived browser cookie and redirects to RGBoner's `/connect/line-wars` with a SHA-256 challenge.
-2. RGBoner checks its existing verified account session. It uses its regular login page if needed. The connector signs the account ID, display name, challenge, issuer, audience, and expiration, then returns to the configured CLW callback.
-3. The CLW callback strips the assertion from the URL fragment and submits it to `POST /auth/complete`. The Worker verifies the signature, configured origins, one-minute expiration, and initiating browser cookie. A D1 transaction consumes the challenge and creates a seven-day session. The database stores only the hash of the session token.
-4. `GET /me` returns `{ userId, displayName, provider }` or HTTP 401. `POST /auth/logout` revokes the CLW session. RGBoner's account session has its own lifetime and sign-out.
+1. The Gravemarch home page offers Play singleplayer and an RGBoner email and password form. The form posts to the same-origin `POST /auth/login`.
+2. The CLW Worker forwards those credentials over HTTPS to RGBoner's authenticated connector. RGBoner verifies the password, email verification and rate limit using the same code as its own sign-in. It returns a signed, one-minute assertion bound to a fresh challenge.
+3. The CLW Worker verifies the assertion and consumes the challenge in D1 as it creates a seven-day HttpOnly session. CLW stores only the hash of the session token. CLW does not store the password or create an RGBoner browser session.
+4. `GET /me` returns the player identity and unlocks the multiplayer lobby controls. `POST /auth/logout` revokes the CLW session and returns to the home page.
+
+The earlier redirect connector still supports completing sign-ins already in progress. The old `/login` and `/account` pages redirect home.
 
 The provider is `rgboner` and the stable ID is `rgboner:<RGBoner user ID>`. Game code should depend on the shared `UserIdentity` contract. The handoff contains no password, email address, RGBoner session token, or account role. CLW sign-in refreshes the local display name. Changes to an RGBoner account do not revoke already-issued CLW sessions before their own expiry.
 

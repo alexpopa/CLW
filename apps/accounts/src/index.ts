@@ -91,6 +91,27 @@ function base64Url(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+async function createSession(claims: Assertion, env: Env): Promise<Response> {
+  const used = await env.DB.prepare("SELECT 1 FROM consumed_sign_ins WHERE challenge = ? AND expires_at > ?")
+    .bind(claims.challenge, Math.floor(Date.now() / 1000)).first();
+  if (used) return new Response("Sign-in already used.", { status: 409, headers });
+
+  const userId = `rgboner:${claims.sub}`;
+  const token = randomToken();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM sessions WHERE expires_at <= ?").bind(Date.now()),
+    env.DB.prepare("DELETE FROM consumed_sign_ins WHERE expires_at <= ?").bind(Math.floor(Date.now() / 1000)),
+    env.DB.prepare("INSERT INTO consumed_sign_ins (challenge, expires_at) VALUES (?, ?)").bind(claims.challenge, claims.exp),
+    env.DB.prepare("INSERT INTO players (id, display_name) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET display_name = excluded.display_name").bind(userId, claims.name),
+    env.DB.prepare("INSERT INTO sessions (token_hash, player_id, expires_at) VALUES (?, ?, ?)")
+      .bind(await digest(token), userId, Date.now() + sessionSeconds * 1000),
+  ]);
+  const response = new Response(null, { status: 204, headers });
+  response.headers.append("Set-Cookie", cookie("__Host-clw-session", token, sessionSeconds));
+  response.headers.append("Set-Cookie", cookie("__Host-clw-flow", "", 0));
+  return response;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname, origin } = new URL(request.url);
@@ -98,9 +119,7 @@ export default {
     if (request.method === "GET" && env.ASSETS && (pathname === "/" || pathname.startsWith("/assets/"))) {
       return env.ASSETS.fetch(request);
     }
-    if (route === "GET /" || route === "GET /login") {
-      return html("Line Wars sign-in", '<form method="post" action="/auth/start"><button>Continue with RGBoner</button></form><p><a href="/me">Current account</a></p><form method="post" action="/auth/logout"><button>Sign out</button></form>');
-    }
+    if (route === "GET /login" || route === "GET /account") return redirect("/");
     if (route === "GET /auth/callback") {
       return html("Finishing sign-in", '<p id="status" role="status">Connecting to RGBoner…</p><p><a href="/login">Back to sign-in</a></p><script src="/auth/callback.js" defer></script>');
     }
@@ -149,38 +168,47 @@ export default {
         const claims = verifier && typeof assertion === "string" ? await verify(assertion, verifier, env) : null;
         if (!claims) return new Response("Invalid sign-in.", { status: 401, headers });
 
-        const used = await env.DB.prepare("SELECT 1 FROM consumed_sign_ins WHERE challenge = ? AND expires_at > ?")
-          .bind(claims.challenge, Math.floor(Date.now() / 1000)).first();
-        if (used) return new Response("Sign-in already used.", { status: 409, headers });
-
-        const userId = `rgboner:${claims.sub}`;
-        const token = randomToken();
-        await env.DB.batch([
-          env.DB.prepare("DELETE FROM sessions WHERE expires_at <= ?").bind(Date.now()),
-          env.DB.prepare("DELETE FROM consumed_sign_ins WHERE expires_at <= ?").bind(Math.floor(Date.now() / 1000)),
-          env.DB.prepare("INSERT INTO consumed_sign_ins (challenge, expires_at) VALUES (?, ?)").bind(claims.challenge, claims.exp),
-          env.DB.prepare("INSERT INTO players (id, display_name) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET display_name = excluded.display_name").bind(userId, claims.name),
-          env.DB.prepare("INSERT INTO sessions (token_hash, player_id, expires_at) VALUES (?, ?, ?)")
-            .bind(await digest(token), userId, Date.now() + sessionSeconds * 1000),
-        ]);
-        const response = new Response(null, { status: 204, headers });
-        response.headers.append("Set-Cookie", cookie("__Host-clw-session", token, sessionSeconds));
-        response.headers.append("Set-Cookie", cookie("__Host-clw-flow", "", 0));
-        return response;
+        return createSession(claims, env);
+      }
+      if (route === "POST /auth/login") {
+        const raw = await request.text();
+        if (raw.length > 4096) return Response.json({ error: "Invalid sign-in." }, { status: 400, headers });
+        let body: { email?: unknown; password?: unknown } | null;
+        try { body = JSON.parse(raw); } catch { body = null; }
+        if (typeof body?.email !== "string" || typeof body.password !== "string") {
+          return Response.json({ error: "Enter your email and password." }, { status: 400, headers });
+        }
+        const verifier = randomToken();
+        const response = await fetch(new URL("/connect/line-wars", env.RGBONER_ORIGIN), {
+          method: "POST",
+          redirect: "error",
+          headers: { Authorization: `Bearer ${env.RGBONER_SSO_SECRET}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ email: body.email, password: body.password, challenge: await digest(verifier) }),
+        });
+        if (!response.ok) {
+          const errors: Record<number, string> = {
+            401: "Incorrect email or password.",
+            403: "Verify your email in RGBoner before signing in.",
+            429: "Too many sign-in attempts. Try again later.",
+          };
+          const error = errors[response.status];
+          return Response.json({ error: error ?? "Sign-in is temporarily unavailable." }, { status: error ? response.status : 503, headers });
+        }
+        const { assertion } = await response.json() as { assertion?: unknown };
+        const claims = typeof assertion === "string" ? await verify(assertion, verifier, env) : null;
+        if (!claims) return new Response(null, { status: 503, headers });
+        return createSession(claims, env);
       }
       if (route === "POST /auth/logout") {
         const token = readCookie(request, "__Host-clw-session");
         if (token) await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await digest(token)).run();
-        return redirect("/login", [cookie("__Host-clw-session", "", 0), cookie("__Host-clw-flow", "", 0)]);
+        return redirect("/", [cookie("__Host-clw-session", "", 0), cookie("__Host-clw-flow", "", 0)]);
       }
-      if (route === "GET /me" || route === "GET /account" || route === "POST /auth/match-ticket") {
+      if (route === "GET /me" || route === "POST /auth/match-ticket") {
         const token = readCookie(request, "__Host-clw-session");
         const user = token ? await env.DB.prepare(
           "SELECT players.id AS userId, players.display_name AS displayName FROM sessions JOIN players ON players.id = sessions.player_id WHERE sessions.token_hash = ? AND sessions.expires_at > ?",
         ).bind(await digest(token), Date.now()).first<{ userId: string; displayName: string }>() : null;
-        if (route === "GET /account") {
-          return user ? html("Signed in to Line Wars", '<p><a href="/">Return to the game</a></p><form method="post" action="/auth/logout"><button>Sign out</button></form>') : redirect("/login");
-        }
         if (route === "POST /auth/match-ticket") {
           if (!user) return new Response(null, { status: 401, headers });
           const secret = env.MATCH_TICKET_SECRET ?? "";

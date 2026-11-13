@@ -116,3 +116,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .panel .code{font:700 72px/1 var(--display);letter-spacing:.3em;margin:6px 0 18px .3em;color:#f0d792;text-shadow:0 0 30px rgba(201,162,75,.35)}
 .panel input{user-select:text;-webkit-user-select:text}
 .red .hp.me .glass i{background:linear-gradient(90deg,#6e1512,#e0483c)}.red .hp.foe .glass i{background:linear-gradient(270deg,#1a3d82,#4f8ff0)}
+.rules{margin:0 auto 20px;color:var(--gold)}
+.rules summary{cursor:pointer}
+.rules dl{margin-top:16px}
+.rgb-login{display:grid;gap:10px;margin:0 auto;max-width:290px;text-align:left}
+.rgb-login label{display:grid;gap:4px;color:var(--bone)}
+.rgb-login input{width:100%;box-sizing:border-box}
+.rgb-login button{justify-self:center}
+#rgbPlayer{color:var(--bone)}
+#olMsg{margin-top:10px}
