@@ -1,0 +1,1 @@
+{ "extends": "../../tsconfig.base.json", "compilerOptions": { "outDir": "dist", "rootDir": "src", "lib": ["ES2022"], "emitDeclarationOnly": true }, "include": ["src"], "references": [{ "path": "../sim" }] }

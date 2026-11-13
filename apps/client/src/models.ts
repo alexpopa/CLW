@@ -1,0 +1,317 @@
+import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+
+/**
+ * Original low-poly models built from primitives at load time. One palette for everything.
+ * Axes: +x = forward (toward the enemy for team 0), +y = up, +z = toward the camera.
+ * Sizes are in world units (a foot soldier is ~2.5 tall).
+ */
+export const PAL = {
+  ink: 0x0b0a0f, dark: 0x3c3a48, cloth: 0x554c5e, robe: 0x4a3d4c, coat: 0x3b3844, hat: 0x24222b,
+  steel: 0x6d7180, steelHi: 0xb4b9c6, bone: 0xe2d7bc, gold: 0xc9a24b, bronze: 0x6d5630,
+  wood: 0x6e4a30, woodHi: 0x9c7048, leather: 0x5a4330, horse: 0x38343f,
+  stone: 0x7a7d8e, stoneHi: 0xa0a4b6, stoneLo: 0x53566a, roof: 0x484b66,
+  flame: 0xff8a2a, heal: 0x9fe8b0, candle: 0xffc978,
+};
+export const TEAM = [
+  { main: 0x3b78e6, lo: 0x2350a8, glow: 0x6fb0ff, css: "#4f8ff0" },
+  { main: 0xd2382f, lo: 0x8e1d18, glow: 0xff7a5a, css: "#e0483c" },
+] as const;
+type Pal = (typeof TEAM)[number];
+type G = THREE.BufferGeometry;
+
+const tmpColor = new THREE.Color();
+function paint(g: G, hex: number): G {
+  const n = g.index ? g.toNonIndexed() : g;
+  tmpColor.set(hex);
+  const count = n.attributes.position!.count, arr = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) { arr[i * 3] = tmpColor.r; arr[i * 3 + 1] = tmpColor.g; arr[i * 3 + 2] = tmpColor.b; }
+  n.setAttribute("color", new THREE.BufferAttribute(arr, 3));
+  return n;
+}
+interface Rot { rx?: number; ry?: number; rz?: number }
+const place = (g: G, x: number, y: number, z: number, r: Rot = {}): G => {
+  if (r.rx) g.rotateX(r.rx); if (r.ry) g.rotateY(r.ry); if (r.rz) g.rotateZ(r.rz);
+  return g.translate(x, y, z);
+};
+export const box = (w: number, h: number, d: number, col: number, x = 0, y = 0, z = 0, r?: Rot): G => place(paint(new THREE.BoxGeometry(w, h, d), col), x, y, z, r);
+export const cyl = (rt: number, rb: number, h: number, seg: number, col: number, x = 0, y = 0, z = 0, r?: Rot): G => place(paint(new THREE.CylinderGeometry(rt, rb, h, seg), col), x, y, z, r);
+export const ball = (rad: number, col: number, x = 0, y = 0, z = 0, detail = 1): G => place(paint(new THREE.IcosahedronGeometry(rad, detail), col), x, y, z);
+/** Four-sided spire aligned with a box of the same footprint. */
+export const spire = (half: number, h: number, col: number, x = 0, y = 0, z = 0): G => cyl(0, half * Math.SQRT2, h, 4, col, x, y + h / 2, z, { ry: Math.PI / 4 });
+export const merge = (parts: G[]): G => mergeGeometries(parts, false)!;
+const crossGeo = (col: number, x: number, y: number, z: number, s = 1, r?: Rot): G[] => [
+  place(paint(new THREE.BoxGeometry(0.14 * s, 1 * s, 0.14 * s), col), x, y + 0.5 * s, z, r),
+  place(paint(new THREE.BoxGeometry(0.14 * s, 0.14 * s, 0.6 * s), col), x, y + 0.68 * s, z, r),
+];
+
+export type WeaponAnim = "recoil" | "swing" | "thrust" | "raise" | "lance" | "sling";
+export interface ModelDef {
+  body: G;                                  // static geometry
+  glow?: G;                                 // unlit, glowing geometry attached to the body
+  legs?: { geo: G; pivot: [number, number, number] }[]; // swing in opposite phase
+  weapon: { geo: G; glow?: G; pivot: [number, number, number]; anim: WeaponAnim };
+  height: number;
+}
+
+const leg = (col: number, boot: number, z: number) => ({ pivot: [0, 1, z] as [number, number, number],
+  geo: merge([box(0.3, 1, 0.32, col, 0, -0.5, 0), box(0.44, 0.2, 0.34, boot, 0.07, -0.9, 0)]) });
+
+const BUILDERS: Record<string, (t: Pal) => ModelDef> = {
+  // Guard tower: a round keep with a crenellated crown, a slate cap and a brazier that fires on intruders.
+  // Authored at world size (the renderer does not shrink it like the soldiers).
+  tower: t => ({
+    height: 6.4,
+    body: merge([
+      cyl(1.25, 1.45, 0.5, 8, PAL.stoneLo, 0, 0.25, 0), cyl(0.95, 1.15, 3.4, 8, PAL.stone, 0, 2.2, 0),
+      cyl(1.02, 1.02, 0.16, 8, t.lo, 0, 2.5, 0), cyl(1.25, 0.98, 0.5, 8, PAL.stoneHi, 0, 4.15, 0),
+      ...Array.from({ length: 8 }, (_, i) => { const a = (i / 8) * Math.PI * 2; return box(0.42, 0.5, 0.42, PAL.stoneHi, Math.cos(a) * 1.08, 4.62, Math.sin(a) * 1.08, { ry: -a }); }),
+      cyl(0, 0.82, 1.5, 8, PAL.roof, 0, 5.35, 0), box(0.06, 0.5, 0.06, PAL.gold, 0, 6.3, 0), box(0.3, 0.06, 0.06, PAL.gold, 0, 6.38, 0),
+      box(0.06, 0.9, 0.5, t.main, 0.99, 3.1, 0), box(0.5, 0.9, 0.06, t.main, 0, 3.1, 0.99),
+    ]),
+    glow: merge([box(0.07, 0.6, 0.2, PAL.candle, 1.06, 1.7, 0), box(0.2, 0.6, 0.07, PAL.candle, 0, 1.7, 1.06), box(0.2, 0.6, 0.07, PAL.candle, 0, 1.7, -1.06)]),
+    weapon: { pivot: [0, 4.5, 0], anim: "raise", geo: cyl(0.3, 0.2, 0.2, 6, PAL.ink, 0, 0, 0), glow: ball(0.26, t.glow, 0, 0.25, 0, 0) },
+  }),
+  arbalester: t => ({
+    height: 2.6,
+    body: merge([
+      box(0.45, 0.9, 0.7, PAL.cloth, 0, 1.45, 0), box(0.52, 0.72, 0.5, t.main, 0, 1.42, 0), box(0.54, 0.1, 0.72, PAL.leather, 0, 1.12, 0),
+      box(0.5, 0.2, 0.74, t.lo, 0, 1.86, 0),
+      ball(0.22, PAL.bone, 0.02, 2.14, 0), cyl(0.44, 0.44, 0.06, 10, PAL.steel, 0, 2.27, 0), cyl(0.16, 0.3, 0.22, 8, PAL.steelHi, 0, 2.4, 0),
+      cyl(0.1, 0.1, 0.62, 6, PAL.leather, -0.32, 1.62, -0.1, { rz: 0.3 }), box(0.2, 0.2, 0.2, PAL.cloth, 0, 1.72, -0.42),
+    ]),
+    legs: [leg(PAL.dark, PAL.leather, 0.19), leg(PAL.dark, PAL.leather, -0.19)],
+    weapon: { pivot: [0.05, 1.74, 0.42], anim: "recoil", geo: merge([
+      box(0.56, 0.2, 0.2, PAL.cloth, 0.25, -0.08, 0), box(0.95, 0.1, 0.12, PAL.wood, 0.62, -0.1, 0),
+      box(0.08, 0.08, 1.05, PAL.steelHi, 1.02, -0.1, 0), box(0.3, 0.04, 0.04, PAL.bone, 1.12, -0.04, 0) ]) },
+  }),
+  oathguard: t => ({
+    height: 3,
+    body: merge([
+      box(0.58, 0.98, 0.84, PAL.steel, 0, 1.5, 0), box(0.64, 0.8, 0.42, t.main, 0, 1.46, 0), box(0.62, 0.1, 0.86, PAL.leather, 0, 1.14, 0),
+      ball(0.27, PAL.steelHi, 0, 1.98, 0.42, 0), ball(0.27, PAL.steelHi, 0, 1.98, -0.42, 0),
+      box(0.48, 0.52, 0.48, PAL.steelHi, 0.02, 2.3, 0), box(0.03, 0.07, 0.34, PAL.ink, 0.27, 2.34, 0), box(0.5, 0.05, 0.06, PAL.gold, 0.02, 2.3, 0.25),
+      box(0.3, 0.34, 0.1, t.main, -0.12, 2.68, 0, { rz: 0.5 }),
+      box(0.08, 1.15, 0.76, t.lo, -0.36, 1.38, 0, { rz: 0.14 }),
+      box(0.78, 1.15, 0.1, t.main, 0.22, 1.42, 0.52), box(0.82, 0.08, 0.12, PAL.gold, 0.22, 1.98, 0.52), box(0.82, 0.08, 0.12, PAL.gold, 0.22, 0.86, 0.52),
+      box(0.12, 0.8, 0.04, PAL.bone, 0.22, 1.44, 0.59), box(0.5, 0.12, 0.04, PAL.bone, 0.22, 1.58, 0.59),
+    ]),
+    legs: [leg(PAL.steel, PAL.steel, 0.21), leg(PAL.steel, PAL.steel, -0.21)],
+    weapon: { pivot: [-0.05, 1.86, 0.2], anim: "swing", geo: merge([
+      box(0.2, 0.5, 0.2, PAL.steel, 0, 0.22, 0), cyl(0.045, 0.045, 0.85, 6, PAL.wood, 0.12, 0.8, 0, { rz: -0.3 }), ball(0.2, PAL.steelHi, 0.25, 1.2, 0, 0) ]) },
+  }),
+  zealot: t => ({
+    height: 2.9,
+    body: merge([
+      cyl(0.28, 0.58, 1.78, 8, PAL.robe, 0, 0.89, 0), box(0.07, 1.3, 0.28, t.main, 0.42, 1.02, 0, { rz: 0.165 }), box(0.08, 0.06, 0.3, PAL.gold, 0.5, 0.5, 0),
+      cyl(0.43, 0.45, 0.07, 8, PAL.bone, 0, 1.06, 0), cyl(0.3, 0.3, 0.3, 8, PAL.robe, 0, 1.86, 0),
+      cyl(0, 0.36, 0.8, 8, PAL.robe, -0.06, 2.3, 0, { rz: 0.22 }), ball(0.2, PAL.ink, 0.1, 2.04, 0, 1),
+    ]),
+    glow: merge([ball(0.045, PAL.flame, 0.27, 2.06, 0.08, 0), ball(0.045, PAL.flame, 0.27, 2.06, -0.08, 0)]),
+    weapon: { pivot: [0.1, 1.62, 0.42], anim: "thrust",
+      geo: merge([box(0.5, 0.24, 0.24, PAL.robe, 0.2, -0.06, 0), cyl(0.04, 0.04, 2.3, 5, PAL.wood, 0.5, 0.45, 0, { rz: -0.45 }), cyl(0.16, 0.1, 0.18, 6, PAL.gold, 1.0, 1.12, 0)]),
+      glow: cyl(0, 0.15, 0.44, 6, PAL.flame, 1.0, 1.42, 0) },
+  }),
+  doctor: t => ({
+    height: 3,
+    body: merge([
+      cyl(0.3, 0.5, 1.28, 8, PAL.coat, 0, 1.3, 0), cyl(0.34, 0.34, 0.15, 8, t.main, 0, 1.92, 0), box(0.06, 0.7, 0.2, t.lo, -0.36, 1.55, 0.1, { rz: 0.1 }),
+      box(0.22, 0.32, 0.3, PAL.leather, -0.1, 1.08, 0.46),
+      ball(0.21, PAL.bone, 0, 2.16, 0), cyl(0, 0.11, 0.52, 6, PAL.bone, 0.42, 2.1, 0, { rz: -Math.PI / 2 }),
+      cyl(0.52, 0.52, 0.05, 12, PAL.hat, 0, 2.34, 0), cyl(0.22, 0.26, 0.4, 10, PAL.hat, 0, 2.55, 0), cyl(0.27, 0.27, 0.09, 10, t.main, 0, 2.41, 0),
+    ]),
+    glow: ball(0.04, PAL.heal, 0.19, 2.2, 0.1, 0),
+    legs: [leg(PAL.dark, PAL.leather, 0.18), leg(PAL.dark, PAL.leather, -0.18)],
+    weapon: { pivot: [0.1, 1.66, 0.42], anim: "raise",
+      geo: merge([box(0.46, 0.2, 0.2, PAL.coat, 0.2, -0.05, 0), cyl(0.04, 0.04, 2.7, 5, PAL.wood, 0.45, -0.25, 0), box(0.3, 0.05, 0.05, PAL.wood, 0.58, 1.08, 0),
+        box(0.22, 0.05, 0.22, PAL.gold, 0.68, 0.98, 0), box(0.22, 0.05, 0.22, PAL.gold, 0.68, 0.68, 0)]),
+      glow: box(0.16, 0.25, 0.16, PAL.heal, 0.68, 0.83, 0) },
+  }),
+  dreadknight: t => ({
+    height: 3.9,
+    body: merge([
+      box(2.0, 0.8, 0.7, PAL.horse, 0, 1.38, 0), box(0.42, 1.0, 0.42, PAL.horse, 1.0, 1.98, 0, { rz: -0.5 }), box(0.72, 0.34, 0.34, PAL.horse, 1.44, 2.32, 0, { rz: -0.4 }),
+      box(0.56, 0.1, 0.38, PAL.steelHi, 1.48, 2.5, 0, { rz: -0.4 }), box(0.12, 0.95, 0.14, PAL.ink, -1.1, 1.2, 0, { rz: -0.35 }),
+      box(1.72, 0.8, 0.8, t.main, -0.05, 1.22, 0), box(1.74, 0.09, 0.82, PAL.gold, -0.05, 1.56, 0), box(0.5, 0.5, 0.5, t.lo, 0.9, 1.5, 0),
+      box(0.12, 0.5, 0.03, PAL.bone, 0.3, 1.2, 0.41), box(0.34, 0.12, 0.03, PAL.bone, 0.3, 1.3, 0.41),
+      box(0.46, 0.82, 0.62, PAL.steel, -0.05, 2.22, 0), box(0.5, 0.7, 0.3, t.main, -0.05, 2.2, 0),
+      box(0.24, 0.72, 0.2, PAL.steel, 0.08, 1.62, 0.44), box(0.24, 0.72, 0.2, PAL.steel, 0.08, 1.62, -0.44),
+      ball(0.22, PAL.steelHi, -0.05, 2.62, 0.36, 0), ball(0.22, PAL.steelHi, -0.05, 2.62, -0.36, 0),
+      box(0.42, 0.46, 0.42, PAL.steelHi, -0.03, 2.9, 0), box(0.03, 0.07, 0.3, PAL.ink, 0.19, 2.94, 0),
+      cyl(0, 0.07, 0.46, 5, PAL.bone, -0.03, 3.3, 0.2, { rx: 0.35 }), cyl(0, 0.07, 0.46, 5, PAL.bone, -0.03, 3.3, -0.2, { rx: -0.35 }),
+      box(0.08, 0.95, 0.6, t.lo, -0.36, 2.1, 0, { rz: 0.25 }),
+    ]),
+    glow: ball(0.05, PAL.flame, 1.52, 2.42, 0.18, 0),
+    legs: [
+      { pivot: [0.78, 1.05, 0], geo: merge([box(0.2, 1.05, 0.2, PAL.horse, 0, -0.52, 0.23), box(0.2, 1.05, 0.2, PAL.horse, 0, -0.52, -0.23)]) },
+      { pivot: [-0.78, 1.05, 0], geo: merge([box(0.2, 1.05, 0.2, PAL.horse, 0, -0.52, 0.23), box(0.2, 1.05, 0.2, PAL.horse, 0, -0.52, -0.23)]) },
+    ],
+    weapon: { pivot: [0.1, 2.36, 0.44], anim: "lance", geo: merge([
+      box(0.5, 0.2, 0.2, PAL.steel, 0.2, -0.05, 0), cyl(0.05, 0.05, 3.6, 6, PAL.bone, 1.1, -0.02, 0, { rz: -Math.PI / 2 + 0.06 }),
+      cyl(0, 0.1, 0.44, 6, PAL.steelHi, 3.1, 0.1, 0, { rz: -Math.PI / 2 + 0.06 }), box(0.55, 0.32, 0.03, t.main, 2.4, 0.26, 0) ]) },
+  }),
+  trebuchet: t => {
+    const arm = merge([box(4.3, 0.2, 0.2, PAL.woodHi, -1.2, 0, 0), box(0.75, 0.75, 0.6, PAL.stone, 0.85, -0.5, 0), ball(0.24, PAL.stoneHi, -3.3, -0.45, 0, 0)]);
+    arm.rotateZ(0.45);
+    const wheels = [-1.1, 1.1].flatMap(x => [-0.85, 0.85].map(z => cyl(0.46, 0.46, 0.2, 10, PAL.wood, x, 0.46, z, { rx: Math.PI / 2 })));
+    return {
+      height: 4.2,
+      body: merge([
+        box(3.3, 0.2, 0.25, PAL.wood, 0, 0.55, 0.7), box(3.3, 0.2, 0.25, PAL.wood, 0, 0.55, -0.7), box(0.25, 0.2, 1.6, PAL.wood, 1.3, 0.55, 0), box(0.25, 0.2, 1.6, PAL.wood, -1.3, 0.55, 0),
+        ...wheels,
+        ...[-0.6, 0.6].flatMap(z => [box(0.18, 2.7, 0.18, PAL.wood, -0.55, 1.75, z, { rz: -0.4 }), box(0.18, 2.7, 0.18, PAL.wood, 0.55, 1.75, z, { rz: 0.4 }), box(1.1, 0.14, 0.14, PAL.woodHi, 0, 1.4, z)]),
+        cyl(0.08, 0.08, 1.5, 6, PAL.steel, 0, 2.9, 0, { rx: Math.PI / 2 }),
+        box(0.62, 0.95, 0.04, t.main, -1.0, 1.55, 0.84), box(0.7, 0.07, 0.07, PAL.woodHi, -1.0, 2.05, 0.84), box(0.1, 0.5, 0.03, PAL.bone, -1.0, 1.6, 0.87), box(0.34, 0.1, 0.03, PAL.bone, -1.0, 1.7, 0.87),
+      ]),
+      weapon: { pivot: [0, 2.9, 0], anim: "sling", geo: arm },
+    };
+  },
+};
+
+const cache = new Map<string, ModelDef>();
+export function unitModel(id: string, team: 0 | 1): ModelDef {
+  const key = `${id}:${team}`;
+  let m = cache.get(key);
+  if (!m) { m = BUILDERS[id]!(TEAM[team]); cache.set(key, m); }
+  return m;
+}
+/** The whole model at rest in one geometry: for statues and portraits. */
+export function wholeModel(id: string, team: 0 | 1): { lit: G; glow: G | null } {
+  const m = unitModel(id, team), at = (g: G, p: [number, number, number]) => g.clone().translate(p[0], p[1], p[2]);
+  const glow = [m.glow?.clone(), m.weapon.glow && at(m.weapon.glow, m.weapon.pivot)].filter((g): g is G => !!g);
+  return { lit: merge([m.body.clone(), at(m.weapon.geo, m.weapon.pivot), ...(m.legs ?? []).map(l => at(l.geo, l.pivot))]), glow: glow.length ? merge(glow) : null };
+}
+
+// ---- structures ----
+const lancet = (col: number, x: number, y: number, z: number, w: number, h: number, facing: "z" | "x"): G[] => facing === "z"
+  ? [box(w, h, 0.06, col, x, y, z), box(w * 0.72, w * 0.72, 0.06, col, x, y + h / 2, z, { rz: Math.PI / 4 })]
+  : [box(0.06, h, w, col, x, y, z), box(0.06, w * 0.72, w * 0.72, col, x, y + h / 2, z, { rx: Math.PI / 4 })];
+
+/** Headquarters: twin-spired cathedral, façade toward the camera, long nave across the lane. */
+export function cathedralModel(team: 0 | 1): { lit: G; glow: G } {
+  const t = TEAM[team], lit: G[] = [], glow: G[] = [];
+  lit.push(box(11.2, 0.5, 17.6, PAL.stoneLo, 0, 0.25, 0), box(9, 8, 14, PAL.stone, 0, 4.5, -1.4));
+  const roof = new THREE.Shape(); roof.moveTo(-4.9, 0); roof.lineTo(4.9, 0); roof.lineTo(0, 4.4); roof.closePath();
+  lit.push(place(paint(new THREE.ExtrudeGeometry(roof, { depth: 14.6, bevelEnabled: false }), PAL.roof), 0, 8.5, -8.7));
+  lit.push(spire(0.5, 2.6, PAL.roof, 0, 12.6, -3));
+  for (const sx of [-1, 1]) {
+    const x = sx * 3.5;
+    lit.push(box(3.2, 13, 3.2, PAL.stone, x, 6.9, 7), box(3.5, 0.4, 3.5, PAL.stoneHi, x, 13.5, 7), box(3.4, 0.3, 3.4, PAL.stoneHi, x, 8.2, 7));
+    lit.push(spire(1.6, 6.8, PAL.roof, x, 13.7, 7), ...crossGeo(PAL.gold, x, 20.4, 7, 1.3, { ry: Math.PI / 2 }));
+    for (const [dx, dz] of [[-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5]] as const) lit.push(spire(0.28, 1.7, PAL.stoneHi, x + dx, 13.7, 7 + dz));
+    glow.push(...lancet(t.glow, x, 5.2, 8.63, 0.62, 2.3, "z"), ...lancet(PAL.candle, x, 10.6, 8.63, 0.5, 1.7, "z"));
+    lit.push(box(1.0, 3.3, 0.07, t.main, x, 2.3, 8.64), box(1.1, 0.12, 0.12, PAL.gold, x, 3.95, 8.66));
+    for (const z of [-6.4, -3.6, -0.8, 2]) { // side walls: buttresses and glass
+      lit.push(box(0.7, 6.5, 0.9, PAL.stoneHi, sx * 4.8, 3.6, z + 1.4), spire(0.4, 1.3, PAL.stoneHi, sx * 4.8, 6.85, z + 1.4));
+      glow.push(...lancet(t.glow, sx * 4.53, 4.6, z, 0.7, 2.6, "x"));
+    }
+  }
+  lit.push(box(3.8, 10.5, 1.2, PAL.stone, 0, 5.7, 7.7));
+  const gable = new THREE.Shape(); gable.moveTo(-1.9, 0); gable.lineTo(1.9, 0); gable.lineTo(0, 2.6); gable.closePath();
+  lit.push(place(paint(new THREE.ExtrudeGeometry(gable, { depth: 1.2, bevelEnabled: false }), PAL.stoneHi), 0, 10.95, 7.1), ...crossGeo(PAL.gold, 0, 13.4, 7.7, 1.2, { ry: Math.PI / 2 }));
+  lit.push(place(paint(new THREE.TorusGeometry(1.6, 0.16, 6, 28), PAL.stoneHi), 0, 7.9, 8.32));
+  glow.push(cyl(1.5, 1.5, 0.08, 28, t.glow, 0, 7.9, 8.3, { rx: Math.PI / 2 }));
+  for (let i = 0; i < 6; i++) lit.push(box(3, 0.09, 0.1, PAL.stoneLo, 0, 7.9, 8.36, { rz: (i / 6) * Math.PI }));
+  lit.push(cyl(0.34, 0.34, 0.12, 12, PAL.stoneLo, 0, 7.9, 8.38, { rx: Math.PI / 2 }));
+  lit.push(...lancet(0x120d0b, 0, 1.9, 8.32, 1.9, 2.8, "z"), box(2.5, 0.25, 0.4, PAL.stoneHi, 0, 0.62, 8.5));
+  glow.push(box(0.16, 2.2, 0.05, PAL.candle, 0, 1.7, 8.37));
+  return { lit: merge(lit), glow: merge(glow) };
+}
+
+/** Shrine pillar with a brazier bowl; the flame and light are added live. */
+export function shrineModel(): G {
+  return merge([
+    cyl(1.7, 2.0, 0.5, 8, PAL.stoneLo, 0, 0.25, 0), cyl(1.25, 1.45, 0.4, 8, PAL.stone, 0, 0.7, 0), box(1.1, 3.1, 1.1, PAL.stone, 0, 2.45, 0),
+    ...lancet(PAL.ink, 0, 2.1, 0.57, 0.5, 1.3, "z"), ball(0.17, PAL.bone, 0, 1.75, 0.6, 0),
+    box(1.5, 0.3, 1.5, PAL.stoneHi, 0, 4.15, 0),
+    ...[[-0.6, -0.6], [0.6, -0.6], [-0.6, 0.6], [0.6, 0.6]].map(([x, z]) => spire(0.14, 0.9, PAL.stoneHi, x!, 4.3, z!)),
+    cyl(0.95, 0.5, 0.55, 8, PAL.bronze, 0, 4.6, 0), cyl(0.98, 0.98, 0.08, 8, PAL.gold, 0, 4.88, 0),
+  ]);
+}
+
+/** Production building: a small spired chantry flying the team's banner. */
+export function chantryModel(team: 0 | 1): { lit: G; glow: G } {
+  const t = TEAM[team];
+  return {
+    lit: merge([
+      box(2.9, 0.3, 2.7, PAL.stoneLo, 0, 0.15, 0), box(2.3, 2.1, 2.1, PAL.stone, 0, 1.35, 0), box(2.5, 0.2, 2.3, PAL.stoneHi, 0, 2.45, 0),
+      spire(1.25, 2.0, PAL.roof, 0, 2.55, 0), ...crossGeo(PAL.gold, 0, 4.5, 0, 0.7, { ry: Math.PI / 2 }),
+      ...lancet(0x120d0b, -0.35, 1.0, 1.06, 0.8, 1.2, "z"),
+      box(0.55, 1.2, 0.05, t.main, 0.72, 1.55, 1.08), box(0.65, 0.08, 0.08, PAL.gold, 0.72, 2.15, 1.09),
+      box(0.9, 0.5, 0.9, PAL.stoneLo, 1.9, 0.25, 0.9),
+    ]),
+    glow: merge([...lancet(t.glow, -1.16, 1.5, 0, 0.4, 0.8, "x"), ...lancet(t.glow, 1.16, 1.5, -0.3, 0.4, 0.8, "x")]),
+  };
+}
+
+/** Ruined cloister along the far edge of the lane: pointed arches between pinnacled piers. */
+export function cloisterModel(fromX: number, toX: number): G {
+  const bay = 10, parts: G[] = [];
+  const shape = new THREE.Shape(); shape.moveTo(0, 0); shape.lineTo(bay, 0); shape.lineTo(bay, 8.4); shape.lineTo(0, 8.4); shape.closePath();
+  const hole = new THREE.Path(); hole.moveTo(2.3, 0.9); hole.lineTo(2.3, 4.2); hole.quadraticCurveTo(2.5, 6.2, 5, 7.2); hole.quadraticCurveTo(7.5, 6.2, 7.7, 4.2); hole.lineTo(7.7, 0.9); hole.closePath();
+  shape.holes.push(hole);
+  const wall = paint(new THREE.ExtrudeGeometry(shape, { depth: 0.9, bevelEnabled: false, curveSegments: 5 }), PAL.stone);
+  for (let x = fromX, i = 0; x < toX; x += bay, i++) {
+    parts.push(wall.clone().translate(x, 0, -0.45), box(1.3, 9.8, 1.7, PAL.stoneHi, x, 4.9, 0), spire(0.65, 2, PAL.roof, x, 9.8, 0), box(bay, 0.35, 1.3, PAL.stoneHi, x + bay / 2, 8.5, 0));
+    parts.push(box(0.26, 6, 0.3, PAL.stoneHi, x + 5, 3.9, 0));
+    for (let k = 0; k < 5; k++) parts.push(box(1, 0.7, 1.0, PAL.stone, x + 1 + k * 2, 9, 0));
+  }
+  return merge(parts);
+}
+
+/** Graves, crosses and dead trees scattered along both lane edges (deterministic). */
+export function graveyardModel(fromX: number, toX: number, zNear: number): G {
+  let s = 1234;
+  const r = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  const parts: G[] = [];
+  const tree = (x: number, z: number, h: number) => {
+    const branch = (p: THREE.Vector3, dir: THREE.Vector3, len: number, rad: number) => {
+      const end = p.clone().addScaledVector(dir, len), g = paint(new THREE.CylinderGeometry(rad * 0.65, rad, len, 5), PAL.ink);
+      g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir)).translate((p.x + end.x) / 2, (p.y + end.y) / 2, (p.z + end.z) / 2);
+      parts.push(g);
+      if (len > 1.1) for (let i = 0; i < 2; i++) branch(end, dir.clone().add(new THREE.Vector3(r() - 0.5, r() * 0.3, r() - 0.5).multiplyScalar(1.5)).normalize(), len * 0.68, rad * 0.62);
+    };
+    branch(new THREE.Vector3(x, 0, z), new THREE.Vector3((r() - 0.5) * 0.2, 1, 0).normalize(), h, 0.32);
+  };
+  for (let x = fromX; x < toX; x += 3.2) {
+    for (const z0 of [-1.6, zNear]) {
+      const z = z0 + (z0 < 0 ? r() * 1.2 - 0.4 : r() * 3), xx = x + r() * 2.4, roll = r();
+      if (roll < 0.34) parts.push(box(0.8, 1.15, 0.22, PAL.stoneLo, xx, 0.55, z, { rz: (r() - 0.5) * 0.3 }), cyl(0.4, 0.4, 0.22, 8, PAL.stoneLo, xx, 1.1, z, { rx: Math.PI / 2 }));
+      else if (roll < 0.52) parts.push(...crossGeo(PAL.stoneLo, xx, 0, z, 1.5, { ry: Math.PI / 2 }));
+      else if (roll < 0.6) tree(xx, z + (z0 < 0 ? 0 : 1.5), 2.6 + r() * 1.6);
+    }
+  }
+  return merge(parts);
+}
+
+/** Wrought-iron fence along the near edge. */
+export function fenceModel(fromX: number, toX: number, z: number): G {
+  const parts: G[] = [box(toX - fromX, 0.12, 0.12, PAL.ink, (fromX + toX) / 2, 1.5, z), box(toX - fromX, 0.12, 0.12, PAL.ink, (fromX + toX) / 2, 0.4, z)];
+  for (let x = fromX; x < toX; x += 0.8) parts.push(cyl(0.05, 0.05, 2, 4, PAL.ink, x, 1, z), cyl(0, 0.12, 0.4, 4, PAL.ink, x, 2.2, z));
+  for (let x = fromX; x < toX; x += 8) parts.push(box(0.5, 2.8, 0.5, PAL.stoneLo, x, 1.4, z), spire(0.3, 0.7, PAL.stoneLo, x, 2.8, z));
+  return merge(parts);
+}
+
+/**
+ * Precinct wall around a team's building ground, in local coordinates: x runs from the rear (0) to
+ * the front (len), z across the lane (0..depth). A low buttressed wall closes the rear and both
+ * sides; the front is left open for the army, flanked by the base towers. Banners hang in team colour.
+ */
+export function precinctModel(team: 0 | 1, len: number, depth: number): { lit: G; glow: G } {
+  const t = TEAM[team], lit: G[] = [], glow: G[] = [], h = 1.1, th = 0.5, m = 0.9; // m = margin outside the ground
+  const run = (x0: number, x1: number, z: number) => {
+    lit.push(box(x1 - x0, h, th, PAL.stone, (x0 + x1) / 2, h / 2, z), box(x1 - x0 + 0.1, 0.14, th + 0.2, PAL.stoneHi, (x0 + x1) / 2, h + 0.07, z));
+    for (let x = x0 + 2; x < x1 - 1; x += 4) lit.push(box(0.7, h + 0.5, th + 0.5, PAL.stoneLo, x, (h + 0.5) / 2, z), spire(0.36, 0.5, PAL.stoneHi, x, h + 0.5, z));
+  };
+  run(-m, len + 0.5, -m); run(-m, len + 0.5, depth + m);
+  lit.push(box(th, h, depth + m * 2, PAL.stone, -m, h / 2, depth / 2), box(th + 0.2, 0.14, depth + m * 2 + 0.1, PAL.stoneHi, -m, h + 0.07, depth / 2));
+  for (const [x, z] of [[-m, -m], [-m, depth + m], [len + 0.5, -m], [len + 0.5, depth + m]] as const) { // corner piers with braziers
+    lit.push(box(1.1, 2.4, 1.1, PAL.stoneLo, x, 1.2, z), box(1.3, 0.2, 1.3, PAL.stoneHi, x, 2.5, z), cyl(0.5, 0.3, 0.3, 6, PAL.ink, x, 2.75, z));
+    glow.push(ball(0.3, PAL.flame, x, 3.0, z, 0));
+  }
+  for (let x = 4; x < len; x += 8) { // banners on the far wall, facing the camera
+    lit.push(box(0.08, 2.6, 0.08, PAL.ink, x, 1.3 + h * 0.4, -m + 0.3), box(1.0, 1.5, 0.05, t.main, x, h + 0.75, -m + 0.36), box(1.0, 0.3, 0.05, t.lo, x, h + 0.02, -m + 0.36),
+      box(0.4, 0.08, 0.06, PAL.gold, x, h + 0.95, -m + 0.4), box(0.08, 0.6, 0.06, PAL.gold, x, h + 0.85, -m + 0.4));
+  }
+  return { lit: merge(lit), glow: merge(glow) };
+}

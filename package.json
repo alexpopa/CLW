@@ -1,0 +1,31 @@
+{
+  "name": "line-wars",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Browser-based line-wars RTS (working title)",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @lw/client",
+    "dev:server": "npm run dev -w @lw/server",
+    "dev:all": "npm run dev:server & npm run dev",
+    "build": "npm run build --workspaces --if-present",
+    "preview": "npm exec -w @lw/client -- vite preview",
+    "check": "npm run typecheck && npm test && npm run build",
+    "test:accounts": "npm run build:accounts && node --test apps/accounts/test/sign-in.test.mjs",
+    "build:accounts": "tsc -b apps/accounts",
+    "typecheck": "tsc -b",
+    "test": "npm run test --workspaces --if-present",
+    "build:site": "node scripts/build-site.mjs"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  }
+}
