@@ -10,6 +10,7 @@ interface Env {
     batch(statements: Statement[]): Promise<unknown>;
   };
   RGBONER_ORIGIN: string;
+  RGBONER_CONNECT_ORIGIN?: string;
   CLW_ORIGIN: string;
   RGBONER_SSO_SECRET: string;
   MATCH_SERVER_URL?: string;
@@ -179,7 +180,7 @@ export default {
           return Response.json({ error: "Enter your email and password." }, { status: 400, headers });
         }
         const verifier = randomToken();
-        const response = await fetch(new URL("/connect/line-wars", env.RGBONER_ORIGIN), {
+        const response = await fetch(new URL("/connect/line-wars", env.RGBONER_CONNECT_ORIGIN ?? env.RGBONER_ORIGIN), {
           method: "POST",
           redirect: "error",
           headers: { Authorization: `Bearer ${env.RGBONER_SSO_SECRET}`, "Content-Type": "application/json" },
