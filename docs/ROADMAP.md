@@ -23,7 +23,8 @@ The accounts Worker and basic sign-in screen are implemented. The hosted client 
 Match history, simple Elo, leaderboards, replays (seed+log), sound/music, settings, tutorial.
 
 ## M5 — Content & balance
-More units and upgrades, balance data pass, playtest feedback loop.
+**Done:** 22 units in three tiers with automatic abilities, per-unit research, flyers and anti-air, rigged unit animation, a combat test harness and balance scripts (see [UNITS.md](UNITS.md)).
+**Still to do:** balance against human play, upgrades, a fourth tier, AI difficulty levels.
 
 ## Backlog
 Mobile controls, spectating, custom lobbies/passwords, anti-cheat hardening, localization.

@@ -1,7 +1,7 @@
-import { canBuild, createGame, simpleAI, step, INVEST_TIERS, MAP, RESEARCH, TICK_RATE, UNITS, UNIT_ORDER } from "@lw/sim";
+import { canBuild, createGame, isUnlocked, researchOffer, simpleAI, step, unitsOfTier, INVEST_TIERS, MAP, MAX_TIER, TICK_RATE, UNITS } from "@lw/sim";
 import type { Command, GameState, TimedCommand } from "@lw/sim";
 import { Renderer } from "./scene";
-import { createHud } from "./hud";
+import { createHud, RITE } from "./hud";
 import { Sound } from "./audio";
 import { hostedAccounts, matchCredentials, Net } from "./net";
 
@@ -29,6 +29,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   let pending: Command[] = [];
   let acc = 0, last = performance.now();
   let selectedUnit: string | null = null, selectedBuilding: number | null = null;
+  let tierTab = 1;                         // which tier's cards the bar shows
   let hoverCell: { col: number; row: number } | null = null;
   const keys = new Set<string>();
   let mouseX = -1, mouseInside = false;
@@ -38,7 +39,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   const send = (cmd: Command) => { if (!running || ended) return; if (online) net?.command(cmd); else pending.push(cmd); };
   const begin = (state: GameState, slot: number) => {
     game = state; ME = slot; pending = []; inbox = []; acc = 0; ended = false; running = true; paused = false; speed = online ? 1 : speed;
-    selectedUnit = null; selectedBuilding = null;
+    selectedUnit = null; selectedBuilding = null; tierTab = 1;
     view.reset(); view.camX = home(); view.clampCam(); hud.hideOverlay(); sound.play("bell");
     const team = me().team;
     hud.setSide(team, (pics[team] ??= view.portraits(team)));
@@ -80,9 +81,15 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   const pics: Record<number, Record<string, string>> = { 0: view.portraits(0) }; // card portraits per side
   const hud = createHud(hudRoot, pics[0]!, {
     selectUnit(id) {
-      if (UNITS[id]!.tier > me().tier) { deny("Requires the Second Rite"); return; }
-      selectedUnit = selectedUnit === id ? null : id; selectedBuilding = null; sound.play("click");
+      const p = me(), d = UNITS[id]!;
+      if (isUnlocked(p, id)) { selectedUnit = selectedUnit === id ? null : id; selectedBuilding = null; sound.play("click"); return; }
+      const offer = researchOffer(p, id);
+      if (!offer) deny(`Sealed until ${RITE[d.tier]}`);
+      else if (p.research) deny(p.research.unit === id ? "Your scholars are already studying it" : "Your scholars are busy");
+      else if (p.credits < offer.cost) deny(`Studying the ${d.name} costs ${offer.cost} gold`);
+      else { send({ type: "research", unit: id }); sound.play("study"); hud.toast(`Studying the ${d.name}`); }
     },
+    setTier(tier) { tierTab = Math.max(1, Math.min(MAX_TIER, tier)); sound.play("click"); },
     invest() {
       const tier = INVEST_TIERS[me().invest[me().lane] ?? 0];
       if (!tier) deny("The tithe cannot be raised further");
@@ -90,9 +97,9 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
       else { send({ type: "invest" }); sound.play("coin"); }
     },
     research() {
-      const next = RESEARCH[me().tier + 1];
-      if (!next) deny("All rites are known");
-      else if (me().research) deny("The rite is already under way");
+      const next = researchOffer(me());
+      if (!next) deny("Every rite is complete");
+      else if (me().research) deny(me().research!.unit ? "Your scholars are busy with a study" : "The rite is already under way");
       else if (me().credits < next.cost) deny("Not enough gold");
       else { send({ type: "research" }); sound.play("rite"); }
     },
@@ -160,7 +167,9 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     keys.add(k);
     if (e.repeat || !running) return;
     const n = Number(k);
-    if (n >= 1 && n <= UNIT_ORDER.length) hud.actions.selectUnit(UNIT_ORDER[n - 1]!);
+    const row = unitsOfTier(tierTab);
+    if (n >= 1 && n <= row.length) hud.actions.selectUnit(row[n - 1]!);
+    else if (k === "tab") { e.preventDefault(); hud.actions.setTier(e.shiftKey ? (tierTab + MAX_TIER - 2) % MAX_TIER + 1 : tierTab % MAX_TIER + 1); }
     else if (k === "e") hud.actions.invest();
     else if (k === "r") hud.actions.research();
     else if (k === "x" || k === "delete" || k === "backspace") hud.actions.sell();
@@ -183,7 +192,11 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     view.addEvents(game, game.events, now);
     sound.events(game.events, view.camX, me().team);
     for (const e of game.events) {
-      if (e.t === "researched" && e.player === ME) hud.toast("The Second Rite is complete — new units await");
+      if (e.t === "researched" && e.player === ME) {
+        if (e.unit) hud.toast(`${UNITS[e.unit]!.name} studied — its chantry may now be raised`);
+        else { hud.toast(`${RITE[e.tier]} is complete — choose what to study`); tierTab = e.tier; }
+        sound.play("capture");
+      }
       else if (e.t === "capture") hud.toast(e.team === me().team ? "Shrine claimed" : "Shrine lost");
     }
   };
@@ -219,7 +232,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     }
     if (selectedBuilding !== null && !game.buildings.some(b => b.id === selectedBuilding)) selectedBuilding = null;
     view.draw(game, { selectedUnit, hoverCell, selectedBuilding, me: ME }, paused || ended ? 1 : Math.min(1, acc / TICK_MS), now, dt);
-    hud.update(game, { me: ME, selectedUnit, selectedBuilding, speed, paused, camFrac: view.viewRange() });
+    hud.update(game, { me: ME, tier: tierTab, selectedUnit, selectedBuilding, speed, paused, camFrac: view.viewRange() });
   };
   requestAnimationFrame(frame);
 

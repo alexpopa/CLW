@@ -1,61 +1,9 @@
 import * as THREE from "three";
-import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { PAL, TEAM, ball, box, crossGeo, cyl, leg, merge, paint, place, plate, spire } from "./kit";
+import type { G, ModelDef, Pal, Part } from "./kit";
+import { ROSTER } from "./roster";
 
-/**
- * Original low-poly models built from primitives at load time. One palette for everything.
- * Axes: +x = forward (toward the enemy for team 0), +y = up, +z = toward the camera.
- * Sizes are in world units (a foot soldier is ~2.5 tall).
- */
-export const PAL = {
-  ink: 0x0b0a0f, dark: 0x3c3a48, cloth: 0x554c5e, robe: 0x4a3d4c, coat: 0x3b3844, hat: 0x24222b,
-  steel: 0x6d7180, steelHi: 0xb4b9c6, bone: 0xe2d7bc, gold: 0xc9a24b, bronze: 0x6d5630,
-  wood: 0x6e4a30, woodHi: 0x9c7048, leather: 0x5a4330, horse: 0x38343f,
-  stone: 0x7a7d8e, stoneHi: 0xa0a4b6, stoneLo: 0x53566a, roof: 0x484b66,
-  flame: 0xff8a2a, heal: 0x9fe8b0, candle: 0xffc978,
-};
-export const TEAM = [
-  { main: 0x3b78e6, lo: 0x2350a8, glow: 0x6fb0ff, css: "#4f8ff0" },
-  { main: 0xd2382f, lo: 0x8e1d18, glow: 0xff7a5a, css: "#e0483c" },
-] as const;
-type Pal = (typeof TEAM)[number];
-type G = THREE.BufferGeometry;
-
-const tmpColor = new THREE.Color();
-function paint(g: G, hex: number): G {
-  const n = g.index ? g.toNonIndexed() : g;
-  tmpColor.set(hex);
-  const count = n.attributes.position!.count, arr = new Float32Array(count * 3);
-  for (let i = 0; i < count; i++) { arr[i * 3] = tmpColor.r; arr[i * 3 + 1] = tmpColor.g; arr[i * 3 + 2] = tmpColor.b; }
-  n.setAttribute("color", new THREE.BufferAttribute(arr, 3));
-  return n;
-}
-interface Rot { rx?: number; ry?: number; rz?: number }
-const place = (g: G, x: number, y: number, z: number, r: Rot = {}): G => {
-  if (r.rx) g.rotateX(r.rx); if (r.ry) g.rotateY(r.ry); if (r.rz) g.rotateZ(r.rz);
-  return g.translate(x, y, z);
-};
-export const box = (w: number, h: number, d: number, col: number, x = 0, y = 0, z = 0, r?: Rot): G => place(paint(new THREE.BoxGeometry(w, h, d), col), x, y, z, r);
-export const cyl = (rt: number, rb: number, h: number, seg: number, col: number, x = 0, y = 0, z = 0, r?: Rot): G => place(paint(new THREE.CylinderGeometry(rt, rb, h, seg), col), x, y, z, r);
-export const ball = (rad: number, col: number, x = 0, y = 0, z = 0, detail = 1): G => place(paint(new THREE.IcosahedronGeometry(rad, detail), col), x, y, z);
-/** Four-sided spire aligned with a box of the same footprint. */
-export const spire = (half: number, h: number, col: number, x = 0, y = 0, z = 0): G => cyl(0, half * Math.SQRT2, h, 4, col, x, y + h / 2, z, { ry: Math.PI / 4 });
-export const merge = (parts: G[]): G => mergeGeometries(parts, false)!;
-const crossGeo = (col: number, x: number, y: number, z: number, s = 1, r?: Rot): G[] => [
-  place(paint(new THREE.BoxGeometry(0.14 * s, 1 * s, 0.14 * s), col), x, y + 0.5 * s, z, r),
-  place(paint(new THREE.BoxGeometry(0.14 * s, 0.14 * s, 0.6 * s), col), x, y + 0.68 * s, z, r),
-];
-
-export type WeaponAnim = "recoil" | "swing" | "thrust" | "raise" | "lance" | "sling";
-export interface ModelDef {
-  body: G;                                  // static geometry
-  glow?: G;                                 // unlit, glowing geometry attached to the body
-  legs?: { geo: G; pivot: [number, number, number] }[]; // swing in opposite phase
-  weapon: { geo: G; glow?: G; pivot: [number, number, number]; anim: WeaponAnim };
-  height: number;
-}
-
-const leg = (col: number, boot: number, z: number) => ({ pivot: [0, 1, z] as [number, number, number],
-  geo: merge([box(0.3, 1, 0.32, col, 0, -0.5, 0), box(0.44, 0.2, 0.34, boot, 0.07, -0.9, 0)]) });
+export * from "./kit";
 
 const BUILDERS: Record<string, (t: Pal) => ModelDef> = {
   // Guard tower: a round keep with a crenellated crown, a slate cap and a brazier that fires on intruders.
@@ -81,6 +29,7 @@ const BUILDERS: Record<string, (t: Pal) => ModelDef> = {
       cyl(0.1, 0.1, 0.62, 6, PAL.leather, -0.32, 1.62, -0.1, { rz: 0.3 }), box(0.2, 0.2, 0.2, PAL.cloth, 0, 1.72, -0.42),
     ]),
     legs: [leg(PAL.dark, PAL.leather, 0.19), leg(PAL.dark, PAL.leather, -0.19)],
+    parts: [{ motion: "cape", pivot: [-0.25, 1.9, 0], amp: 0.8, geo: merge([box(0.06, 0.8, 0.7, t.lo, -0.03, -0.4, 0, { rz: -0.08 }), box(0.07, 0.12, 0.72, t.main, -0.02, -0.06, 0)]) }],
     weapon: { pivot: [0.05, 1.74, 0.42], anim: "recoil", geo: merge([
       box(0.56, 0.2, 0.2, PAL.cloth, 0.25, -0.08, 0), box(0.95, 0.1, 0.12, PAL.wood, 0.62, -0.1, 0),
       box(0.08, 0.08, 1.05, PAL.steelHi, 1.02, -0.1, 0), box(0.3, 0.04, 0.04, PAL.bone, 1.12, -0.04, 0) ]) },
@@ -91,23 +40,26 @@ const BUILDERS: Record<string, (t: Pal) => ModelDef> = {
       box(0.58, 0.98, 0.84, PAL.steel, 0, 1.5, 0), box(0.64, 0.8, 0.42, t.main, 0, 1.46, 0), box(0.62, 0.1, 0.86, PAL.leather, 0, 1.14, 0),
       ball(0.27, PAL.steelHi, 0, 1.98, 0.42, 0), ball(0.27, PAL.steelHi, 0, 1.98, -0.42, 0),
       box(0.48, 0.52, 0.48, PAL.steelHi, 0.02, 2.3, 0), box(0.03, 0.07, 0.34, PAL.ink, 0.27, 2.34, 0), box(0.5, 0.05, 0.06, PAL.gold, 0.02, 2.3, 0.25),
-      box(0.3, 0.34, 0.1, t.main, -0.12, 2.68, 0, { rz: 0.5 }),
-      box(0.08, 1.15, 0.76, t.lo, -0.36, 1.38, 0, { rz: 0.14 }),
       box(0.78, 1.15, 0.1, t.main, 0.22, 1.42, 0.52), box(0.82, 0.08, 0.12, PAL.gold, 0.22, 1.98, 0.52), box(0.82, 0.08, 0.12, PAL.gold, 0.22, 0.86, 0.52),
       box(0.12, 0.8, 0.04, PAL.bone, 0.22, 1.44, 0.59), box(0.5, 0.12, 0.04, PAL.bone, 0.22, 1.58, 0.59),
     ]),
     legs: [leg(PAL.steel, PAL.steel, 0.21), leg(PAL.steel, PAL.steel, -0.21)],
+    parts: [
+      { motion: "cape", pivot: [-0.32, 1.96, 0], geo: merge([box(0.08, 1.2, 0.78, t.lo, -0.05, -0.6, 0, { rz: -0.06 }), box(0.09, 0.14, 0.8, PAL.gold, -0.03, -0.06, 0)]) },
+      { motion: "sway", pivot: [-0.04, 2.56, 0], amp: 0.5, geo: merge([box(0.12, 0.4, 0.1, t.main, -0.1, 0.16, 0, { rz: 0.6 }), box(0.1, 0.3, 0.08, t.lo, -0.3, 0.22, 0, { rz: 1.1 })]) },
+    ],
     weapon: { pivot: [-0.05, 1.86, 0.2], anim: "swing", geo: merge([
       box(0.2, 0.5, 0.2, PAL.steel, 0, 0.22, 0), cyl(0.045, 0.045, 0.85, 6, PAL.wood, 0.12, 0.8, 0, { rz: -0.3 }), ball(0.2, PAL.steelHi, 0.25, 1.2, 0, 0) ]) },
   }),
   zealot: t => ({
-    height: 2.9,
+    height: 2.9, gait: "shuffle",
     body: merge([
       cyl(0.28, 0.58, 1.78, 8, PAL.robe, 0, 0.89, 0), box(0.07, 1.3, 0.28, t.main, 0.42, 1.02, 0, { rz: 0.165 }), box(0.08, 0.06, 0.3, PAL.gold, 0.5, 0.5, 0),
       cyl(0.43, 0.45, 0.07, 8, PAL.bone, 0, 1.06, 0), cyl(0.3, 0.3, 0.3, 8, PAL.robe, 0, 1.86, 0),
       cyl(0, 0.36, 0.8, 8, PAL.robe, -0.06, 2.3, 0, { rz: 0.22 }), ball(0.2, PAL.ink, 0.1, 2.04, 0, 1),
     ]),
     glow: merge([ball(0.045, PAL.flame, 0.27, 2.06, 0.08, 0), ball(0.045, PAL.flame, 0.27, 2.06, -0.08, 0)]),
+    parts: [{ motion: "sway", pivot: [-0.2, 1.1, -0.4], amp: 0.8, geo: merge([box(0.03, 0.5, 0.03, PAL.ink, 0, -0.25, 0), box(0.2, 0.26, 0.14, PAL.leather, 0, -0.6, 0), box(0.1, 0.16, 0.03, PAL.bone, 0, -0.6, 0.08)]) }],
     weapon: { pivot: [0.1, 1.62, 0.42], anim: "thrust",
       geo: merge([box(0.5, 0.24, 0.24, PAL.robe, 0.2, -0.06, 0), cyl(0.04, 0.04, 2.3, 5, PAL.wood, 0.5, 0.45, 0, { rz: -0.45 }), cyl(0.16, 0.1, 0.18, 6, PAL.gold, 1.0, 1.12, 0)]),
       glow: cyl(0, 0.15, 0.44, 6, PAL.flame, 1.0, 1.42, 0) },
@@ -122,16 +74,17 @@ const BUILDERS: Record<string, (t: Pal) => ModelDef> = {
     ]),
     glow: ball(0.04, PAL.heal, 0.19, 2.2, 0.1, 0),
     legs: [leg(PAL.dark, PAL.leather, 0.18), leg(PAL.dark, PAL.leather, -0.18)],
+    parts: [{ motion: "cape", pivot: [-0.3, 1.6, 0], amp: 0.7, geo: merge([box(0.06, 1.0, 0.34, PAL.coat, -0.03, -0.5, 0.2, { rz: -0.1 }), box(0.06, 1.0, 0.34, PAL.coat, -0.03, -0.5, -0.2, { rz: -0.1 })]) }],
     weapon: { pivot: [0.1, 1.66, 0.42], anim: "raise",
       geo: merge([box(0.46, 0.2, 0.2, PAL.coat, 0.2, -0.05, 0), cyl(0.04, 0.04, 2.7, 5, PAL.wood, 0.45, -0.25, 0), box(0.3, 0.05, 0.05, PAL.wood, 0.58, 1.08, 0),
         box(0.22, 0.05, 0.22, PAL.gold, 0.68, 0.98, 0), box(0.22, 0.05, 0.22, PAL.gold, 0.68, 0.68, 0)]),
       glow: box(0.16, 0.25, 0.16, PAL.heal, 0.68, 0.83, 0) },
   }),
   dreadknight: t => ({
-    height: 3.9,
+    height: 3.9, gait: "gallop",
     body: merge([
       box(2.0, 0.8, 0.7, PAL.horse, 0, 1.38, 0), box(0.42, 1.0, 0.42, PAL.horse, 1.0, 1.98, 0, { rz: -0.5 }), box(0.72, 0.34, 0.34, PAL.horse, 1.44, 2.32, 0, { rz: -0.4 }),
-      box(0.56, 0.1, 0.38, PAL.steelHi, 1.48, 2.5, 0, { rz: -0.4 }), box(0.12, 0.95, 0.14, PAL.ink, -1.1, 1.2, 0, { rz: -0.35 }),
+      box(0.56, 0.1, 0.38, PAL.steelHi, 1.48, 2.5, 0, { rz: -0.4 }),
       box(1.72, 0.8, 0.8, t.main, -0.05, 1.22, 0), box(1.74, 0.09, 0.82, PAL.gold, -0.05, 1.56, 0), box(0.5, 0.5, 0.5, t.lo, 0.9, 1.5, 0),
       box(0.12, 0.5, 0.03, PAL.bone, 0.3, 1.2, 0.41), box(0.34, 0.12, 0.03, PAL.bone, 0.3, 1.3, 0.41),
       box(0.46, 0.82, 0.62, PAL.steel, -0.05, 2.22, 0), box(0.5, 0.7, 0.3, t.main, -0.05, 2.2, 0),
@@ -139,9 +92,12 @@ const BUILDERS: Record<string, (t: Pal) => ModelDef> = {
       ball(0.22, PAL.steelHi, -0.05, 2.62, 0.36, 0), ball(0.22, PAL.steelHi, -0.05, 2.62, -0.36, 0),
       box(0.42, 0.46, 0.42, PAL.steelHi, -0.03, 2.9, 0), box(0.03, 0.07, 0.3, PAL.ink, 0.19, 2.94, 0),
       cyl(0, 0.07, 0.46, 5, PAL.bone, -0.03, 3.3, 0.2, { rx: 0.35 }), cyl(0, 0.07, 0.46, 5, PAL.bone, -0.03, 3.3, -0.2, { rx: -0.35 }),
-      box(0.08, 0.95, 0.6, t.lo, -0.36, 2.1, 0, { rz: 0.25 }),
     ]),
     glow: ball(0.05, PAL.flame, 1.52, 2.42, 0.18, 0),
+    parts: [
+      { motion: "cape", pivot: [-0.3, 2.56, 0], geo: merge([box(0.08, 1.1, 0.64, t.lo, -0.05, -0.55, 0, { rz: -0.1 }), box(0.09, 0.14, 0.66, PAL.gold, -0.03, -0.06, 0)]) },
+      { motion: "tail", pivot: [-1.0, 1.66, 0], amp: 0.6, geo: merge([box(0.14, 0.9, 0.16, PAL.ink, -0.14, -0.42, 0, { rz: -0.35 }), box(0.1, 0.4, 0.12, PAL.ink, -0.34, -0.9, 0, { rz: -0.2 })]) },
+    ],
     legs: [
       { pivot: [0.78, 1.05, 0], geo: merge([box(0.2, 1.05, 0.2, PAL.horse, 0, -0.52, 0.23), box(0.2, 1.05, 0.2, PAL.horse, 0, -0.52, -0.23)]) },
       { pivot: [-0.78, 1.05, 0], geo: merge([box(0.2, 1.05, 0.2, PAL.horse, 0, -0.52, 0.23), box(0.2, 1.05, 0.2, PAL.horse, 0, -0.52, -0.23)]) },
@@ -153,12 +109,12 @@ const BUILDERS: Record<string, (t: Pal) => ModelDef> = {
   trebuchet: t => {
     const arm = merge([box(4.3, 0.2, 0.2, PAL.woodHi, -1.2, 0, 0), box(0.75, 0.75, 0.6, PAL.stone, 0.85, -0.5, 0), ball(0.24, PAL.stoneHi, -3.3, -0.45, 0, 0)]);
     arm.rotateZ(0.45);
-    const wheels = [-1.1, 1.1].flatMap(x => [-0.85, 0.85].map(z => cyl(0.46, 0.46, 0.2, 10, PAL.wood, x, 0.46, z, { rx: Math.PI / 2 })));
+    const wheels: Part[] = [-1.1, 1.1].flatMap(x => [-0.85, 0.85].map((z): Part => ({ motion: "wheel", pivot: [x, 0.46, z], amp: 0.46,
+      geo: merge([cyl(0.46, 0.46, 0.2, 10, PAL.wood, 0, 0, 0, { rx: Math.PI / 2 }), box(0.86, 0.1, 0.24, PAL.woodHi, 0, 0, 0), box(0.1, 0.86, 0.24, PAL.woodHi, 0, 0, 0)]) })));
     return {
-      height: 4.2,
+      height: 4.2, gait: "roll", parts: wheels,
       body: merge([
         box(3.3, 0.2, 0.25, PAL.wood, 0, 0.55, 0.7), box(3.3, 0.2, 0.25, PAL.wood, 0, 0.55, -0.7), box(0.25, 0.2, 1.6, PAL.wood, 1.3, 0.55, 0), box(0.25, 0.2, 1.6, PAL.wood, -1.3, 0.55, 0),
-        ...wheels,
         ...[-0.6, 0.6].flatMap(z => [box(0.18, 2.7, 0.18, PAL.wood, -0.55, 1.75, z, { rz: -0.4 }), box(0.18, 2.7, 0.18, PAL.wood, 0.55, 1.75, z, { rz: 0.4 }), box(1.1, 0.14, 0.14, PAL.woodHi, 0, 1.4, z)]),
         cyl(0.08, 0.08, 1.5, 6, PAL.steel, 0, 2.9, 0, { rx: Math.PI / 2 }),
         box(0.62, 0.95, 0.04, t.main, -1.0, 1.55, 0.84), box(0.7, 0.07, 0.07, PAL.woodHi, -1.0, 2.05, 0.84), box(0.1, 0.5, 0.03, PAL.bone, -1.0, 1.6, 0.87), box(0.34, 0.1, 0.03, PAL.bone, -1.0, 1.7, 0.87),
@@ -168,6 +124,8 @@ const BUILDERS: Record<string, (t: Pal) => ModelDef> = {
   },
 };
 
+Object.assign(BUILDERS, ROSTER);
+
 const cache = new Map<string, ModelDef>();
 export function unitModel(id: string, team: 0 | 1): ModelDef {
   const key = `${id}:${team}`;
@@ -175,11 +133,12 @@ export function unitModel(id: string, team: 0 | 1): ModelDef {
   if (!m) { m = BUILDERS[id]!(TEAM[team]); cache.set(key, m); }
   return m;
 }
-/** The whole model at rest in one geometry: for statues and portraits. */
+/** The whole model at rest in one geometry (wings half raised): for statues and portraits. */
 export function wholeModel(id: string, team: 0 | 1): { lit: G; glow: G | null } {
   const m = unitModel(id, team), at = (g: G, p: [number, number, number]) => g.clone().translate(p[0], p[1], p[2]);
   const glow = [m.glow?.clone(), m.weapon.glow && at(m.weapon.glow, m.weapon.pivot)].filter((g): g is G => !!g);
-  return { lit: merge([m.body.clone(), at(m.weapon.geo, m.weapon.pivot), ...(m.legs ?? []).map(l => at(l.geo, l.pivot))]), glow: glow.length ? merge(glow) : null };
+  for (const p of m.parts ?? []) if (p.glow) glow.push(at(p.glow, p.pivot));
+  return { lit: merge([m.body.clone(), at(m.weapon.geo, m.weapon.pivot), ...(m.legs ?? []).map(l => at(l.geo, l.pivot)), ...(m.parts ?? []).map(p => at(p.motion === "wing" ? p.geo.clone().rotateX(-(p.side ?? 1) * 0.55) : p.geo, p.pivot))]), glow: glow.length ? merge(glow) : null };
 }
 
 // ---- structures ----

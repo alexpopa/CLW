@@ -6,7 +6,7 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { LANE_WIDTH, MAP, RULES, UNITS, UNIT_ORDER, canBuild, cellCenter, hqX } from "@lw/sim";
 import type { GameState, SimEvent, TeamId } from "@lw/sim";
 import { PAL, TEAM, box, cathedralModel, chantryModel, cloisterModel, fenceModel, graveyardModel, merge, precinctModel, shrineModel, unitModel, wholeModel } from "./models";
-import type { ModelDef } from "./models";
+import type { Gait, ModelDef, Part } from "./models";
 import { courtyardTile, glowTexture, groundTile, runeTexture } from "./textures";
 
 /** Presentation only: a 3D view drawn FROM GameState. No rules here. World: x along the lane, z across it, y up. */
@@ -25,9 +25,26 @@ export interface ViewState {
   selectedBuilding: number | null;
   me: number;
 }
-interface UnitView { root: THREE.Group; legs: THREE.Mesh[]; weapon: THREE.Group; def: ModelDef; type: string; team: TeamId; lastAttack: number; born: number }
+interface UnitView {
+  root: THREE.Group; rig: THREE.Group;      // root: where it stands and which way it faces; rig: the body's bob, lean and lunge
+  legs: THREE.Mesh[]; weapon: THREE.Group; parts: { node: THREE.Group; def: Part }[];
+  def: ModelDef; type: string; team: TeamId; lastAttack: number; born: number;
+  yaw: number; walk: number; alt: number;   // smoothed facing, 0..1 how much it is walking, height of its feet above the ground
+}
+/** Stride speed (radians per millisecond) of each gait. */
+const STRIDE: Record<Gait, number> = { walk: 0.02, shuffle: 0.016, gallop: 0.024, lope: 0.03, stomp: 0.011, float: 0.01, roll: 0.02, fly: 0.01 };
+/** How each unit's attack looks and sounds; anything not listed strikes in melee. */
+type Shot = "bolt" | "gun" | "orb" | "stone" | "flame" | "stake" | "lightning" | "beam";
+const SHOTS: Record<string, { kind: Shot; color: number }> = {
+  arbalester: { kind: "bolt", color: PAL.bone }, witchhunter: { kind: "gun", color: 0xfff1c9 }, hexbinder: { kind: "orb", color: PAL.storm },
+  necromancer: { kind: "orb", color: PAL.venom }, lich: { kind: "orb", color: PAL.frost }, trebuchet: { kind: "stone", color: 0x55586a },
+  zealot: { kind: "flame", color: 0xff7a1a }, wyrm: { kind: "flame", color: 0xff5a1f }, ballista: { kind: "stake", color: 0x8c93a6 },
+  cantor: { kind: "lightning", color: PAL.storm }, hq: { kind: "beam", color: 0 }, tower: { kind: "beam", color: 0 },
+};
+const MELEE: Record<string, number> = { countess: 0xff3b4f, shade: PAL.ghost, colossus: 0xcdbf9f, headsman: 0xffffff, gargoyle: 0xc8ccd8, hound: 0xe2d7bc };
+export const shotKind = (unit: string): Shot | "melee" => SHOTS[unit]?.kind ?? "melee";
 interface Particle { sprite: THREE.Sprite; vx: number; vy: number; vz: number; born: number; life: number; s0: number; s1: number; grav: number }
-interface Shot { mesh: THREE.Object3D; from: THREE.Vector3; to: THREE.Vector3; born: number; life: number; arc: number; beam: boolean; onEnd?: () => void }
+interface Flight { mesh: THREE.Object3D; from: THREE.Vector3; to: THREE.Vector3; born: number; life: number; arc: number; beam: boolean; onEnd?: () => void }
 
 export class Renderer {
   private renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -40,14 +57,16 @@ export class Renderer {
   private lit = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.85, metalness: 0.05, side: THREE.DoubleSide });
   private glow = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, side: THREE.DoubleSide, color: new THREE.Color(1.7, 1.7, 1.7) });
   private statue = new THREE.MeshStandardMaterial({ color: 0x9da1b2, flatShading: true, roughness: 0.9, side: THREE.DoubleSide });
+  private ghost = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.6, side: THREE.DoubleSide, transparent: true, opacity: 0.66, emissive: 0x2a2060 });
+  private halo = new THREE.MeshBasicMaterial({ color: PAL.heal, transparent: true, opacity: 0.1, depthWrite: false, toneMapped: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
   private glowTex = new THREE.CanvasTexture(glowTexture());
   private units = new Map<number, UnitView>();
-  private dying: { root: THREE.Group; born: number; structure: boolean }[] = [];
+  private dying: { root: THREE.Group; rig: THREE.Group; born: number; structure: boolean; alt: number }[] = [];
   private buildings = new Map<number, THREE.Group>();
   private shrines: { flames: THREE.Mesh[]; lights: THREE.PointLight[]; runes: THREE.Mesh[]; owner: TeamId | null | undefined }[] = [];
   private hqGlow: THREE.Mesh[] = [];
   private particles: Particle[] = [];
-  private shots: Shot[] = [];
+  private shots: Flight[] = [];
   private prev = new Map<number, { x: number; y: number }>();
   private hover!: THREE.Mesh; private range!: THREE.Mesh; private selRing!: THREE.Mesh;
   private ray = new THREE.Raycaster(); private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -203,13 +222,18 @@ export class Renderer {
     r.setSize(220, 260); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.2;
     const out: Record<string, string> = {};
     for (const id of UNIT_ORDER) {
-      const sc = new THREE.Scene(), model = wholeModel(id, team), h = unitModel(id, team).height;
+      const sc = new THREE.Scene(), model = wholeModel(id, team);
       sc.add(new THREE.HemisphereLight(0xc4cdea, 0x4a4450, 2));
       const key = new THREE.DirectionalLight(0xfff0d8, 3.4); key.position.set(-3, 5, 6); sc.add(key); const rim = new THREE.DirectionalLight(0x9ab8ff, 2); rim.position.set(4, 3, -5); sc.add(rim);
-      const g = new THREE.Group(); g.add(new THREE.Mesh(model.lit, this.lit)); if (model.glow) g.add(new THREE.Mesh(model.glow, this.glow));
-      g.rotation.y = -0.5; sc.add(g);
-      const cam = new THREE.PerspectiveCamera(24, 220 / 260, 0.1, 100), wide = id === "dreadknight" || id === "trebuchet";
-      cam.position.set(0.4, h * 0.62, wide ? 10.5 : 6.6); cam.lookAt(wide ? 0.4 : 0.3, h * 0.52, 0);
+      // Centre the model on its own bounding box and stand back far enough to frame it, whatever its shape.
+      model.lit.computeBoundingBox();
+      const bb = model.lit.boundingBox!, c = bb.getCenter(new THREE.Vector3()), size = bb.getSize(new THREE.Vector3());
+      const inner = new THREE.Group(); inner.position.copy(c).negate();
+      inner.add(new THREE.Mesh(model.lit, unitModel(id, team).ghost ? this.ghost : this.lit)); if (model.glow) inner.add(new THREE.Mesh(model.glow, this.glow));
+      const g = new THREE.Group(); g.add(inner); g.rotation.y = -0.55; sc.add(g);
+      const reach = Math.max(size.y * 0.5, size.x * 0.5 + size.z * 0.31) * 1.1; // the model is turned 0.55 rad in a 220 x 260 frame
+      const cam = new THREE.PerspectiveCamera(24, 220 / 260, 0.1, 200);
+      cam.position.set(0, reach * 0.28, reach / Math.tan((12 * Math.PI) / 180)); cam.lookAt(0, 0, 0);
       r.render(sc, cam);
       out[id] = r.domElement.toDataURL();
     }
@@ -243,31 +267,66 @@ export class Renderer {
 
   addEvents(s: GameState, events: SimEvent[], now: number): void {
     const rnd = (a: number) => (Math.random() - 0.5) * a; // cosmetic only
+    const basic = (color: number, opacity = 1) => new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, toneMapped: false });
+    const bright = (color: number) => new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(2), transparent: true, toneMapped: false });
+    /** Where a unit's attack leaves it and where it lands, at the right heights (flyers, giants). */
+    const muzzle = (id: number, x: number, y: number) => { const v = this.units.get(id); return new THREE.Vector3(W(x), v ? v.alt + v.def.height * scaleOf(v.type) * 0.62 : 0.9, W(y)); };
+    const chest = (id: number, x: number, y: number) => { const v = this.units.get(id); return new THREE.Vector3(W(x), v ? v.alt + v.def.height * scaleOf(v.type) * 0.45 : 0.7, W(y)); };
+    const lightning = (from: THREE.Vector3, to: THREE.Vector3, color: number) => {
+      const n = Math.max(2, Math.round(from.distanceTo(to) / 1.6)); let a = from;
+      for (let i = 1; i <= n; i++) {
+        const b = from.clone().lerp(to, i / n); if (i < n) b.add(new THREE.Vector3(rnd(0.9), rnd(0.9), rnd(0.9)));
+        this.shoot(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1, 4), bright(color)), a, b, now, 190, 0, true); a = b;
+      }
+      this.spark(to.x, to.y, to.z, color, 240, 1.6, 0.3, 0, 0, 0, 0, now);
+    };
     for (const e of events) {
       if (e.t === "shot") {
-        const from = new THREE.Vector3(W(e.x1), 0.9, W(e.y1)), to = new THREE.Vector3(W(e.x2), 0.7, W(e.y2));
         const v = this.units.get(e.id); if (v) v.lastAttack = now;
-        if (e.unit === "arbalester") this.shoot(new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.05, 0.05), new THREE.MeshBasicMaterial({ color: PAL.bone })), from, to, now, 170);
-        else if (e.unit === "trebuchet") {
-          from.y = 2.8;
-          this.shoot(this.mesh(new THREE.IcosahedronGeometry(0.2, 0), new THREE.MeshStandardMaterial({ color: 0x55586a, flatShading: true })), from, to, now, 700, 6, false, () => {
+        const from = muzzle(e.id, e.x1, e.y1), to = e.to ? chest(e.to, e.x2, e.y2) : new THREE.Vector3(W(e.x2), 3, W(e.y2));
+        const style = SHOTS[e.unit], kind = style?.kind ?? "melee", color = style?.color ?? MELEE[e.unit] ?? 0xffe2a8;
+        if (kind === "bolt") this.shoot(new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.05, 0.05), basic(color)), from, to, now, 170);
+        else if (kind === "gun") {
+          this.spark(from.x, from.y, from.z, 0xffd27a, 110, 1.6, 0.4, 0, 0, 0, 0, now);
+          this.spark(from.x, from.y + 0.1, from.z, 0x8d8a92, 700, 0.6, 1.8, rnd(0.6), 0.9, rnd(0.6), 0, now);
+          this.shoot(new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1, 4), bright(color)), from, to, now, 90, 0, true);
+          this.spark(to.x, to.y, to.z, 0xffffff, 150, 0.7, 0.1, 0, 0, 0, 0, now);
+        } else if (kind === "orb") {
+          const burst = e.unit === "lich";
+          this.shoot(new THREE.Mesh(new THREE.IcosahedronGeometry(burst ? 0.24 : 0.16, 1), bright(color)), from, to, now, 110 + from.distanceTo(to) * 34, burst ? 1.2 : 0.5, false, () => {
+            const t = performance.now(), n = burst ? 14 : 5, reach = burst ? W(UNITS.lich!.splash) * 2 : 1.5;
+            this.spark(to.x, to.y, to.z, color, 260, burst ? 4 : 1.2, 0.2, 0, 0, 0, 0, t);
+            for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; this.spark(to.x, burst ? 0.3 : to.y, to.z, color, 420 + Math.random() * 240, 0.7, 0.15, Math.cos(a) * reach, burst ? 0.6 : 1 + rnd(1), Math.sin(a) * reach, 0, t); }
+          });
+        } else if (kind === "stone") {
+          this.shoot(this.mesh(new THREE.IcosahedronGeometry(0.2, 0), new THREE.MeshStandardMaterial({ color, flatShading: true })), from, to, now, 700, 6, false, () => {
             const t = performance.now();
             this.spark(to.x, 0.6, to.z, 0xffd9a0, 260, 2, 9, 0, 0, 0, 0, t);
             for (let i = 0; i < 12; i++) this.spark(to.x + rnd(2), 0.4, to.z + rnd(2), 0x6d6050, 700 + Math.random() * 500, 1.4, 4.5, rnd(6), 2 + Math.random() * 4, rnd(6), -6, t);
           });
-        } else if (e.unit === "zealot") {
-          for (let i = 0; i < 6; i++) this.spark(from.x, 1.3, from.z, i % 2 ? 0xff7a1a : 0xffc04a, 320 + Math.random() * 200, 0.6, 2.2, (to.x - from.x) * 2.6 + rnd(3), 1 + rnd(2), (to.z - from.z) * 2.6 + rnd(3), 0, now);
-        } else if (e.unit === "hq") {
-          from.set(W(e.x1), 8, MID_Z + 8.4);
-          const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1, 5), new THREE.MeshBasicMaterial({ color: new THREE.Color(TEAM[e.team].glow).multiplyScalar(2), transparent: true, toneMapped: false }));
-          this.shoot(beam, from, to, now, 200, 0, true);
-          this.spark(to.x, 0.7, to.z, TEAM[e.team].glow, 260, 1.2, 3, 0, 0, 0, 0, now);
-        } else if (e.unit === "tower") {
-          from.y = 4.9;
-          const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1, 5), new THREE.MeshBasicMaterial({ color: new THREE.Color(TEAM[e.team].glow).multiplyScalar(2), transparent: true, toneMapped: false }));
-          this.shoot(beam, from, to, now, 180, 0, true);
-          this.spark(to.x, 0.7, to.z, TEAM[e.team].glow, 200, 0.6, 1.5, 0, 0, 0, 0, now);
-        } else for (let i = 0; i < 3; i++) this.spark(to.x + rnd(0.3), 0.8 + rnd(0.3), to.z + 0.2, 0xffe2a8, 150 + Math.random() * 120, 0.55, 0.15, rnd(3), 1.5 + rnd(2), rnd(2), -9, now);
+        } else if (kind === "flame") {
+          const far = e.unit === "wyrm", d = to.clone().sub(from), n = far ? 9 : 6;
+          for (let i = 0; i < n; i++) this.spark(from.x, from.y, from.z, i % 2 ? color : 0xffc04a, 320 + Math.random() * 200, far ? 0.5 : 0.6, far ? 1.9 : 2.2, d.x * 2.6 + rnd(far ? 1.6 : 3), d.y * 2.6 + 0.6 + rnd(1.4), d.z * 2.6 + rnd(far ? 1.6 : 3), 0, now);
+        } else if (kind === "stake") {
+          // the stake carries on through its victim for the length of the line it skewers
+          const dir = to.clone().sub(from).setY(0).normalize(), end = from.clone().addScaledVector(dir, W(UNITS.ballista!.line!.length)).setY(to.y);
+          this.shoot(new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.09, 0.09), basic(color)), from, end, now, 230, 0, false, () => { for (let i = 0; i < 5; i++) this.spark(end.x + rnd(0.6), 0.3, end.z + rnd(0.6), 0x6d6050, 500, 0.8, 2.2, rnd(2), 1.5, rnd(2), -4, performance.now()); });
+          for (let i = 1; i <= 4; i++) this.spark(from.x + dir.x * i * 3, to.y, from.z + dir.z * i * 3, 0xdfe6ff, 200 + i * 40, 0.5, 0.1, 0, 0, 0, 0, now);
+        } else if (kind === "lightning") lightning(from, to, color);
+        else if (kind === "beam") {
+          const hq = e.unit === "hq"; if (hq) from.set(W(e.x1), 8, MID_Z + 8.4); else from.y = 4.9;
+          this.shoot(new THREE.Mesh(new THREE.CylinderGeometry(hq ? 0.09 : 0.06, hq ? 0.09 : 0.06, 1, 5), bright(TEAM[e.team].glow)), from, to, now, hq ? 200 : 180, 0, true);
+          this.spark(to.x, to.y, to.z, TEAM[e.team].glow, hq ? 260 : 200, hq ? 1.2 : 0.6, hq ? 3 : 1.5, 0, 0, 0, 0, now);
+        } else {
+          const big = e.unit === "colossus" || e.unit === "headsman" || e.unit === "penitent";
+          for (let i = 0; i < (big ? 6 : 3); i++) this.spark(to.x + rnd(0.3), to.y + rnd(0.3), to.z + 0.2, color, 150 + Math.random() * 120, big ? 0.9 : 0.55, 0.15, rnd(big ? 5 : 3), 1.5 + rnd(2), rnd(big ? 4 : 2), -9, now);
+          if (e.unit === "colossus") for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; this.spark(to.x, 0.3, to.z, 0x6d6050, 520, 0.9, 2.4, Math.cos(a) * 4, 0.8, Math.sin(a) * 4, 0, now); }
+          else if (e.unit === "countess") for (let i = 0; i < 3; i++) this.spark(to.x, to.y, to.z, 0xff2b45, 420, 0.5, 0.15, (from.x - to.x) * 2.2 + rnd(1), 0.6 + rnd(1), (from.z - to.z) * 2.2 + rnd(1), 0, now); // blood drawn back to her
+        }
+      } else if (e.t === "arc") lightning(chest(e.from, e.x1, e.y1), chest(e.to, e.x2, e.y2), PAL.storm);
+      else if (e.t === "raise") {
+        for (let i = 0; i < 12; i++) this.spark(W(e.x) + rnd(0.8), 0.1 + Math.random() * 0.4, W(e.y) + rnd(0.8), PAL.venom, 700 + Math.random() * 400, 0.6, 0.1, 0, 1.6 + Math.random() * 2, 0, 0, now);
+        this.spark(W(e.x), 0.4, W(e.y), PAL.venom, 380, 0.6, 3.4, 0, 0, 0, 0, now);
       } else if (e.t === "heal") {
         const v = this.units.get(e.id); if (v) v.lastAttack = now;
         const from = new THREE.Vector3(W(e.x1), 1.3, W(e.y1)), to = new THREE.Vector3(W(e.x2), 0.7, W(e.y2));
@@ -275,7 +334,8 @@ export class Renderer {
         for (let i = 0; i < 4; i++) this.spark(to.x + rnd(0.6), 0.3 + Math.random() * 0.6, to.z + rnd(0.6), PAL.heal, 600 + Math.random() * 300, 0.45, 0.08, 0, 1.4, 0, 0, now);
       } else if (e.t === "death") {
         if (e.unit === "tower") for (let i = 0; i < 26; i++) this.spark(W(e.x) + rnd(2), 0.5 + Math.random() * 4, W(e.y) + rnd(2), i % 5 ? 0x6d6050 : 0xffb060, 900 + Math.random() * 700, 1.4, 4.5, rnd(5), 1 + Math.random() * 3, rnd(5), -4, now);
-        else for (let i = 0; i < 4; i++) this.spark(W(e.x) + rnd(0.6), 0.3, W(e.y) + rnd(0.6), 0x5d5348, 600 + Math.random() * 300, 0.6, 1.8, rnd(1.2), 1, rnd(1.2), 0, now);
+        else if (e.unit === "colossus") for (let i = 0; i < 18; i++) this.spark(W(e.x) + rnd(2.4), 0.4 + Math.random() * 3, W(e.y) + rnd(2.4), i % 3 ? 0xcdbf9f : TEAM[e.team].glow, 800 + Math.random() * 500, 1, 3, rnd(4), 1 + Math.random() * 2, rnd(4), -3, now);
+        else for (let i = 0; i < 4; i++) this.spark(W(e.x) + rnd(0.6), 0.3, W(e.y) + rnd(0.6), e.unit === "skeleton" ? 0xb9ae93 : e.unit === "shade" ? PAL.ghost : 0x5d5348, 600 + Math.random() * 300, 0.6, 1.8, rnd(1.2), 1, rnd(1.2), 0, now);
       } else if (e.t === "capture") {
         const b = s.beacons.find(q => q.id === e.beacon)!;
         for (const z of SHRINE_Z) for (let i = 0; i < 18; i++) { const a = (i / 18) * Math.PI * 2; this.spark(W(b.x), 0.6, z, TEAM[e.team].glow, 900, 1.6, 0.3, Math.cos(a) * 9, 3 + Math.random() * 3, Math.sin(a) * 9, -5, now); }
@@ -284,20 +344,32 @@ export class Renderer {
   }
 
   private makeUnit(type: string, team: TeamId, now: number): UnitView {
-    const def = unitModel(type, team), root = new THREE.Group();
-    root.add(this.mesh(def.body, this.lit));
-    if (def.glow) root.add(new THREE.Mesh(def.glow, this.glow));
-    const legs = (def.legs ?? []).map(l => { const m = this.mesh(l.geo, this.lit); m.position.set(...l.pivot); root.add(m); return m; });
+    const def = unitModel(type, team), root = new THREE.Group(), rig = new THREE.Group(), lit = def.ghost ? this.ghost : this.lit;
+    root.add(rig);
+    rig.add(this.mesh(def.body, lit));
+    if (def.glow) rig.add(new THREE.Mesh(def.glow, this.glow));
+    const legs = (def.legs ?? []).map(l => { const m = this.mesh(l.geo, lit); m.position.set(...l.pivot); rig.add(m); return m; });
+    const parts = (def.parts ?? []).map(p => {
+      const node = new THREE.Group(); node.position.set(...p.pivot);
+      node.add(this.mesh(p.geo, lit)); if (p.glow) node.add(new THREE.Mesh(p.glow, this.glow));
+      rig.add(node); return { node, def: p };
+    });
     const weapon = new THREE.Group(); weapon.position.set(...def.weapon.pivot);
-    weapon.add(this.mesh(def.weapon.geo, this.lit)); if (def.weapon.glow) weapon.add(new THREE.Mesh(def.weapon.glow, this.glow));
-    root.add(weapon); this.scene.add(root);
-    return { root, legs, weapon, def, type, team, lastAttack: -1e9, born: now };
+    weapon.add(this.mesh(def.weapon.geo, lit)); if (def.weapon.glow) weapon.add(new THREE.Mesh(def.weapon.glow, this.glow));
+    rig.add(weapon);
+    if (def.aura) { // sanctuary: a faint ring on the ground showing how far the blessing reaches
+      const ring = new THREE.Mesh(new THREE.RingGeometry(def.aura / UNIT_SCALE - 0.5, def.aura / UNIT_SCALE, 48), this.halo);
+      ring.rotation.x = -Math.PI / 2; ring.position.y = 0.2; root.add(ring);
+    }
+    this.scene.add(root);
+    return { root, rig, legs, weapon, parts, def, type, team, lastAttack: -1e9, born: now, yaw: 0, walk: 0, alt: 0 };
   }
   private makeBuilding(unit: string, team: TeamId): THREE.Group {
     const g = new THREE.Group(), c = chantryModel(team), whole = wholeModel(unit, team);
     const chapel = this.mesh(c.lit, this.lit), glass = new THREE.Mesh(c.glow, this.glow);
     chapel.position.x = glass.position.x = -0.45;
-    const st = this.mesh(whole.lit, this.statue), k = Math.min(0.55, 1.9 / unitModel(unit, team).height);
+    whole.lit.computeBoundingBox();
+    const st = this.mesh(whole.lit, this.statue), k = Math.min(0.55, 1.9 / unitModel(unit, team).height, 2.0 / (whole.lit.boundingBox!.max.x - whole.lit.boundingBox!.min.x));
     st.scale.setScalar(k); st.position.set(1.45, 0.5, 0.9);
     g.add(chapel, glass, st); g.scale.set(team === 0 ? BUILDING_SCALE : -BUILDING_SCALE, BUILDING_SCALE, BUILDING_SCALE); this.scene.add(g);
     return g;
@@ -308,32 +380,85 @@ export class Renderer {
     const myTeam = s.players[v.me]!.team;
 
     // units
-    const seen = new Set<number>();
+    const seen = new Set<number>(), byId = new Map<number, GameState["units"][number]>();
+    for (const u of s.units) byId.set(u.id, u);
+    const ease = Math.min(1, dt * 0.012);
     for (const u of s.units) {
       seen.add(u.id);
       let view = this.units.get(u.id);
       if (!view) { view = this.makeUnit(u.type, u.team, now); this.units.set(u.id, view); }
+      const def = view.def, gait = def.gait ?? "walk", sd = UNITS[u.type]!, fixed = sd.structure === true;
       const pr = this.prev.get(u.id) ?? u, moving = pr.x !== u.x || pr.y !== u.y;
-      const k0 = scaleOf(u.type), stride = now * 0.02 + u.id * 1.7, grow = k0 === 1 ? 1 : Math.min(1, 0.4 + (now - view.born) / 350);
-      view.root.position.set(W(pr.x + (u.x - pr.x) * alpha), moving ? Math.abs(Math.sin(stride)) * 0.05 : 0, W(pr.y + (u.y - pr.y) * alpha));
-      view.root.scale.set((u.team === 0 ? 1 : -1) * grow * k0, grow * k0, grow * k0);
-      const swing = moving ? Math.sin(stride) * 0.6 : 0;
-      view.legs.forEach((l, i) => { l.rotation.z = i % 2 ? -swing : swing; });
-      const anim = view.def.weapon.anim, t = (now - view.lastAttack) / (anim === "sling" ? 1300 : 420);
-      const k = t >= 1 ? 0 : t < 0.22 ? t / 0.22 : 1 - (t - 0.22) / 0.78, w = view.weapon, px = view.def.weapon.pivot[0];
-      w.position.x = px; w.rotation.z = 0;
-      if (anim === "recoil") w.position.x = px - 0.3 * k;
-      else if (anim === "swing") w.rotation.z = -1.5 * k;
-      else if (anim === "thrust") w.rotation.z = -0.55 * k;
-      else if (anim === "raise") w.rotation.z = 0.45 * k;
-      else if (anim === "lance") w.position.x = px + 0.9 * k;
-      else w.rotation.z = -2.2 * k;
+      const k0 = scaleOf(u.type), grow = k0 === 1 ? 1 : Math.min(1, 0.4 + (now - view.born) / 350), side = u.team === 0 ? 1 : -1;
+      view.root.position.set(W(pr.x + (u.x - pr.x) * alpha), 0, W(pr.y + (u.y - pr.y) * alpha));
+      view.root.scale.set(side * grow * k0, grow * k0, grow * k0);
+      view.walk += ((moving ? 1 : 0) - view.walk) * ease;
+      const w = view.walk, stride = now * STRIDE[gait] + u.id * 1.7, sw = Math.sin(stride), tt = now * 0.001 + u.id * 0.37;
+
+      // Turn toward whatever it is fighting, or the way it is walking (the model is mirrored for team 1, so the angle is too).
+      const foe = u.target ? byId.get(u.target) : undefined;
+      const dx = foe ? foe.x - u.x : u.x - pr.x, dz = foe ? foe.y - u.y : u.y - pr.y;
+      const want = fixed || (!dx && !dz) ? 0 : Math.max(-1.2, Math.min(1.2, Math.atan2(-dz * side, dx * side)));
+      view.yaw += (want - view.yaw) * Math.min(1, dt * 0.009);
+      view.root.rotation.y = view.yaw;
+
+      // Attack: 0 → 1 fast, then back.
+      const anim = def.weapon.anim, t = (now - view.lastAttack) / (anim === "sling" ? 1300 : anim === "chop" ? 560 : 420);
+      const k = t >= 1 ? 0 : t < 0.22 ? t / 0.22 : 1 - (t - 0.22) / 0.78;
+
+      // Body: each gait has its own bob, lean and roll; everything breathes when it stands.
+      let y = 0, pitch = 0, roll = 0, legSwing = sw * 0.6 * w;
+      if (gait === "walk") { y = Math.abs(sw) * 0.07 * w; pitch = -0.07 * w; roll = sw * 0.04 * w; }
+      else if (gait === "shuffle") { y = Math.abs(sw) * 0.04 * w; pitch = -0.05 * w; roll = sw * 0.08 * w; }
+      else if (gait === "gallop") { y = Math.abs(Math.sin(stride * 0.5)) * 0.25 * w; pitch = sw * 0.08 * w; legSwing = sw * 0.75 * w; }
+      else if (gait === "lope") { y = Math.abs(sw) * 0.14 * w; pitch = sw * 0.13 * w; legSwing = sw * 0.9 * w; }
+      else if (gait === "stomp") { y = Math.abs(sw) * 0.1 * w; pitch = -0.04 * w; roll = sw * 0.06 * w; legSwing = sw * 0.45 * w; }
+      else if (gait === "float") { y = 0.22 + Math.sin(tt * 2) * 0.1; pitch = -0.12 * w; roll = Math.sin(tt * 1.3) * 0.04; }
+      else if (gait === "roll") pitch = Math.sin(stride * 2) * 0.008 * w;
+      else { y = (def.hover ?? 3) + Math.sin(tt * 2.2) * 0.22; pitch = -0.14 * w; roll = Math.sin(tt * 1.1) * 0.09; legSwing = Math.sin(tt * 2) * 0.12; }
+      const melee = sd.range <= RULES.meleeReach, heavy = gait === "roll" || fixed;
+      const rig = view.rig;
+      rig.position.set(heavy ? 0 : melee ? 0.32 * k : -0.1 * k, y, 0);
+      rig.rotation.set(roll, 0, pitch + (heavy ? 0 : melee ? -0.17 * k : 0.06 * k));
+      rig.scale.y = fixed ? 1 : 1 + Math.sin(tt * 1.8) * 0.014 * (1 - w);
+      view.alt = y * k0;
+      view.legs.forEach((l, i) => { l.rotation.z = i % 2 ? -legSwing : legSwing; });
+
+      const wp = view.weapon, px = def.weapon.pivot[0];
+      wp.position.x = px; wp.rotation.z = fixed ? 0 : Math.sin(tt * 1.5) * 0.035;
+      if (anim === "recoil") wp.position.x = px - 0.3 * k;
+      else if (anim === "swing") wp.rotation.z += -1.5 * k;
+      else if (anim === "thrust") { wp.rotation.z += -0.55 * k; wp.position.x = px + 0.25 * k; }
+      else if (anim === "raise") wp.rotation.z += 0.45 * k;
+      else if (anim === "lance") wp.position.x = px + 0.9 * k;
+      else if (anim === "chop") wp.rotation.z += (t < 0.22 && t >= 0 ? 0.5 * (1 - k) : 0) - 1.9 * k;
+      else if (anim === "bite") { wp.position.x = px + 0.38 * k; wp.rotation.z += -0.28 * k; }
+      else if (anim === "cast") { wp.rotation.z += 0.5 * k; wp.position.y = def.weapon.pivot[1] + 0.2 * k; }
+      else wp.rotation.z = -2.2 * k;
+
+      for (const { node, def: p } of view.parts) {
+        const a = p.amp ?? 1, ph = p.phase ?? 0;
+        if (p.motion === "arm") node.rotation.z = (p.side ?? 1) * legSwing * 0.9 - k * 1.1 * a;
+        else if (p.motion === "wing") node.rotation.x = -(p.side ?? 1) * (0.12 + Math.sin(tt * (p.speed ?? 9) + ph) * 0.55 * a);
+        else if (p.motion === "tail") node.rotation.y = Math.sin(tt * 3 + ph) * 0.35 * a;
+        else if (p.motion === "cape") node.rotation.z = -(0.06 + 0.5 * w * a) + Math.sin(tt * 5 + ph) * (0.04 + 0.07 * w) * a;
+        else if (p.motion === "head") node.rotation.z = Math.sin(tt * 1.7 + ph) * 0.07 * a - k * 0.2;
+        else if (p.motion === "sway") node.rotation.z = Math.sin(tt * 2.4 + ph) * (0.12 + 0.22 * w) * a - 0.2 * w * a;
+        else if (p.motion === "bob") { node.position.y = p.pivot[1] + Math.sin(tt * 2 + ph) * 0.14 * a + 0.3 * k; node.rotation.y = Math.sin(tt * 0.9 + ph) * 0.3; }
+        else if (p.motion === "orbit") node.rotation.y = tt * (p.speed ?? 1.5) + ph;
+        else node.rotation.z = -((u.team === 0 ? u.x : MAP.laneLength - u.x) / 1000 / k0) / a; // wheel: turns with the ground covered
+      }
+
+      // Afflictions show: burning units shed embers, cursed or frozen ones a cold mist.
+      if (s.tick < u.dotUntil && Math.random() < dt * 0.012) this.spark(view.root.position.x + (Math.random() - 0.5) * 0.5, view.alt + 0.6 + Math.random() * 1.2, view.root.position.z + (Math.random() - 0.5) * 0.5, 0xff7a1a, 420, 0.5, 0.1, 0, 1.6, 0, 0, now);
+      if (s.tick < u.slowUntil && Math.random() < dt * 0.009) this.spark(view.root.position.x + (Math.random() - 0.5) * 0.7, view.alt + 0.2 + Math.random() * 0.5, view.root.position.z + (Math.random() - 0.5) * 0.7, PAL.frost, 520, 0.5, 0.9, 0, 0.3, 0, 0, now);
     }
-    for (const [id, view] of this.units) if (!seen.has(id)) { this.units.delete(id); this.dying.push({ root: view.root, born: now, structure: scaleOf(view.type) === 1 }); }
+    for (const [id, view] of this.units) if (!seen.has(id)) { this.units.delete(id); this.dying.push({ root: view.root, rig: view.rig, born: now, structure: scaleOf(view.type) === 1, alt: view.rig.position.y }); }
     this.dying = this.dying.filter(d => {
       const t = (now - d.born) / 1500;
       if (t >= 1) { this.scene.remove(d.root); return false; }
       if (d.structure) { d.root.position.y = -t * 7; d.root.rotation.z = t * 0.25; return true; } // a tower crumbles into the ground
+      d.rig.position.y = d.alt * Math.max(0, 1 - t * 3.2) ** 2; // whatever was in the air comes down
       d.root.rotation.z = Math.min(1, t * 5) * (Math.PI / 2) * Math.sign(d.root.scale.x);
       d.root.position.y = -Math.max(0, t - 0.35) * 1.4;
       return true;
@@ -425,8 +550,8 @@ export class Renderer {
       const max = UNITS[u.type]!.hp, view = this.units.get(u.id);
       if (u.hp >= max || !view) continue;
       const tower = scaleOf(u.type) === 1;
-      p.set(view.root.position.x, view.def.height * scaleOf(u.type) + 0.3, view.root.position.z).project(this.camera);
-      const x = (p.x * 0.5 + 0.5) * cw, y = (-p.y * 0.5 + 0.5) * ch, w = tower ? 44 : view.def.height > 3.5 ? 22 : 16;
+      p.set(view.root.position.x, view.alt + view.def.height * scaleOf(u.type) + 0.3, view.root.position.z).project(this.camera);
+      const x = (p.x * 0.5 + 0.5) * cw, y = (-p.y * 0.5 + 0.5) * ch, w = tower ? 44 : view.def.height > 5 ? 34 : view.def.height > 3.5 || max > 450 ? 22 : 16;
       if (x < -20 || x > cw + 20) continue;
       c.fillStyle = "rgba(8,7,11,0.85)"; c.fillRect(x - w / 2 - 1, y - 1, w + 2, 5);
       c.fillStyle = u.team === myTeam ? "#8fd18a" : "#e2685c"; c.fillRect(x - w / 2, y, (w * u.hp) / max, 3);

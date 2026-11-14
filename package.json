@@ -21,7 +21,10 @@
     "build:accounts": "tsc -b apps/accounts",
     "typecheck": "tsc -b",
     "test": "npm run test --workspaces --if-present",
-    "build:site": "node scripts/build-site.mjs"
+    "build:site": "node scripts/build-site.mjs",
+    "balance": "tsx packages/sim/scripts/balance.ts",
+    "balance:lane": "tsx packages/sim/scripts/tune.ts 0 lane",
+    "balance:ai": "tsx packages/sim/scripts/matches.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.2",

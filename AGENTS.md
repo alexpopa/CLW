@@ -6,7 +6,7 @@ This repo is agent-agnostic. No tool-specific config is required. Read this firs
 A browser-based "line wars" RTS (inspired by the genre; Colonial Line Wars is the reference for *feel*). Players earn income, place production buildings that send a unit every wave, fight over shrines for income, and win by destroying the enemy cathedral. Horizontal scrolling map. 1v1 today; 2v2 / 3v3 planned, simple AI to fill slots.
 **Legal:** original names, art, sounds and stats only. Never copy Blizzard/StarCraft assets, names, text or data.
 
-Read the [Colonial Line Wars research and recreation specification](docs/COLONIAL_LINE_WARS.md) for the original-game overview and the phased recreation plan. [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md) describes what is implemented today (Phase 1: one lane, 1v1 vs AI, production buildings that send recurring waves).
+Read the [Colonial Line Wars research and recreation specification](docs/COLONIAL_LINE_WARS.md) for the original-game overview and the phased recreation plan. [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md) describes what is implemented today (one lane, 1v1 vs AI or online, production buildings that send recurring waves, three researched unit tiers). [docs/UNITS.md](docs/UNITS.md) lists every unit, its ability and its counters, and explains how balance is measured: read it before changing any unit, and re-run the balance scripts after.
 
 **Art direction (owner decision):** gothic dark fantasy, 3D presentation with an elevated RTS camera, an elegant full-screen UI, and sound. All models, textures and audio are original and generated in code (`apps/client/src/models.ts`, `textures.ts`, `audio.ts`). Do not add placeholder shapes, downloaded asset packs, or anything that imitates another game's look.
 
@@ -25,13 +25,16 @@ npm test             # vitest
 npm run check        # type check, simulation tests, production build
 npm run preview      # serve the built guest client locally
 npm run test:accounts # Worker sign-in contract (Node 22.13+)
+npm run balance      # equal-gold matchup table for every unit (add "-- 4000 mixed" for escorted armies)
+npm run balance:lane # lane tuner: every unit in a standing army on the real lane, in parallel (slow)
+npm run balance:ai   # whole autopilot-vs-autopilot matches, win rate per AI profile
 ```
 (If `npx` is missing in your shell, use `./node_modules/.bin/<tool>`.)
 
 ## Non-negotiable rules
 1. **`packages/sim` is pure & deterministic.** No DOM, no Node APIs, no `Math.random`, no `Date.now`, no floats for positions (integers / milli-tiles). Same seed + same commands ⇒ same state. Test it.
 2. **Clients never mutate game state.** They send `Command`s; the sim (and on the server, the authoritative sim) applies them.
-3. **Balance numbers live in `packages/sim/src/data.ts`**, not scattered in logic.
+3. **Balance numbers live in `packages/sim/src/data.ts`**, not scattered in logic. Abilities are data fields on `UnitDef`, read generically by `sim.ts`: never special-case a unit id in the rules.
 4. **Auth is behind `AuthProvider`** (`apps/server/src/auth/types.ts`). Game code only ever sees `UserIdentity`.
 5. **Server is authoritative** for multiplayer. Never trust client-reported state.
 6. Secrets only via env (`.env.example` documents them). Never commit `.env`.

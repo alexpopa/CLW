@@ -1,9 +1,10 @@
 import type { SimEvent, TeamId } from "@lw/sim";
 import { MAP } from "@lw/sim";
+import { shotKind } from "./scene";
 
 /** All sound is synthesized with WebAudio: no audio files. Presentation only. */
-type Name = "click" | "deny" | "coin" | "build" | "rite" | "bell" | "bolt" | "clang" | "flame" | "heal" | "thud" | "boom" | "smite" | "death" | "capture" | "lost" | "victory" | "defeat";
-const GAP: Partial<Record<Name, number>> = { bolt: 70, clang: 80, flame: 110, heal: 160, death: 90, thud: 200, boom: 200, smite: 120 };
+type Name = "click" | "deny" | "coin" | "build" | "rite" | "bell" | "bolt" | "clang" | "flame" | "heal" | "thud" | "boom" | "smite" | "gun" | "curse" | "zap" | "frost" | "raise" | "study" | "death" | "capture" | "lost" | "victory" | "defeat";
+const GAP: Partial<Record<Name, number>> = { bolt: 70, clang: 80, flame: 110, heal: 160, death: 90, thud: 200, boom: 200, smite: 120, gun: 90, curse: 120, zap: 110, frost: 150, raise: 200 };
 
 export class Sound {
   private ctx?: AudioContext;
@@ -87,6 +88,12 @@ export class Sound {
       case "thud": this.tone(120, 0.3, 0.25 * v, "triangle", { to: 55, pan }); this.noise(0.25, 0.08 * v, "bandpass", 320, { pan, q: 3, to: 900 }); break;
       case "boom": this.tone(85, 0.6, 0.5 * v, "sine", { to: 32, pan, wet: 0.3 }); this.noise(0.45, 0.3 * v, "lowpass", 900, { pan, to: 120, wet: 0.3 }); break;
       case "smite": this.tone(1400, 0.2, 0.06 * v, "sawtooth", { to: 350, pan, wet: 0.6, lp: 3000 }); break;
+      case "gun": this.noise(0.09, 0.3 * v, "lowpass", 2600, { pan, to: 400, wet: 0.35 }); this.tone(160, 0.1, 0.16 * v, "square", { to: 60, pan, lp: 900 }); break;
+      case "curse": this.tone(420, 0.3, 0.05 * v, "sawtooth", { to: 170, pan, wet: 0.5, lp: 1400, attack: 0.03 }); break;
+      case "zap": this.noise(0.12, 0.14 * v, "highpass", 3200, { pan, wet: 0.4 }); this.tone(2200, 0.14, 0.05 * v, "square", { to: 500, pan, wet: 0.4, lp: 5000 }); break;
+      case "frost": this.noise(0.4, 0.09 * v, "bandpass", 5200, { pan, q: 4, to: 1800, wet: 0.5 }); this.tone(1760, 0.3, 0.03 * v, "sine", { pan, wet: 0.6 }); break;
+      case "raise": this.tone(98, 0.7, 0.09 * v, "sawtooth", { to: 196, pan, wet: 0.7, lp: 600, attack: 0.2 }); break;
+      case "study": this.organ([220, 277.2, 329.6], 1.0, 0.03 * v); this.tone(1318.5, 0.5, 0.04 * v, "sine", { at: 0.1, wet: 0.5 }); break;
       case "death": this.noise(0.14, 0.14 * v, "lowpass", 600, { pan }); this.tone(170, 0.16, 0.08 * v, "triangle", { to: 70, pan }); break;
       case "capture": this.bell(392, 0.7 * v, 0, pan); this.organ([196, 293.7, 392], 1.4, 0.025 * v, 0.05); break;
       case "lost": this.bell(155.6, 0.6 * v, 0, pan); break;
@@ -102,12 +109,19 @@ export class Sound {
     for (const e of events) {
       if (e.t === "shot") {
         const [v, p] = at(e.x1);
-        if (e.unit === "arbalester") this.play("bolt", v, p);
-        else if (e.unit === "zealot") this.play("flame", v, p);
-        else if (e.unit === "trebuchet") { this.play("thud", v, p); const [v2, p2] = at(e.x2); setTimeout(() => this.play("boom", v2, p2), 700); }
-        else if (e.unit === "hq" || e.unit === "tower") this.play("smite", v * (e.unit === "tower" ? 0.6 : 1), p);
+        const kind = shotKind(e.unit);
+        if (kind === "bolt") this.play("bolt", v, p);
+        else if (kind === "flame") this.play("flame", v, p);
+        else if (kind === "stone") { this.play("thud", v, p); const [v2, p2] = at(e.x2); setTimeout(() => this.play("boom", v2, p2), 700); }
+        else if (kind === "stake") { this.play("thud", v, p); this.play("bolt", v, p); }
+        else if (kind === "gun") this.play("gun", v, p);
+        else if (kind === "lightning") this.play("zap", v, p);
+        else if (kind === "orb") this.play(e.unit === "lich" ? "frost" : "curse", v, p);
+        else if (kind === "beam") this.play("smite", v * (e.unit === "tower" ? 0.6 : 1), p);
+        else if (e.unit === "colossus" || e.unit === "penitent") this.play("thud", v, p);
         else this.play("clang", v, p);
-      } else if (e.t === "heal") this.play("heal", ...at(e.x1));
+      } else if (e.t === "raise") this.play("raise", ...at(e.x));
+      else if (e.t === "heal") this.play("heal", ...at(e.x1));
       else if (e.t === "death") this.play(e.unit === "tower" ? "boom" : "death", ...at(e.x));
       else if (e.t === "capture") { const i = e.beacon - 1; this.play(e.team === myTeam ? "capture" : "lost", 1, ((MAP.beaconX[i] ?? 0) / 1000 - camX) / 60); }
       else if (e.t === "wave") this.play("bell");

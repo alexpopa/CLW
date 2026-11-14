@@ -6,13 +6,14 @@ import "@fontsource/im-fell-english/400.css";
 import "@fontsource/im-fell-english/400-italic.css";
 import "@fontsource/unifrakturcook/700.css";
 import "./hud.css";
-import { INVEST_TIERS, LANE_WIDTH, MAP, RESEARCH, RULES, TICK_RATE, UNITS, UNIT_ORDER, beaconsHeld, hqX, incomeOf, investBonus, sellRefund } from "@lw/sim";
+import { INVEST_TIERS, LANE_WIDTH, MAP, MAX_TIER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, hqX, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, unitsOfTier } from "@lw/sim";
 import type { GameState } from "@lw/sim";
 import { TEAM } from "./models";
 
 /** DOM overlay. Reads GameState, raises intents through callbacks. No rules here. */
 export interface HudActions {
-  selectUnit(id: string): void;
+  selectUnit(id: string): void;               // pick it for building, or study it if it is not yet known
+  setTier(tier: number): void;                // show that tier's cards
   invest(): void;
   research(): void;
   sell(): void;
@@ -26,17 +27,25 @@ export interface HudActions {
   startOnlineNow(): void;                     // host: stop waiting, play the autopilot on the server
   menu(): void;                               // leave any lobby and return to the title screen
 }
-export interface HudView { me: number; selectedUnit: string | null; selectedBuilding: number | null; speed: number; paused: boolean; camFrac: [number, number] }
+export interface HudView { me: number; tier: number; selectedUnit: string | null; selectedBuilding: number | null; speed: number; paused: boolean; camFrac: [number, number] }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 const secs = (ticks: number) => Math.ceil(ticks / TICK_RATE);
 const ROMAN = ["", "I", "II", "III", "IV"];
+export const RITE = ["", "", "The Second Rite", "The Third Rite"];
+const TIERS = Array.from({ length: MAX_TIER }, (_, i) => i + 1);
 
 function statLine(id: string): string {
   const d = UNITS[id]!;
-  const rate = d.heal > 0 ? `Mends ${Math.round((d.heal * TICK_RATE) / d.interval)}/s` : `Damage ${Math.round((d.damage * TICK_RATE) / d.interval)}/s${d.splash ? " in an area" : ""}`;
-  return `Health ${d.hp} · ${rate} · Reach ${d.range / 1000}${d.armor ? ` · Armor ${d.armor}` : ""}`;
+  const rate = d.heal > 0 ? `Mends ${Math.round((d.heal * TICK_RATE) / d.interval)}/s` : d.damage === 0 ? "Does not fight"
+    : `Damage ${Math.round((d.damage * TICK_RATE) / d.interval)}/s${d.splash || d.line || d.chain ? " to many" : ""}`;
+  const tags = [d.flying ? "Flies" : "", d.damage > 0 ? (d.air ? "Strikes ground and air" : "Strikes ground only") : "", d.count ? `${d.count} per wave` : ""].filter(Boolean);
+  return `Health ${d.hp} · ${rate} · Reach ${d.range / 1000}${d.armor ? ` · Armor ${d.armor}` : ""}${tags.length ? `<br>${tags.join(" · ")}` : ""}`;
 }
+/** "Name: text" → the ability line of a tooltip, one line per ability. */
+const abilityLines = (id: string): string => UNITS[id]!.ability.split(/(?<=\.) (?=[A-Z][A-Za-z ]+:)/).map(a => {
+  const i = a.indexOf(":"); return `<p class="ability"><b>${a.slice(0, i)}.</b>${a.slice(i + 1)}</p>`;
+}).join("");
 
 export function createHud(root: HTMLElement, portraits: Record<string, string>, act: HudActions, hostedAccounts = false) {
   root.innerHTML = `
@@ -54,9 +63,11 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   </div>
   <div id="tip"></div>
   <div id="bar">
-    <div id="cards">${UNIT_ORDER.map((id, i) => `
-      <button class="card" data-unit="${id}" aria-label="${UNITS[id]!.name}"><span class="frame"></span><span class="glassp"></span><img src="${portraits[id] ?? ""}" alt="">
-        <span class="plaque"><span class="key">${i + 1}</span><span class="cost num">${UNITS[id]!.cost}</span></span></button>`).join("")}</div>
+    <div id="tiers">${TIERS.map(t => `<button class="tier" data-tier="${t}" title="Tier ${ROMAN[t]} units (Tab)"><b>${ROMAN[t]}</b><small></small></button>`).join("")}</div>
+    <div id="cards" data-tier="1">${UNIT_ORDER.map(id => `
+      <button class="card" data-unit="${id}" data-tier="${UNITS[id]!.tier}" aria-label="${UNITS[id]!.name}"><span class="frame"></span><span class="glassp"></span><img src="${portraits[id] ?? ""}" alt="">
+        <i class="prog"></i><span class="seal"></span>
+        <span class="plaque"><span class="key">${unitsOfTier(UNITS[id]!.tier).indexOf(id) + 1}</span><span class="cost num"></span></span></button>`).join("")}</div>
     <div class="rule"></div>
     <div id="acts">
       <button class="act" id="invest"><span class="key"><b>E</b></span><strong><span>Raise the tithe</span><span class="num" id="investC"></span></strong><em id="investT"></em></button>
@@ -73,6 +84,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
     b.onmouseleave = () => { hover = null; };
   });
   for (const id of ["invest", "research"]) { $(id).onmouseenter = () => { hover = id; }; $(id).onmouseleave = () => { hover = null; }; }
+  root.querySelectorAll<HTMLButtonElement>(".tier").forEach(b => { b.onclick = () => act.setTier(Number(b.dataset.tier)); });
   root.querySelectorAll<HTMLButtonElement>("[data-speed]").forEach(b => { b.onclick = () => act.setSpeed(Number(b.dataset.speed)); });
   $("pause").onclick = () => act.togglePause();
   $("mute").onclick = () => { $("mute").classList.toggle("on", !act.toggleMute()); };
@@ -133,9 +145,11 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       $("overlay").className = "show";
       $("overlay").innerHTML = `<div class="panel"><h1>Gravemarch</h1><div class="sub">A war of lines</div><div class="orn"></div>
         <details class="rules"><summary>How to play</summary><dl>
-          <dt>Muster</dt><dd>Choose a unit (keys 1–6) and set its chantry on your ground. Every chantry sends one soldier at each toll of the bell, for the rest of the war.</dd>
+          <dt>Muster</dt><dd>Choose a unit (keys 1–8) and set its chantry on your ground. Every chantry sends its soldier at each toll of the bell, for the rest of the war.</dd>
           <dt>Shrines</dt><dd>You begin with the shrine nearest your cathedral, guarded by two towers. Claim the others by marching over them; the enemy home shrine falls only after both its towers, and two more towers guard each base. Each shrine you hold pays gold.</dd>
-          <dt>Tithe &amp; Rite</dt><dd>Raise the tithe (E) to earn more from every shrine you hold. Perform the Second Rite (R) to unlock stronger units.</dd>
+          <dt>Study</dt><dd>You begin knowing three units. Click any other card of an open tier to study it; your scholars learn one thing at a time. The Second and Third Rites (R) open the higher tiers (Tab to browse them), whose units must each be studied in turn.</dd>
+          <dt>Counters</dt><dd>Every unit has its own gift and its own bane: flyers shrug off swords, fire clears swarms, lanterns unmask shades. Hover a card to read it.</dd>
+          <dt>Tithe</dt><dd>Raise the tithe (E) to earn more from every shrine you hold.</dd>
           <dt>Survey</dt><dd>Drag, scroll, use A / D or the arrow keys, or click the map strip. Space returns to your cathedral.</dd>
           <dt>Victory</dt><dd>Bring down the enemy cathedral at the far end of the lane.</dd>
         </dl></details>
@@ -245,11 +259,27 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       $("pause").classList.toggle("on", v.paused);
       document.querySelectorAll<HTMLElement>("[data-speed]").forEach(b => b.classList.toggle("on", !v.paused && Number(b.dataset.speed) === v.speed));
 
+      const studying = p.research?.unit ?? null, busy = p.research ? (s.tick - p.research.startTick) / (p.research.doneTick - p.research.startTick) : 0;
+      $("cards").dataset.tier = String(v.tier);
+      document.querySelectorAll<HTMLButtonElement>(".tier").forEach(b => {
+        const t = Number(b.dataset.tier), known = unitsOfTier(t).filter(id => isUnlocked(p, id)).length;
+        b.classList.toggle("on", t === v.tier); b.classList.toggle("shut", t > p.tier);
+        const small = b.querySelector("small")!, text = t > p.tier ? "sealed" : `${known}/${unitsOfTier(t).length}`;
+        if (small.textContent !== text) small.textContent = text;
+      });
       document.querySelectorAll<HTMLButtonElement>(".card").forEach(b => {
-        const d = UNITS[b.dataset.unit!]!;
-        b.classList.toggle("locked", d.tier > p.tier);
-        b.classList.toggle("poor", d.tier <= p.tier && p.credits < d.cost);
+        const d = UNITS[b.dataset.unit!]!, known = isUnlocked(p, d.id), open = d.tier <= p.tier, study = UNIT_RESEARCH[d.tier]!;
+        b.classList.toggle("locked", !open);
+        b.classList.toggle("unstudied", open && !known);
+        b.classList.toggle("studying", studying === d.id);
+        b.classList.toggle("poor", known ? p.credits < d.cost : open && studying !== d.id && p.credits < study.cost);
         b.classList.toggle("sel", v.selectedUnit === d.id);
+        const cost = b.querySelector(".cost")!, seal = b.querySelector(".seal")!;
+        const costText = known ? String(d.cost) : open ? `✦ ${study.cost}` : "—";
+        const sealText = known ? "" : !open ? ROMAN[d.tier]! : studying === d.id ? `${secs(p.research!.doneTick - s.tick)}s` : "Study";
+        if (cost.textContent !== costText) cost.textContent = costText;
+        if (seal.textContent !== sealText) seal.textContent = sealText;
+        b.querySelector<HTMLElement>(".prog")!.style.height = studying === d.id ? `${busy * 100}%` : "0";
       });
 
       const level = p.invest[p.lane] ?? 0, tier = INVEST_TIERS[level], held = beaconsHeld(s, p.team, p.lane);
@@ -259,24 +289,29 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       set("investT", tier ? `+${gain} gold now (${held}/3 shrines)` : `Highest tithe · +${investBonus(level)} per shrine`);
       $("invest").classList.toggle("poor", !!tier && p.credits < tier.cost); $("invest").classList.toggle("done", !tier);
 
-      const next = RESEARCH[p.tier + 1];
+      const next = researchOffer(p), rite = p.research && !p.research.unit;
+      set("researchH", rite ? RITE[p.research!.tier]! : next ? RITE[next.tier]! : "The Rites");
       set("researchC", next && !p.research ? String(next.cost) : "");
-      set("researchT", p.research ? `Under way · ${secs(p.research.doneTick - s.tick)}s remain` : next ? "Unlocks three stronger units" : "Complete · all units unlocked");
-      $("researchBar").style.width = p.research ? `${((s.tick - p.research.startTick) / (p.research.doneTick - p.research.startTick)) * 100}%` : "0%";
-      $("research").classList.toggle("poor", !!next && !p.research && p.credits < next.cost); $("research").classList.toggle("done", !next);
+      set("researchT", rite ? `Under way · ${secs(p.research!.doneTick - s.tick)}s remain` : p.research ? `Studying the ${UNITS[p.research.unit!]!.name} · ${secs(p.research.doneTick - s.tick)}s`
+        : next ? `Opens tier ${ROMAN[next.tier]}: ${unitsOfTier(next.tier).length} units to study` : "Complete · every tier is open");
+      $("researchBar").style.width = rite ? `${busy * 100}%` : "0%";
+      $("research").classList.toggle("poor", !!next && (!!p.research || p.credits < next.cost)); $("research").classList.toggle("done", !next);
 
       const b = s.buildings.find(q => q.id === v.selectedBuilding);
       const unit = hover && UNITS[hover] ? hover : !hover ? v.selectedUnit : null;
       if (hover === "invest") tip(`<h3>Raise the tithe${tier ? `<span class="num">${tier.cost}</span>` : ""}</h3>
         <p>${tier ? `Every shrine you hold pays you <b>+${tier.bonus}</b> more gold each collection. You hold ${held} of 3, so this ${payback}.` : "Your tithe is as high as it can go."}</p>
         <p class="stats">Tithe level ${level} of ${INVEST_TIERS.length} · currently +${investBonus(level)} per shrine</p>`);
-      else if (hover === "research") tip(`<h3>The Second Rite${next ? `<span class="num">${next.cost}</span>` : ""}</h3>
-        <p>${next ? `A ${secs(next.ticks)}-second rite that unlocks the ${UNIT_ORDER.filter(u => UNITS[u]!.tier === p.tier + 1).map(u => UNITS[u]!.name).join(", ")}.` : "The rite is complete. Every unit is yours to muster."}</p>`);
+      else if (hover === "research") tip(`<h3>${next ? RITE[next.tier] : "The Rites"}${next ? `<span class="num">${next.cost}</span>` : ""}</h3>
+        <p>${next ? `A ${secs(next.ticks)}-second rite that opens tier ${ROMAN[next.tier]}. Its units still have to be studied one by one: ${unitsOfTier(next.tier).map(u => UNITS[u]!.name).join(", ")}.` : "Every rite is complete. Any unit may be studied."}</p>
+        <p class="hint">Your scholars work on one rite or study at a time.</p>`);
       else if (unit) {
-        const d = UNITS[unit]!;
-        tip(`<h3>${d.name}<span class="num">${d.cost}</span></h3><p>${d.blurb}</p><p class="stats">${statLine(unit)}</p>
-          <p class="hint">${d.tier > p.tier ? "Requires the Second Rite." : v.selectedUnit === unit ? "Click anywhere free on your ground to raise its chantry. Esc to cancel." : "Its chantry musters one each wave."}</p>`);
-      } else if (b) tip(`<h3>${UNITS[b.unit]!.name} chantry</h3><p>Musters one ${UNITS[b.unit]!.name} at every toll of the bell.</p><p class="stats">${statLine(b.unit)}</p>
+        const d = UNITS[unit]!, known = isUnlocked(p, unit), open = d.tier <= p.tier, study = UNIT_RESEARCH[d.tier]!;
+        tip(`<h3>${d.name}<span class="num">${d.cost}</span></h3><p>${d.blurb}</p>${abilityLines(unit)}<p class="stats">${statLine(unit)}</p>
+          <p class="hint">${!open ? `Sealed until ${RITE[d.tier]}.` : studying === unit ? "Your scholars are studying it now."
+            : !known ? `Click to study it: ${study.cost} gold, ${secs(study.ticks)} seconds.${p.research ? " Your scholars are busy until the current work is done." : ""}`
+            : v.selectedUnit === unit ? "Click anywhere free on your ground to raise its chantry. Esc to cancel." : `Its chantry musters ${d.count ? ["", "one", "two", "three"][d.count] : "one"} each wave.`}</p>`);
+      } else if (b) tip(`<h3>${UNITS[b.unit]!.name} chantry</h3><p>Musters at every toll of the bell.</p>${abilityLines(b.unit)}<p class="stats">${statLine(b.unit)}</p>
           <button id="sell">Tear down · refund ${sellRefund(b.unit, b.produced)} (X)</button>`);
       else tip(null);
 
