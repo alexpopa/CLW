@@ -50,12 +50,12 @@ Each study costs 90 gold and takes 12 s; the first three units are known from th
 
 | Key | Unit | Cost | Health | Armor | Attack | Reach | Speed | Hits air | Ability |
 |---|---|---:|---:|---:|---|---:|---:|---|---|
-| 1 | **Arbalester** (known) | 135 | 80 | 0 | 11 every 1 s (11/s) | 6 | 6 | yes | Skyward Bolts: can shoot flying foes. |
-| 2 | **Oathguard** (known) | 185 | 280 | 1 | 9 every 1 s (9/s) | 1.5 | 6 | no | Shield Wall: takes 2 less damage from every ranged attack. |
-| 3 | **Pyre Zealot** (known) | 175 | 110 | 0 | 5 every 0.5 s (10/s) | 3 | 6 | no | Immolate: foes it scorches keep burning for 2 damage a second, through any armor. |
-| 4 | **Grave Hounds** (×2) | 120 | 112 | 0 | 8 every 0.6 s (13/s) | 1.2 | 8.4 | no | Pack: each kennel looses two hounds every wave. |
-| 5 | **Flagellant** | 145 | 215 | 0 | 16 every 1 s (16/s) | 1.5 | 6.4 | no | Frenzy: strikes faster the more it bleeds, up to twice as fast near death. |
-| 6 | **Hexbinder** | 165 | 120 | 0 | 12 every 1.2 s (10/s) | 7 | 6 | yes | Leaden Curse: foes she hits move and attack 40% slower for 2 seconds. Can curse flying foes. |
+| 3 | **Arbalester** (known) | 140 | 80 | 0 | 11 every 1 s (11/s) | 6 | 6 | yes | Skyward Bolts: can shoot flying foes. |
+| 4 | **Oathguard** (known) | 190 | 280 | 1 | 9 every 1 s (9/s) | 1.5 | 6 | no | Shield Wall: takes 2 less damage from every ranged attack. |
+| 5 | **Pyre Zealot** (known) | 145 | 110 | 0 | 5 every 0.5 s (10/s) | 3 | 6 | no | Immolate: foes it scorches keep burning for 2 damage a second, through any armor. |
+| 6 | **Grave Hounds** (×2) | 145 | 112 | 0 | 8 every 0.6 s (13/s) | 1.2 | 8.4 | no | Pack: each kennel looses two hounds every wave. |
+| 7 | **Flagellant** | 170 | 215 | 0 | 16 every 1 s (16/s) | 1.5 | 6.4 | no | Frenzy: strikes faster the more it bleeds, up to twice as fast near death. |
+| 8 | **Hexbinder** | 170 | 120 | 0 | 12 every 1.2 s (10/s) | 7 | 6 | yes | Leaden Curse: foes she hits move and attack 40% slower for 2 seconds. Can curse flying foes. |
 
 ### Tier II
 
@@ -63,14 +63,14 @@ Opened by the Second Rite (400 gold, 30 s). Each study costs 150 gold and takes 
 
 | Key | Unit | Cost | Health | Armor | Attack | Reach | Speed | Hits air | Ability |
 |---|---|---:|---:|---:|---|---:|---:|---|---|
-| 1 | **Plague Doctor** | 165 | 125 | 0 | mends 12/s | 5 | 6 | – | Mend: restores 12 health a second to the nearest wounded ally, on foot or on the wing. |
-| 2 | **Dreadknight** | 365 | 350 | 2 | 20 every 1 s (20/s) | 2.5 | 6.8 | no | Lance Charge: its first strike against each new foe deals triple damage. |
-| 3 | **Gargoyle** (flies) | 225 | 270 | 1 | 17 every 1 s (17/s) | 1.5 | 6.4 | yes | Flight: only foes that can strike the air may harm it. Claws flyers and walkers alike. |
-| 4 | **Witch Hunter** | 300 | 160 | 0 | 26 every 1.5 s (17/s) | 8 | 6 | yes | Silver Shot: two and a half times its damage to flying foes. Lantern: reveals veiled foes within 9. |
-| 5 | **Iron Penitent** | 375 | 480 | 2 | 23 every 1.2 s (19/s) | 1.5 | 5.6 | no | Sunder: every blow strips 1 armor from its victim, up to 4. |
-| 6 | **Necromancer** | 370 | 165 | 0 | 16 every 1.2 s (13/s) | 7 | 6 | yes | Raise Dead: when anyone on foot dies within 10, a Skeleton rises to fight for the Necromancer (once every 3 seconds). |
-| 7 | **Trebuchet** | 690 | 180 | 1 | 32 every 3 s (11/s) | 13 | 4.4 | no | Siege Stones: half again as much damage to towers and the cathedral, from beyond their reach. Cannot hit foes nearer than 4 or in the air. |
-| 8 | **Shade** | 410 | 265 | 0 | 33 every 0.8 s (41/s) | 1.5 | 7.2 | no | Veil: cannot be targeted from farther than 2 unless revealed. Ghost Blades: ignore armor. |
+| 3 | **Plague Doctor** | 150 | 125 | 0 | mends 16/s | 5 | 6 | – | Mend: restores 16 health a second to the nearest wounded ally, on foot or on the wing. |
+| 4 | **Dreadknight** | 350 | 350 | 2 | 20 every 1 s (20/s) | 2.5 | 6.8 | no | Lance Charge: its first strike against each new foe deals triple damage. |
+| 5 | **Gargoyle** (flies) | 310 | 270 | 1 | 17 every 1 s (17/s) | 1.5 | 6.4 | yes | Flight: only foes that can strike the air may harm it. Claws flyers and walkers alike. |
+| 6 | **Witch Hunter** | 310 | 160 | 0 | 26 every 1.5 s (17/s) | 8 | 6 | yes | Silver Shot: two and a half times its damage to flying foes. Lantern: reveals veiled foes within 9. |
+| 7 | **Iron Penitent** | 360 | 480 | 2 | 23 every 1.2 s (19/s) | 1.5 | 5.6 | no | Sunder: every blow strips 1 armor from its victim, up to 4. |
+| 8 | **Necromancer** | 470 | 165 | 0 | 16 every 1.2 s (13/s) | 7 | 6 | yes | Raise Dead: when anyone on foot dies within 10, a Skeleton rises to fight for the Necromancer (once every 3 seconds). |
+| 9 | **Trebuchet** | 480 | 180 | 1 | 32 every 3 s (11/s) | 13 | 4.4 | no | Siege Stones: half again as much damage to towers and the cathedral, from beyond their reach. Cannot hit foes nearer than 4 or in the air. |
+| 0 | **Shade** | 485 | 265 | 0 | 33 every 0.8 s (41/s) | 1.5 | 7.2 | no | Veil: cannot be targeted from farther than 2 unless revealed. Ghost Blades: ignore armor. |
 
 ### Tier III
 
@@ -78,14 +78,34 @@ Opened by the Third Rite (800 gold, 45 s). Each study costs 260 gold and takes 2
 
 | Key | Unit | Cost | Health | Armor | Attack | Reach | Speed | Hits air | Ability |
 |---|---|---:|---:|---:|---|---:|---:|---|---|
-| 1 | **Bone Colossus** | 1120 | 900 | 2 | 30 every 1.5 s (20/s) | 2.5 | 4.8 | no | Cleave: hits every foe around its target. Ossuary: collapses into four Skeletons when slain. |
-| 2 | **Ash Wyrm** (flies) | 695 | 700 | 1 | 12 every 0.5 s (24/s) | 5 | 6 | yes | Searing Breath: +25% damage for each consecutive hit on the same foe, up to +200%. Flies. |
-| 3 | **Tempest Cantor** | 790 | 200 | 0 | 33 every 1.5 s (22/s) | 8 | 6 | yes | Chain Lightning: each strike leaps to 4 more foes within 4, losing a quarter of its force per leap. Strikes the air too. |
-| 4 | **Reliquary** | 480 | 520 | 2 | none | 5 | 5.6 | – | Sanctuary: allies within 7 gain 2 armor and regain 12 health a second. Does not fight. |
-| 5 | **Crimson Countess** | 855 | 800 | 1 | 42 every 0.8 s (53/s) | 1.5 | 6.8 | no | Blood Feast: heals herself for half of the damage she deals. |
-| 6 | **Impaler** | 860 | 210 | 1 | 42 every 2.5 s (17/s) | 12 | 4.8 | yes | Impale: skewers every foe in a line 14 long. Two and a half times its damage to flying foes. |
-| 7 | **Pale Lich** | 690 | 200 | 0 | 18 every 1.5 s (12/s) | 8 | 6 | yes | Grave Frost: bursts in an area, ignores armor, and slows everyone caught by 40% for 3 seconds. |
-| 8 | **Headsman** | 815 | 850 | 2 | 44 every 1.4 s (31/s) | 1.8 | 6 | no | Execute: every blow deals bonus damage equal to 10% of its victim's full health. |
+| 3 | **Bone Colossus** | 905 | 900 | 2 | 30 every 1.5 s (20/s) | 2.5 | 4.8 | no | Cleave: hits every foe around its target. Ossuary: collapses into four Skeletons when slain. |
+| 4 | **Ash Wyrm** (flies) | 1080 | 700 | 1 | 12 every 0.5 s (24/s) | 5 | 6 | yes | Searing Breath: +25% damage for each consecutive hit on the same foe, up to +200%. Flies. |
+| 5 | **Tempest Cantor** | 730 | 200 | 0 | 33 every 1.5 s (22/s) | 8 | 6 | yes | Chain Lightning: each strike leaps to 4 more foes within 4, losing a quarter of its force per leap. Strikes the air too. |
+| 6 | **Reliquary** | 300 | 520 | 2 | none | 5 | 5.6 | – | Sanctuary: allies within 7 gain 3 armor and regain 15 health a second. Does not fight. |
+| 7 | **Crimson Countess** | 990 | 800 | 1 | 42 every 0.8 s (53/s) | 1.5 | 6.8 | no | Blood Feast: heals herself for half of the damage she deals. |
+| 8 | **Impaler** | 685 | 210 | 1 | 42 every 2.5 s (17/s) | 12 | 4.8 | yes | Impale: skewers every foe in a line 14 long. Two and a half times its damage to flying foes. |
+| 9 | **Pale Lich** | 720 | 200 | 0 | 18 every 1.5 s (12/s) | 8 | 6 | yes | Grave Frost: bursts in an area, ignores armor, and slows everyone caught by 40% for 3 seconds. |
+| 0 | **Headsman** | 785 | 850 | 2 | 44 every 1.4 s (31/s) | 1.8 | 6 | no | Execute: every blow deals bonus damage equal to 10% of its victim's full health. |
+
+### Tier IV
+
+Opened by the Fourth Rite (1500 gold, 60 s). Only the Undertaker can raise these. Each study costs 450 gold and takes 35 s.
+
+| Key | Unit | Cost | Health | Armor | Attack | Reach | Speed | Hits air | Ability |
+|---|---|---:|---:|---:|---|---:|---:|---|---|
+| 3 | **Belfry Titan** | 2000 | 2300 | 3 | 55 every 1.8 s (31/s) | 2.8 | 4.4 | no | Death Knell: each toll crushes every foe around its target and leaves them 30% slower for 2 seconds. |
+| 4 | **Ashen Seraph** (flies) | 2400 | 950 | 2 | 36 every 1 s (36/s) | 7 | 6 | yes | Cinder Lance: bursts in an area, ignores armor, strikes ground and air. Flies. |
+| 5 | **Pale Rider** | 1900 | 1350 | 2 | 58 every 0.9 s (64/s) | 2.5 | 7.6 | no | Reaping Charge: its first strike on each new foe deals triple damage. Harvest: heals for 30% of the damage it deals, and each blow takes 4% of the victim's full health. |
+| 6 | **Hellmouth** | 1950 | 520 | 2 | 85 every 3.5 s (24/s) | 15 | 4 | no | Brimstone: a huge burning blast; those caught burn for 6 a second for 4 seconds. Double damage to towers and the cathedral. Cannot hit foes nearer than 5 or in the air. |
+
+### Mercenaries
+
+| Key | Band | Hire | Soldiers | Health | Armor | Attack | Reach | Hits air | Notes |
+|---|---|---:|---:|---:|---:|---|---:|---|---|
+| 3 | **Gallowglass** | 90 | 2 | 300 | 2 | 20 every 1 s (20/s) | 1.6 | no | Two mailed axemen from across the sea. They hold a line for as long as they are paid to. |
+| 4 | **Free Marksmen** | 100 | 3 | 110 | 0 | 18 every 1.2 s (15/s) | 7 | yes | Three poachers with long guns. They shoot whatever walks or flies. |
+| 5 | **Fire-Eater** | 110 | 1 | 280 | 0 | 9 every 0.5 s (18/s) in an area | 3.5 | no | A carnival fire-breather gone to war. A swarm is only kindling. |
+| 6 | **Shackled Ogre** | 210 | 1 | 1400 | 1 | 50 every 1.5 s (33/s) in an area | 2.5 | no | Bought from a debtor's pit, still dragging its chains. It flattens whatever stands closest. |
 
 ### Not buildable
 
@@ -123,7 +143,7 @@ Every ability is automatic: units use them on their own, and the autopilot uses 
 | Ossuary (`spawnOnDeath`) | Bone Colossus | Leaves four Skeletons when it dies. |
 | Searing Breath (`ramp`) | Ash Wyrm | Each consecutive hit on the same target deals 25% more than the last, up to +200% after eight hits. Changing target resets it. |
 | Chain Lightning (`chain`) | Tempest Cantor | After the target, the bolt leaps to the nearest unstruck enemy within 4, up to four times, losing a quarter of its damage each leap. |
-| Sanctuary (`aura`) | Reliquary | Allies within 7 (not itself, not towers) have 2 more armor and regain 12 health a second. Several Reliquaries do not stack. |
+| Sanctuary (`aura`) | Reliquary | Allies within 7 (not itself, not towers) have 3 more armor and regain 15 health a second. Several Reliquaries do not stack. |
 | Blood Feast (`leech`) | Crimson Countess | Heals herself for half of the damage she deals. |
 | Impale (`line`) | Impaler | The stake hits every enemy within 0.9 of a line 14 long, starting at the Impaler and passing through its target. |
 | Execute (`maim`) | Headsman | Each hit deals extra damage equal to 10% of the target's full health. Not against towers or the cathedral. |

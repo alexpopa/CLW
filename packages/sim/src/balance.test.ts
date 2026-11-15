@@ -74,7 +74,8 @@ describe("counters (equal gold)", () => {
   });
 
   it("more gold beats a counter", () => {
-    expect(clash(massOf("hound", GOLD * 2), mass("zealot")).margin).toBeGreaterThan(0);
+    expect(duel("flagellant", "zealot")).toBeLessThan(0);
+    expect(clash(massOf("flagellant", GOLD * 2.5), mass("zealot")).margin).toBeGreaterThan(0);
     expect(clash(massOf("colossus", GOLD * 2.5), mass("gargoyle"), { maxSeconds: 60 }).left[0]).toBeGreaterThan(0.5); // they cannot be killed fast enough
   });
 
