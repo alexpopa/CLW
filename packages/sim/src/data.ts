@@ -209,8 +209,8 @@ export const MERC_ORDER = ["gallowglass", "marksman", "fireeater", "ogre"] as co
 export const MAX_TIER = 4;
 /** Each player has two gravekeepers who do the building. Slot 0 is the Sexton, slot 1 the Undertaker. */
 export const KEEPERS = [
-  { id: "sexton", name: "Sexton", blurb: "Gravedigger of the parish. Raises chantries of the first three tiers.", maxTier: 3, mercs: false },
-  { id: "undertaker", name: "Undertaker", blurb: "Keeps the ledger of the dead. Raises chantries of every tier, the fourth included, and hires mercenaries.", maxTier: 4, mercs: true },
+  { id: "sexton", name: "Sexton", blurb: "Gravedigger of the parish. Raises chantries of the first three tiers, and can step through the grave to any ground his side holds.", maxTier: 3, mercs: false, teleport: true },
+  { id: "undertaker", name: "Undertaker", blurb: "Keeps the ledger of the dead. Raises chantries of every tier, the fourth included, and hires mercenaries.", maxTier: 4, mercs: true, teleport: false },
 ] as const;
 export const unitsOfTier = (tier: number): string[] => UNIT_ORDER.filter(id => UNITS[id]!.tier === tier);
 
@@ -263,6 +263,7 @@ export const RULES = {
   keeperSpeed: 450,               // gravekeepers walk at this many milli-units per tick
   keeperReach: 2500,              // a keeper raises a chantry once this close to its centre; the chantry stands at once
   keeperQueue: 8,                 // build orders one keeper can have waiting
+  teleportCooldownTicks: sec(8),  // the Sexton's rest between two teleports
   mercCooldownTicks: sec(6),      // pause between two hirings
   mercApproachPad: 40,           // step inside attack range so a hired band can clear foes and reach midfield
   mercAhead: 3 * UNIT,            // mercenaries appear this far in front of the base towers
@@ -274,7 +275,7 @@ export const RULES = {
   unitSpacing: 750,               // units push apart when closer than this
   separationStep: 60,             // max push per tick, per unit
   healerHoldRange: 9 * UNIT,      // healers stop advancing when an enemy is this close
-  hqHp: 4500,
+  hqHp: 4500,                     // per lane: a cathedral besieged from three lanes has three times this
   hqDamage: 18, hqInterval: sec(0.75), hqRange: 10 * UNIT, // weak defensive gun
   overtimeTick: sec(25 * 60),     // sudden death: HQ guns shut down and HQs take extra damage
   overtimeHqDamageMult: 3,

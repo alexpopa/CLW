@@ -257,10 +257,52 @@ describe("sim", () => {
     expect(s.units.filter(u => u.type === "ogre").length).toBe(1);
   });
 
+  it("team games: a lane per player, a tripled cathedral, keepers who cross lanes, and the Sexton's teleport", () => {
+    const s = newGame({ teamSize: 3, seed: 1, aiSlots: [1, 2, 3, 4, 5] });
+    expect([s.laneCount, s.players.length, s.beacons.length, s.keepers.length]).toEqual([3, 6, 9, 12]);
+    expect(s.players.map(p => [p.team, p.lane])).toEqual([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]]);
+    expect(s.teams[0].hqHp).toBe(3 * RULES.hqHp);
+    expect(s.units.filter(u => u.type === "tower").length).toBe(24);
+    const sexton = s.keepers.find(k => k.owner === 0 && k.slot === 0)!, undertaker = s.keepers.find(k => k.owner === 0 && k.slot === 1)!;
+    // build in an ally's lane: the Undertaker has to walk across the middle lane to get there
+    step(s, [{ player: 0, cmd: { type: "build", keeper: 1, unit: "arbalester", col: 10, row: 10, lane: 2 } },
+      { player: 0, cmd: { type: "teleport", keeper: 1, x: 30000, y: 12000, lane: 2 } }]); // only the Sexton can
+    expect(undertaker.lane).toBe(0);
+    let walked = 0;
+    while (!s.buildings.some(b => b.owner === 0)) { step(s); walked++; }
+    expect(s.buildings.find(b => b.owner === 0)).toMatchObject({ lane: 2, col: 10, row: 10, team: 0 });
+    expect(undertaker.lane).toBe(2);
+    expect(walked).toBeGreaterThan(3 * TICK_RATE);
+    // the Sexton is there at once, wherever he is sent on his side's ground, and then has to rest
+    step(s, [{ player: 0, cmd: { type: "teleport", keeper: 0, x: 400000, y: 5000, lane: 1 } }]);
+    expect([sexton.lane, sexton.x, sexton.y]).toEqual([1, MAP.zoneStart + MAP.zoneCols * MAP.cell, 5000]); // clamped to his own ground
+    expect(s.events.some(e => e.t === "teleport")).toBe(true);
+    step(s, [{ player: 0, cmd: { type: "teleport", keeper: 0, x: 30000, y: 5000, lane: 0 } }]);
+    expect(sexton.lane).toBe(1);
+    ticks(s, RULES.teleportCooldownTicks);
+    step(s, [{ player: 0, cmd: { type: "teleport", keeper: 0, x: 30000, y: 5000, lane: 0 } }]);
+    expect(sexton.lane).toBe(0);
+    // the chantry in the ally's lane musters there
+    ticks(s, RULES.waveIntervalTicks);
+    expect(s.units.some(u => u.type === "arbalester" && u.owner === 0 && u.lane === 2)).toBe(true);
+  });
+
+  it("a 3v3 of autopilots plays to a finish", () => {
+    const s = newGame({ teamSize: 3, seed: 5, aiSlots: [0, 1, 2, 3, 4, 5] });
+    for (let i = 0; i < 45 * 60 * TICK_RATE && s.winner === null; i++) {
+      const cmds: TimedCommand[] = [];
+      for (const p of s.players) for (const cmd of simpleAI(s, p.id)) cmds.push({ player: p.id, cmd });
+      step(s, cmds);
+    }
+    expect(s.winner).not.toBeNull();
+    expect(new Set(s.buildings.map(b => b.lane)).size).toBe(3);
+  });
+
   it("parseCommand accepts only well-formed commands and drops unknown fields", () => {
     expect(parseCommand({ type: "build", keeper: 1, unit: "arbalester", col: 2, row: 4, credits: 9999 })).toEqual({ type: "build", keeper: 1, unit: "arbalester", col: 2, row: 4 });
     expect(parseCommand({ type: "move", keeper: 0, x: 30000, y: 12000, speed: 9 })).toEqual({ type: "move", keeper: 0, x: 30000, y: 12000 });
     expect(parseCommand({ type: "hire", unit: "ogre" })).toEqual({ type: "hire", unit: "ogre" });
+    expect(parseCommand({ type: "teleport", keeper: 0, x: 1, y: 2, lane: 1 })).toEqual({ type: "teleport", keeper: 0, x: 1, y: 2, lane: 1 });
     expect(parseCommand({ type: "invest", lane: 0 })).toEqual({ type: "invest", lane: 0 });
     expect(parseCommand({ type: "research", unit: "hound", tier: 3 })).toEqual({ type: "research", unit: "hound" });
     expect(parseCommand({ type: "research" })).toEqual({ type: "research" });

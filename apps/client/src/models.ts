@@ -256,19 +256,27 @@ export function fenceModel(fromX: number, toX: number, z: number): G {
  * the front (len), z across the lane (0..depth). A low buttressed wall closes the rear and both
  * sides; the front is left open for the army, flanked by the base towers. Banners hang in team colour.
  */
-export function precinctModel(team: 0 | 1, len: number, depth: number): { lit: G; glow: G } {
+export function precinctModel(team: 0 | 1, len: number, depth: number, gateFar = false, gateNear = false): { lit: G; glow: G } {
   const t = TEAM[team], lit: G[] = [], glow: G[] = [], h = 1.1, th = 0.5, m = 0.9; // m = margin outside the ground
   const run = (x0: number, x1: number, z: number) => {
     lit.push(box(x1 - x0, h, th, PAL.stone, (x0 + x1) / 2, h / 2, z), box(x1 - x0 + 0.1, 0.14, th + 0.2, PAL.stoneHi, (x0 + x1) / 2, h + 0.07, z));
     for (let x = x0 + 2; x < x1 - 1; x += 4) lit.push(box(0.7, h + 0.5, th + 0.5, PAL.stoneLo, x, (h + 0.5) / 2, z), spire(0.36, 0.5, PAL.stoneHi, x, h + 0.5, z));
   };
-  run(-m, len + 0.5, -m); run(-m, len + 0.5, depth + m);
+  // a side that faces another lane's ground has a gate in the middle for the gravekeepers
+  const side = (z: number, gate: boolean) => {
+    if (!gate) return run(-m, len + 0.5, z);
+    const g0 = len / 2 - 3.2, g1 = len / 2 + 3.2;
+    run(-m, g0, z); run(g1, len + 0.5, z);
+    for (const x of [g0, g1]) { lit.push(box(0.9, 2.6, 0.9, PAL.stoneLo, x, 1.3, z), spire(0.45, 0.9, PAL.roof, x, 2.6, z)); glow.push(ball(0.16, PAL.candle, x, 2.2, z + (z < 0 ? -0.5 : 0.5), 0)); }
+  };
+  side(-m, gateFar); side(depth + m, gateNear);
   lit.push(box(th, h, depth + m * 2, PAL.stone, -m, h / 2, depth / 2), box(th + 0.2, 0.14, depth + m * 2 + 0.1, PAL.stoneHi, -m, h + 0.07, depth / 2));
   for (const [x, z] of [[-m, -m], [-m, depth + m], [len + 0.5, -m], [len + 0.5, depth + m]] as const) { // corner piers with braziers
     lit.push(box(1.1, 2.4, 1.1, PAL.stoneLo, x, 1.2, z), box(1.3, 0.2, 1.3, PAL.stoneHi, x, 2.5, z), cyl(0.5, 0.3, 0.3, 6, PAL.ink, x, 2.75, z));
     glow.push(ball(0.3, PAL.flame, x, 3.0, z, 0));
   }
   for (let x = 4; x < len; x += 8) { // banners on the far wall, facing the camera
+    if (gateFar && Math.abs(x - len / 2) < 4) continue;
     lit.push(box(0.08, 2.6, 0.08, PAL.ink, x, 1.3 + h * 0.4, -m + 0.3), box(1.0, 1.5, 0.05, t.main, x, h + 0.75, -m + 0.36), box(1.0, 0.3, 0.05, t.lo, x, h + 0.02, -m + 0.36),
       box(0.4, 0.08, 0.06, PAL.gold, x, h + 0.95, -m + 0.4), box(0.08, 0.6, 0.06, PAL.gold, x, h + 0.85, -m + 0.4));
   }

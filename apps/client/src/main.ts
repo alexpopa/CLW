@@ -1,6 +1,7 @@
 import { canPlan, createGame, isUnlocked, researchOffer, simpleAI, step, INVEST_TIERS, KEEPERS, MAP, TICK_RATE, UNITS } from "@lw/sim";
 import type { Command, GameState, TimedCommand } from "@lw/sim";
 import { Renderer } from "./scene";
+import { fieldZ, laneAt } from "./layout";
 import { CARD_KEYS, MERC_TAB, RITE, createHud, tabUnits } from "./hud";
 import { Sound } from "./audio";
 import { hostedAccounts, matchCredentials, Net } from "./net";
@@ -10,7 +11,6 @@ import { hostedAccounts, matchCredentials, Net } from "./net";
  * Online: the match server owns the match; this client sends Commands and replays the server's ticks
  * on its own copy of the sim. Either way: render FROM GameState, send Commands INTO the sim.
  */
-const BOT = 1;
 const TICK_MS = 1000 / TICK_RATE;
 const LANE = MAP.laneLength / 1000;
 
@@ -19,7 +19,9 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   view.init(mount);
   const sound = new Sound();
 
-  let game: GameState = createGame({ teamSize: 1, seed: 1, aiSlots: [BOT] });
+  let game: GameState = createGame({ teamSize: 1, seed: 1, aiSlots: [1] });
+  let soloSize: 1 | 2 | 3 = 1;             // team size of the last solo match, for "March again"
+  let teleporting = false;                 // T was pressed: the next click on friendly ground sends the Sexton there
   let running = false, paused = false, speed = 1, ended = false;
   let ME = 0;                              // my player slot (always 0 in solo play)
   let net: Net | null = null;              // set while connected to the match server
@@ -33,24 +35,24 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   let selectedKeeper: 0 | 1 | null = null; // the gravekeeper taking orders; the build menu shows only while one is chosen
   /** Tabs the chosen keeper offers: the Sexton tiers I-III, the Undertaker those plus tier IV and the mercenaries. */
   const tabs = (): number[] => { const k = selectedKeeper === null ? null : KEEPERS[selectedKeeper]; return k ? [...Array.from({ length: k.maxTier }, (_, i) => i + 1), ...(k.mercs ? [MERC_TAB] : [])] : []; };
-  let hoverCell: { col: number; row: number } | null = null;
+  let hoverCell: { col: number; row: number; lane: number } | null = null;
   const keys = new Set<string>();
-  let mouseX = -1, mouseInside = false;
+  let mouseX = -1, mouseY = -1, mouseInside = false;
 
   const me = () => game.players[ME]!;
   const home = () => (me().team === 0 ? 0 : LANE);
   const send = (cmd: Command) => { if (!running || ended) return; if (online) net?.command(cmd); else pending.push(cmd); };
   const begin = (state: GameState, slot: number) => {
     game = state; ME = slot; pending = []; inbox = []; acc = 0; ended = false; running = true; paused = false; speed = online ? 1 : speed;
-    selectedUnit = null; selectedBuilding = null; tierTab = 1; selectedKeeper = null;
-    view.reset(); view.camX = home(); view.clampCam(); hud.hideOverlay(); sound.play("bell");
+    selectedUnit = null; selectedBuilding = null; tierTab = 1; selectedKeeper = null; teleporting = false;
+    view.reset(); view.layout(state.laneCount); view.lookAt(me().lane, home()); hud.hideOverlay(); sound.play("bell");
     const team = me().team;
     hud.setSide(team, (pics[team] ??= view.portraits(team)));
   };
   const quitOnline = () => { net?.close(); net = null; online = false; };
   /** Connect, then host or join. The lobby and the match arrive as callbacks. */
   let connectionAttempt = 0;
-  const goOnline = async (name: string, code: string | null) => {
+  const goOnline = async (name: string, code: string | null, size: 1 | 2 | 3 = 1) => {
     const attempt = ++connectionAttempt;
     sound.start(); quitOnline();
     try { localStorage.setItem("lw.name", name); } catch { /* private window */ }
@@ -64,11 +66,15 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     }
     if (attempt !== connectionAttempt) return;
     if (!credentials) { hud.clearAccount(); hud.showStart("Sign in to play online."); return; }
-    const mine: Net = net = new Net(credentials, code ? { t: "joinLobby", lobbyId: code } : { t: "createLobby", settings: { teamSize: 1, aiFill: false } }, {
-      lobby: id => hud.showLobby(id, "Awaiting a challenger"),
-      start: (config, slot, who) => { online = true; names = who; begin(createGame(config), slot); hud.toast(`You face ${who[1 - slot] ?? "a stranger"}`); },
+    const mine: Net = net = new Net(credentials, code ? { t: "joinLobby", lobbyId: code } : { t: "createLobby", settings: { teamSize: size, aiFill: false } }, {
+      lobby: (id, seated, seats) => hud.showLobby(id, seats === 2 ? "Awaiting a challenger" : `${seats / 2}v${seats / 2} · ${seated} of ${seats} seats taken`),
+      start: (config, slot, who) => {
+        online = true; names = who; begin(createGame(config), slot);
+        const foes = game.players.filter(p => p.team !== me().team).map(p => who[p.id] ?? "a stranger");
+        hud.toast(`You face ${foes.join(", ")}`);
+      },
       tick: (t, cmds) => { if (online && t === game.tick + inbox.length) inbox.push(cmds); },
-      left: slot => hud.toast(`${names[slot] ?? "Your opponent"} has left — the autopilot leads their host`),
+      left: slot => hud.toast(`${names[slot] ?? "A player"} has left — the autopilot leads their host`),
       error: msg => { if (!online) { quitOnline(); hud.showStart(msg); } else hud.toast(msg); },
       closed: () => {
         if (net !== mine) return;
@@ -84,7 +90,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   const pics: Record<number, Record<string, string>> = { 0: view.portraits(0) }; // card portraits per side
   const hud = createHud(hudRoot, pics[0]!, {
     selectKeeper(slot) {
-      selectedKeeper = slot; selectedBuilding = null; sound.play("click");
+      selectedKeeper = slot; selectedBuilding = null; teleporting = false; sound.play("click");
       if (!tabs().includes(tierTab)) tierTab = 1;
       if (selectedUnit && UNITS[selectedUnit]!.tier > KEEPERS[slot].maxTier) selectedUnit = null;
     },
@@ -124,12 +130,17 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     setSpeed(n) { if (online) return deny("Time cannot be bent in a shared match"); speed = n; paused = false; sound.play("click"); },
     togglePause() { if (online) return deny("A shared match cannot be paused"); paused = !paused; sound.play("click"); },
     toggleMute() { return sound.toggleMute(); },
-    panTo(f) { view.camX = f * LANE; view.clampCam(); },
-    start() {
-      sound.start(); quitOnline();
-      begin(createGame({ teamSize: 1, seed: (Date.now() & 0x7fffffff) || 1, aiSlots: [BOT] }), 0);
+    panTo(fx, fz) {
+      view.panTo(fx, fz);
+      if (teleporting) { const [f0, f1] = fieldZ(view.lanes); teleportTo({ x: fx * MAP.laneLength, ...laneAt(f0 + fz * (f1 - f0), view.lanes) }); } // aiming on the map works too
     },
-    hostOnline(name) { goOnline(name, null); },
+    start(size) {
+      sound.start(); quitOnline();
+      soloSize = size ?? soloSize;
+      // I take the first seat; the autopilot plays my allies and every enemy.
+      begin(createGame({ teamSize: soloSize, seed: (Date.now() & 0x7fffffff) || 1, aiSlots: Array.from({ length: soloSize * 2 - 1 }, (_, i) => i + 1) }), 0);
+    },
+    hostOnline(name, size) { goOnline(name, null, size); },
     joinOnline(name, code) { goOnline(name, code); },
     startOnlineNow() { net?.startNow(); },
     menu() { connectionAttempt++; quitOnline(); running = false; hud.showStart(); },
@@ -148,47 +159,65 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
 
   // ---- input ----
   const canvas = view.canvas;
-  let down: { x: number; cam: number; moved: boolean } | null = null;
-  const cellUnder = (e: PointerEvent) => { const w = view.pick(e.clientX, e.clientY); return w && view.cellAt(me().team, w.x, w.y); };
-  canvas.addEventListener("pointerdown", e => { if (e.button === 0) { down = { x: e.clientX, cam: view.camX, moved: false }; canvas.setPointerCapture(e.pointerId); } });
+  let down: { x: number; y: number; camX: number; camZ: number; moved: boolean } | null = null;
+  /** The cell of my side's building ground under the pointer, in whichever lane that is. */
+  const cellUnder = (e: PointerEvent) => { const w = view.pick(e.clientX, e.clientY), c = w && view.cellAt(me().team, w.x, w.y); return w && c ? { ...c, lane: w.lane } : null; };
+  canvas.addEventListener("pointerdown", e => { if (e.button === 0) { down = { x: e.clientX, y: e.clientY, camX: view.camX, camZ: view.camZ, moved: false }; canvas.setPointerCapture(e.pointerId); } });
   canvas.addEventListener("pointermove", e => {
     if (down) {
-      if (Math.abs(e.clientX - down.x) > 5) down.moved = true;
-      if (down.moved) { view.camX = down.cam - (e.clientX - down.x) * view.unitsPerPixel(); view.clampCam(); }
+      if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) down.moved = true;
+      if (down.moved) { view.camX = down.camX - (e.clientX - down.x) * view.unitsPerPixel(); view.camZ = down.camZ - (e.clientY - down.y) * view.unitsPerPixel() * 1.3; view.clampCam(); }
     }
     hoverCell = cellUnder(e);
   });
+  type Spot = { x: number; y: number; lane: number };
   /** Send the chosen keeper walking to a point on the ground (the sim keeps him on the building ground). */
-  const walkTo = (w: { x: number; y: number }) => { if (selectedKeeper === null) return; send({ type: "move", keeper: selectedKeeper, x: Math.round(w.x), y: Math.round(w.y) }); selectedUnit = null; sound.play("click"); };
+  const walkTo = (w: Spot) => { if (selectedKeeper === null) return; send({ type: "move", keeper: selectedKeeper, x: Math.round(w.x), y: Math.round(w.y), lane: w.lane }); selectedUnit = null; sound.play("click"); };
+  /** The Sexton steps through the grave to that spot (any lane of my side's ground). */
+  const teleportTo = (w: Spot) => {
+    const slot = KEEPERS.findIndex(k => k.teleport) as 0 | 1, k = game.keepers.find(q => q.owner === ME && q.slot === slot);
+    teleporting = false;
+    if (!k) return;
+    if (game.tick < k.teleReady) return deny("The Sexton is still catching his breath");
+    send({ type: "teleport", keeper: slot, x: Math.round(w.x), y: Math.round(w.y), lane: w.lane }); sound.play("raise");
+  };
   canvas.addEventListener("pointerup", e => {
     const wasDrag = down?.moved; down = null;
     if (e.button !== 0 || wasDrag || !running) return;
     const w = view.pick(e.clientX, e.clientY), cell = w && view.cellAt(me().team, w.x, w.y);
+    if (teleporting) { if (w) teleportTo(w); return; }
     const F = MAP.footprint;
     // clicking a gravekeeper chooses him, unless a chantry is being placed right there
-    const near = w && !selectedUnit ? game.keepers.filter(k => k.owner === ME && k.lane === me().lane).map(k => ({ k, d: Math.hypot(k.x - w.x, k.y - w.y) })).sort((a, b) => a.d - b.d)[0] : undefined;
+    const near = w && !selectedUnit ? game.keepers.filter(k => k.owner === ME && k.lane === w.lane).map(k => ({ k, d: Math.hypot(k.x - w.x, k.y - w.y) })).sort((a, b) => a.d - b.d)[0] : undefined;
     if (near && near.d < 1700) { hud.actions.selectKeeper(near.k.slot); return; }
-    const existing = cell && game.buildings.find(b => b.team === me().team && b.lane === me().lane
+    const existing = w && cell && game.buildings.find(b => b.team === me().team && b.lane === w.lane
       && cell.at.col >= b.col && cell.at.col < b.col + F && cell.at.row >= b.row && cell.at.row < b.row + F);
     if (existing) { selectedBuilding = existing.owner === ME ? existing.id : null; selectedUnit = null; sound.play("click"); }
-    else if (cell && selectedUnit && selectedKeeper !== null) {
+    else if (w && cell && selectedUnit && selectedKeeper !== null) {
       const k = game.keepers.find(q => q.owner === ME && q.slot === selectedKeeper);
       if (me().credits < UNITS[selectedUnit]!.cost) deny("Not enough gold");
-      else if (!canPlan(game, me().team, me().lane, cell.col, cell.row)) deny("No room there");
+      else if (!canPlan(game, me().team, w.lane, cell.col, cell.row)) deny("No room there");
       else if (k && k.jobs.length >= 8) deny("He has enough to do already");
-      else { send({ type: "build", keeper: selectedKeeper, unit: selectedUnit, col: cell.col, row: cell.row }); sound.play("click"); }
+      else { send({ type: "build", keeper: selectedKeeper, unit: selectedUnit, col: cell.col, row: cell.row, lane: w.lane }); sound.play("click"); }
     } else if (w && selectedKeeper !== null && !selectedUnit && selectedBuilding === null) walkTo(w);
     else selectedBuilding = null;
   });
-  // right-click: stop placing, or send the chosen keeper walking
+  // right-click: stop placing or aiming, or send the chosen keeper walking
   canvas.addEventListener("contextmenu", e => {
     e.preventDefault();
     const w = view.pick(e.clientX, e.clientY);
-    if (selectedUnit || selectedBuilding !== null) { selectedUnit = null; selectedBuilding = null; }
+    if (teleporting) teleporting = false;
+    else if (selectedUnit || selectedBuilding !== null) { selectedUnit = null; selectedBuilding = null; }
     else if (w && running) walkTo(w);
   });
-  canvas.addEventListener("wheel", e => { e.preventDefault(); view.camX += (e.deltaX + e.deltaY) * view.unitsPerPixel(); view.clampCam(); }, { passive: false });
-  addEventListener("mousemove", e => { mouseX = e.clientX; mouseInside = true; });
+  // the wheel scrolls along the lanes; with several lanes, a vertical wheel moves across them and shift (or a sideways wheel) along
+  canvas.addEventListener("wheel", e => {
+    e.preventDefault();
+    const k = view.unitsPerPixel();
+    if (view.lanes > 1 && !e.shiftKey) { view.camX += e.deltaX * k; view.camZ += e.deltaY * k; } else view.camX += (e.deltaX + e.deltaY) * k;
+    view.clampCam();
+  }, { passive: false });
+  addEventListener("mousemove", e => { mouseX = e.clientX; mouseY = e.clientY; mouseInside = true; });
   document.addEventListener("mouseleave", () => { mouseInside = false; });
   addEventListener("blur", () => { keys.clear(); mouseInside = false; });
   addEventListener("keyup", e => keys.delete(e.key.toLowerCase()));
@@ -204,16 +233,21 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     else if (k === "e") hud.actions.invest();
     else if (k === "r") hud.actions.research();
     else if (k === "x" || k === "delete" || k === "backspace") hud.actions.sell();
-    else if (k === "escape") { if (selectedUnit || selectedBuilding !== null) { selectedUnit = null; selectedBuilding = null; } else selectedKeeper = null; }
+    else if (k === "t") { // arm the Sexton's teleport: he is chosen, and the next click on friendly ground (or on the map's ground) sends him
+      const slot = KEEPERS.findIndex(q => q.teleport) as 0 | 1, keeper = game.keepers.find(q => q.owner === ME && q.slot === slot);
+      if (keeper && game.tick < keeper.teleReady) deny("The Sexton is still catching his breath");
+      else { hud.actions.selectKeeper(slot); selectedUnit = null; teleporting = true; }
+    }
+    else if (k === "escape") { if (teleporting) teleporting = false; else if (selectedUnit || selectedBuilding !== null) { selectedUnit = null; selectedBuilding = null; } else selectedKeeper = null; }
     else if (k === "p") hud.actions.togglePause();
-    else if (k === " ") { e.preventDefault(); view.camX = home(); view.clampCam(); }
+    else if (k === " ") { e.preventDefault(); view.lookAt(me().lane, home()); }
   });
 
   /** One solo tick: my queued commands plus the autopilot's. */
   const tick = (now: number) => {
     const cmds: TimedCommand[] = pending.map(cmd => ({ player: ME, cmd }));
     pending = [];
-    for (const cmd of simpleAI(game, BOT)) cmds.push({ player: BOT, cmd });
+    for (const p of game.players) if (p.isAI) for (const cmd of simpleAI(game, p.id)) cmds.push({ player: p.id, cmd });
     apply(cmds, now);
   };
   /** Advance the sim one tick with these commands, then hand the events to the view and the sound. */
@@ -236,11 +270,16 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   const frame = (now: number) => {
     requestAnimationFrame(frame);
     const dt = Math.min(100, now - last); last = now;
-    let pan = 0;
+    let pan = 0, panZ = 0;
     if (keys.has("a") || keys.has("arrowleft")) pan -= 1;
     if (keys.has("d") || keys.has("arrowright")) pan += 1;
-    if (pan === 0 && mouseInside && !down) { if (mouseX <= 6) pan = -1; else if (mouseX >= innerWidth - 6) pan = 1; }
-    if (pan) { view.camX += pan * dt * 0.1; view.clampCam(); }
+    if (keys.has("w") || keys.has("arrowup")) panZ -= 1;
+    if (keys.has("s") || keys.has("arrowdown")) panZ += 1;
+    if (mouseInside && !down) {
+      if (pan === 0) { if (mouseX <= 6) pan = -1; else if (mouseX >= innerWidth - 6) pan = 1; }
+      if (panZ === 0) { if (mouseY <= 6) panZ = -1; else if (mouseY >= innerHeight - 6) panZ = 1; }
+    }
+    if (pan || panZ) { view.camX += pan * dt * 0.1; view.camZ += panZ * dt * 0.07; view.clampCam(); }
 
     if (running && !paused && !ended) {
       if (online) {
@@ -255,7 +294,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
       if (game.winner !== null) {
         ended = true;
         const won = game.winner === me().team;
-        view.camX = won ? LANE - home() : home(); view.clampCam();
+        view.camX = won ? LANE - home() : home(); view.camZ = (view.lanes - 1) * 16 + 12; view.clampCam();
         sound.play(won ? "victory" : "defeat");
         hud.showEnd(won, game, online);
         quitOnline();
@@ -263,7 +302,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     }
     if (selectedBuilding !== null && !game.buildings.some(b => b.id === selectedBuilding)) selectedBuilding = null;
     view.draw(game, { selectedKeeper, selectedUnit, hoverCell, selectedBuilding, me: ME }, paused || ended ? 1 : Math.min(1, acc / TICK_MS), now, dt);
-    hud.update(game, { me: ME, keeper: selectedKeeper, tier: tierTab, selectedUnit, selectedBuilding, speed, paused, camFrac: view.viewRange() });
+    hud.update(game, { me: ME, keeper: selectedKeeper, tier: tierTab, selectedUnit, selectedBuilding, speed, paused, teleport: teleporting, camRect: view.viewRect(), names: online ? names : [] });
   };
   requestAnimationFrame(frame);
 

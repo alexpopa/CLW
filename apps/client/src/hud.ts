@@ -6,9 +6,10 @@ import "@fontsource/im-fell-english/400.css";
 import "@fontsource/im-fell-english/400-italic.css";
 import "@fontsource/unifrakturcook/700.css";
 import "./hud.css";
-import { INVEST_TIERS, KEEPERS, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, hqX, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, unitsOfTier } from "@lw/sim";
+import { INVEST_TIERS, KEEPERS, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, hqMax, hqX, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, unitsOfTier } from "@lw/sim";
 import type { GameState } from "@lw/sim";
 import { TEAM } from "./models";
+import { LANE_GAP, LANE_PITCH, LANE_W, fieldZ } from "./layout";
 
 /** DOM overlay. Reads GameState, raises intents through callbacks. No rules here. */
 export interface HudActions {
@@ -21,14 +22,17 @@ export interface HudActions {
   setSpeed(n: number): void;
   togglePause(): void;
   toggleMute(): boolean;
-  panTo(fraction: number): void; // centre the camera on this fraction of the lane
-  start(): void;                              // solo match against the autopilot
-  hostOnline(name: string): void;
+  panTo(fx: number, fz: number): void;        // centre the camera on this point of the minimap (fractions of the whole field)
+  start(size?: 1 | 2 | 3): void;              // solo match: the autopilot fills every other seat (no size = the same as last time)
+  hostOnline(name: string, size: 1 | 2 | 3): void;
   joinOnline(name: string, code: string): void;
   startOnlineNow(): void;                     // host: stop waiting, play the autopilot on the server
   menu(): void;                               // leave any lobby and return to the title screen
 }
-export interface HudView { me: number; keeper: 0 | 1 | null; tier: number; selectedUnit: string | null; selectedBuilding: number | null; speed: number; paused: boolean; camFrac: [number, number] }
+export interface HudView { me: number; keeper: 0 | 1 | null; tier: number; selectedUnit: string | null; selectedBuilding: number | null; speed: number; paused: boolean;
+  teleport: boolean;                          // the Sexton's teleport is armed: the next click on friendly ground sends him there
+  camRect: [number, number, number, number];  // the part of the field on screen, as fractions [x0, x1, z0, z1]
+  names: string[] }                           // display name per seat (online), empty in solo play
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 const secs = (ticks: number) => Math.ceil(ticks / TICK_RATE);
@@ -64,7 +68,6 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
         <div id="bell" title="Time until every building musters its next unit"><span id="waveIn" class="num">30</span><small class="cap">next wave</small></div>
         <div class="hp foe"><div class="cap"><span>Enemy cathedral</span><b id="hq1t" class="num"></b></div><div class="glass"><i id="hq1"></i></div></div>
       </div>
-      <canvas id="minimap" title="Click or drag to move along the lane"></canvas>
     </div>
     <div class="tools"><span id="clock" class="num">0:00</span><button id="pause" title="Pause (P)">❚❚</button>${[1, 2, 4].map(n => `<button data-speed="${n}" title="Game speed ×${n}">${ROMAN[n]}</button>`).join("")}<button id="mute" title="Sound">♪</button></div>
   </div>
@@ -84,6 +87,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       <button class="act" id="research"><span class="key"><b>R</b></span><strong><span id="researchH">The Second Rite</span><span class="num" id="researchC"></span></strong><em id="researchT"></em><i class="fill" id="researchBar"></i></button>
     </div>
   </div>
+  <div id="mapbox"><canvas id="minimap" title="Click or drag to look there"></canvas></div>
   <div id="toast"></div>
   <div id="overlay"></div>`;
 
@@ -109,7 +113,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   $("tip").onclick = e => { if ((e.target as HTMLElement).id === "sell") act.sell(); };
 
   const mini = $<HTMLCanvasElement>("minimap");
-  const pan = (e: PointerEvent) => { const r = mini.getBoundingClientRect(); act.panTo((e.clientX - r.left) / r.width); };
+  const pan = (e: PointerEvent) => { const r = mini.getBoundingClientRect(); act.panTo((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height); };
   mini.onpointerdown = e => { mini.setPointerCapture(e.pointerId); pan(e); };
   mini.onpointermove = e => { if (e.buttons & 1) pan(e); };
 
@@ -117,34 +121,48 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   const set = (id: string, text: string) => { const el = $(id); if (el.textContent !== text) el.textContent = text; };
   const tip = (markup: string | null) => { const el = $("tip"); el.classList.toggle("show", !!markup); if (markup && el.dataset.m !== markup) { el.dataset.m = markup; el.innerHTML = markup; } };
 
+  /** The whole battlefield from above: every lane, its shrines, towers, armies and keepers, and a frame for what the screen shows. */
   function drawMinimap(s: GameState, v: HudView): void {
-    const w = mini.clientWidth, h = mini.clientHeight, dpr = devicePixelRatio || 1;
-    if (mini.width !== Math.round(w * dpr)) { mini.width = Math.round(w * dpr); mini.height = Math.round(h * dpr); }
+    const [f0, f1] = fieldZ(s.laneCount), depth = f1 - f0;
+    const w = mini.clientWidth, want = Math.round(Math.min(190, 30 + 46 * s.laneCount)), dpr = devicePixelRatio || 1;
+    if (mini.clientHeight !== want) mini.style.height = `${want}px`;
+    const h = want;
+    if (mini.width !== Math.round(w * dpr) || mini.height !== Math.round(h * dpr)) { mini.width = Math.round(w * dpr); mini.height = Math.round(h * dpr); }
     const c = mini.getContext("2d")!;
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const X = (x: number) => (x / MAP.laneLength) * w, Y = (y: number) => 3 + (y / LANE_WIDTH) * (h - 6);
-    const col = (team: number) => TEAM[team as 0 | 1].css;
+    const X = (x: number) => (x / MAP.laneLength) * w, Z = (lane: number, y: number) => ((lane * LANE_PITCH + y / 1000 - f0) / depth) * h;
+    const col = (team: number) => TEAM[team as 0 | 1].css, me = s.players[v.me]!;
     c.fillStyle = "#0a090e"; c.fillRect(0, 0, w, h);
-    c.fillStyle = "#1b1a22"; c.fillRect(0, h * 0.3, w, h * 0.4);
-    for (const team of [0, 1] as const) {
-      const zw = MAP.zoneCols * MAP.cell;
-      c.globalAlpha = 0.22; c.fillStyle = col(team); c.fillRect(X(team === 0 ? MAP.zoneStart : MAP.laneLength - MAP.zoneStart - zw), 0, X(zw), h);
-      c.globalAlpha = 1; c.fillRect(X(hqX(team)) - 4, 2, 8, h - 4);
+    const zw = MAP.zoneCols * MAP.cell, laneH = (LANE_W / depth) * h;
+    for (let l = 0; l < s.laneCount; l++) {
+      const top = Z(l, 0);
+      c.fillStyle = l === me.lane ? "#24222e" : "#1b1a22"; c.fillRect(0, top, w, laneH);
+      for (const team of [0, 1] as const) { c.globalAlpha = 0.25; c.fillStyle = col(team); c.fillRect(X(team === 0 ? MAP.zoneStart : MAP.laneLength - MAP.zoneStart - zw), top, X(zw), laneH); }
+      c.globalAlpha = 1;
     }
+    for (const team of [0, 1] as const) { c.fillStyle = col(team); c.fillRect(X(hqX(team)) - 4, (LANE_GAP / 2 / depth) * h, 8, h - (LANE_GAP / depth) * h); }
     for (const b of s.beacons) {
       c.fillStyle = b.owner === null ? "#8a8474" : col(b.owner);
-      c.save(); c.translate(X(b.x), h / 2); c.rotate(Math.PI / 4); c.fillRect(-4.5, -4.5, 9, 9); c.restore();
+      c.save(); c.translate(X(b.x), Z(b.lane, LANE_WIDTH / 2)); c.rotate(Math.PI / 4); c.fillRect(-4, -4, 8, 8); c.restore();
     }
     for (const u of s.units) {
       c.fillStyle = col(u.team);
-      if (UNITS[u.type]!.structure) { c.fillRect(X(u.x) - 2, Y(u.y) - 3, 4, 6); c.strokeStyle = "#e2d7bc"; c.lineWidth = 1; c.strokeRect(X(u.x) - 2, Y(u.y) - 3, 4, 6); }
-      else c.fillRect(X(u.x) - 1, Y(u.y) - 1, 2.5, 2.5);
+      const x = X(u.x), z = Z(u.lane, u.y);
+      if (UNITS[u.type]!.structure) { c.fillRect(x - 2, z - 3, 4, 6); c.strokeStyle = "#e2d7bc"; c.lineWidth = 1; c.strokeRect(x - 2, z - 3, 4, 6); }
+      else c.fillRect(x - 1, z - 1, 2.5, 2.5);
+    }
+    for (const k of s.keepers) { // mine are bright, allies' dimmer
+      if (k.team !== me.team) continue;
+      c.fillStyle = k.owner === v.me ? "#8dffb0" : "#5a9a70";
+      c.beginPath(); c.arc(X(k.x), Z(k.lane, k.y), k.owner === v.me ? 3 : 2, 0, Math.PI * 2); c.fill();
     }
     c.strokeStyle = "#e2d7bc"; c.lineWidth = 1.5;
-    c.strokeRect(v.camFrac[0] * w + 0.75, 0.75, Math.max(4, (v.camFrac[1] - v.camFrac[0]) * w - 1.5), h - 1.5);
+    const [x0, x1, z0, z1] = v.camRect;
+    c.strokeRect(x0 * w + 0.75, z0 * h + 0.75, Math.max(4, (x1 - x0) * w - 1.5), Math.max(4, (z1 - z0) * h - 1.5));
   }
 
   let menuRender = 0;
+  let size: 1 | 2 | 3 = 1; // team size chosen on the title screen
   let account: UserIdentity | undefined;
   return {
     actions: act,
@@ -166,10 +184,13 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
           <dt>Study</dt><dd>You begin knowing three units. Click any other card of an open tier to study it; your scholars learn one thing at a time. The Rites (R) open the higher tiers (Tab to browse them), whose units must each be studied in turn.</dd>
           <dt>Counters</dt><dd>Every unit has its own gift and its own bane: flyers shrug off swords, fire clears swarms, lanterns unmask shades. Hover a card to read it.</dd>
           <dt>Tithe</dt><dd>Raise the tithe (E) to earn more from every shrine you hold.</dd>
+          <dt>Team games</dt><dd>In 2v2 and 3v3 every player has a lane, and all share one cathedral. Your keepers may build in any lane of your side: the Undertaker walks there, the Sexton steps through the grave (T, then click the ground or the map).</dd>
           <dt>Survey</dt><dd>Drag, scroll, use A / D or the arrow keys, or click the map strip. Space returns to your cathedral.</dd>
           <dt>Victory</dt><dd>Bring down the enemy cathedral at the far end of the lane.</dd>
         </dl></details>
+        <div class="sizes" role="group" aria-label="Team size">${([1, 2, 3] as const).map(n => `<button class="ghost size${n === size ? " on" : ""}" data-size="${n}">${n}v${n}<small>${n === 1 ? "one lane" : `${n} lanes`}</small></button>`).join("")}</div>
         <button id="startBtn">Play singleplayer</button>
+        <div class="sub fill" id="fillNote"></div>
         <div class="online"><div class="sub">Multiplayer</div>
           ${hostedAccounts && !user ? `<form id="rgbLogin" class="rgb-login" method="post" action="/auth/challenge">
             <label>Email<input name="email" type="email" autocomplete="username" maxlength="320" required></label>
@@ -183,7 +204,13 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
             <input id="olCode" maxlength="4" placeholder="Code" autocomplete="off" spellcheck="false">
             <button id="olJoin" class="ghost">Join</button></div>`}
           <div id="olMsg" role="status"></div></div></div>`;
-      $("startBtn").onclick = () => act.start();
+      $("startBtn").onclick = () => act.start(size);
+      const note = () => { $("fillNote").textContent = size === 1 ? "You against the autopilot" : `You, ${size - 1} allied ${size === 2 ? "autopilot" : "autopilots"} and ${size} against you`; };
+      root.querySelectorAll<HTMLButtonElement>(".size").forEach(b => { b.onclick = () => {
+        size = Number(b.dataset.size) as 1 | 2 | 3;
+        root.querySelectorAll(".size").forEach(o => o.classList.toggle("on", o === b)); note();
+      }; });
+      note();
       const msg = $("olMsg");
       msg.textContent = notice ?? "";
       if (hostedAccounts && !user) {
@@ -232,7 +259,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       try { if (name) name.value = localStorage.getItem("lw.name") ?? ""; } catch { /* private window */ }
       msg.textContent = notice ?? "";
       const who = () => name?.value.trim() || "Wanderer";
-      $("olHost").onclick = () => act.hostOnline(who());
+      $("olHost").onclick = () => act.hostOnline(who(), size);
       const join = () => { const c = code.value.trim().toUpperCase(); if (c.length === 4) act.joinOnline(who(), c); else { msg.textContent = "Enter the four-letter code your opponent was given."; code.focus(); } };
       $("olJoin").onclick = join;
       code.onkeydown = e => { if (e.key === "Enter") join(); };
@@ -241,8 +268,8 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
     showLobby(code: string | null, status: string): void {
       $("overlay").className = "show";
       $("overlay").innerHTML = `<div class="panel"><h1>Gravemarch</h1><div class="sub">${status}</div><div class="orn"></div>
-        ${code ? `<div class="code">${code}</div><p>Give this code to your opponent. The match begins the moment they join.</p>` : `<p>One moment.</p>`}
-        <div class="row">${code ? `<button id="olNow" class="ghost">Play the autopilot instead</button>` : ""}<button id="olCancel" class="ghost">Cancel</button></div></div>`;
+        ${code ? `<div class="code">${code}</div><p>Give this code to the other players. The match begins the moment every seat is taken.</p>` : `<p>One moment.</p>`}
+        <div class="row">${code ? `<button id="olNow" class="ghost">Begin now · the autopilot takes the empty seats</button>` : ""}<button id="olCancel" class="ghost">Cancel</button></div></div>`;
       $("olCancel").onclick = () => act.menu();
       if (code) $("olNow").onclick = () => act.startOnlineNow();
     },
@@ -269,8 +296,8 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       const waveLeft = RULES.waveIntervalTicks - (s.tick % RULES.waveIntervalTicks);
       set("waveIn", String(secs(waveLeft)));
       $("bell").style.setProperty("--p", String(100 - (waveLeft / RULES.waveIntervalTicks) * 100));
-      $("hq0").style.width = `${(s.teams[p.team].hqHp / RULES.hqHp) * 100}%`; set("hq0t", String(s.teams[p.team].hqHp));
-      $("hq1").style.width = `${(s.teams[foe].hqHp / RULES.hqHp) * 100}%`; set("hq1t", String(s.teams[foe].hqHp));
+      $("hq0").style.width = `${(s.teams[p.team].hqHp / hqMax(s)) * 100}%`; set("hq0t", String(s.teams[p.team].hqHp));
+      $("hq1").style.width = `${(s.teams[foe].hqHp / hqMax(s)) * 100}%`; set("hq1t", String(s.teams[foe].hqHp));
       const t = Math.floor(s.tick / TICK_RATE);
       set("clock", `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`);
       $("pause").classList.toggle("on", v.paused);
@@ -284,6 +311,9 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
         const slot = Number(b.dataset.keeper), k = s.keepers.find(q => q.owner === v.me && q.slot === slot);
         b.classList.toggle("sel", v.keeper === slot); b.classList.toggle("busy", !!k && k.jobs.length > 0);
         b.dataset.jobs = k && k.jobs.length ? String(k.jobs.length) : "";
+        const rest = k && KEEPERS[slot]!.teleport ? k.teleReady - s.tick : 0;
+        b.classList.toggle("armed", v.teleport && v.keeper === slot); b.classList.toggle("resting", rest > 0);
+        b.dataset.rest = rest > 0 ? `T ${secs(rest)}s` : KEEPERS[slot]!.teleport ? "T" : "";
       });
       document.querySelectorAll<HTMLButtonElement>(".tier").forEach(b => {
         const t = Number(b.dataset.tier), merc = t === MERC_TAB;
@@ -333,7 +363,8 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
 
       const b = s.buildings.find(q => q.id === v.selectedBuilding);
       const unit = hover && UNITS[hover] ? hover : !hover ? v.selectedUnit : null;
-      if (hover === "invest") tip(`<h3>Raise the tithe${tier ? `<span class="num">${tier.cost}</span>` : ""}</h3>
+      if (v.teleport && !hover) tip(`<h3>Through the grave<span class="num">T</span></h3><p>Click any ground your side holds, in any lane, here or on the map: the Sexton is there at once.</p><p class="hint">Esc or right-click to cancel. He rests ${secs(RULES.teleportCooldownTicks)} seconds afterwards, and his queued chantries are refunded.</p>`);
+      else if (hover === "invest") tip(`<h3>Raise the tithe${tier ? `<span class="num">${tier.cost}</span>` : ""}</h3>
         <p>${tier ? `Every shrine you hold pays you <b>+${tier.bonus}</b> more gold each collection. You hold ${held} of 3, so this ${payback}.` : "Your tithe is as high as it can go."}</p>
         <p class="stats">Tithe level ${level} of ${INVEST_TIERS.length} · currently +${investBonus(level)} per shrine</p>`);
       else if (hover === "research") tip(`<h3>${next ? RITE[next.tier] : "The Rites"}${next ? `<span class="num">${next.cost}</span>` : ""}</h3>
@@ -343,7 +374,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
         const slot = Number(hover.slice(6)), k = KEEPERS[slot]!, mine = s.keepers.find(q => q.owner === v.me && q.slot === slot);
         tip(`<h3>${k.name}<span class="num">${slot + 1}</span></h3><p>${k.blurb}</p>
           <p class="stats">${mine && mine.jobs.length ? `${mine.jobs.length} ${mine.jobs.length === 1 ? "chantry" : "chantries"} on order` : "Awaiting orders"}</p>
-          <p class="hint">Press ${slot + 1} or click him, choose a unit, then click your ground. Right-click sends him walking and cancels his orders.</p>`);
+          <p class="hint">Press ${slot + 1} or click him, choose a unit, then click your ground${s.laneCount > 1 ? " or an ally's" : ""}. Right-click sends him walking and cancels his orders.${KEEPERS[slot]!.teleport ? " Press T, then click, to send him anywhere on your side's ground at once." : ""}</p>`);
       } else if (unit && UNITS[unit]!.merc) {
         const d = UNITS[unit]!;
         tip(`<h3>${d.name}<span class="num">${d.cost}</span></h3><p>${d.blurb}</p>${abilityLines(unit)}<p class="stats">${statLine(unit)}</p>

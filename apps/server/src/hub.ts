@@ -64,10 +64,11 @@ export class Hub {
       if (c.lobby) return this.fail(c, "busy", "You are already in a match");
       if (this.lobbies.size >= MAX_LOBBIES) return this.fail(c, "full", "The server is full, try again shortly");
       const s = m.settings as Record<string, unknown> | undefined;
-      if (!s || s.teamSize !== 1) return this.fail(c, "unsupported", "Only 1v1 is available for now");
+      const size = s?.teamSize;
+      if (!s || (size !== 1 && size !== 2 && size !== 3)) return this.fail(c, "unsupported", "Team size must be 1, 2 or 3");
       let id = "";
       do { id = Array.from({ length: 4 }, () => CODE_CHARS[this.random(CODE_CHARS.length)]).join(""); } while (this.lobbies.has(id));
-      const lobby: Lobby = { id, settings: { teamSize: 1, aiFill: s.aiFill === true }, seats: [c, null], match: null };
+      const lobby: Lobby = { id, settings: { teamSize: size, aiFill: s.aiFill === true }, seats: [c, ...Array.from({ length: size * 2 - 1 }, () => null)], match: null };
       this.lobbies.set(id, lobby); c.lobby = lobby; c.slot = 0;
       if (lobby.settings.aiFill) this.startMatch(lobby); else this.sendLobby(lobby);
     } else if (m.t === "joinLobby") {
@@ -77,7 +78,9 @@ export class Hub {
       if (c.user.provider === "rgboner" && lobby.seats.some(seat => seat?.user?.userId === c.user?.userId)) {
         return this.fail(c, "sameAccount", "Join using a different RGBoner account");
       }
-      const slot = lobby.match ? -1 : lobby.seats.indexOf(null);
+      // Fill the two sides evenly: an opponent first, then an ally, and so on.
+      const n = lobby.settings.teamSize, order = Array.from({ length: n * 2 }, (_, i) => (i % 2 ? Math.floor(i / 2) + n : i / 2));
+      const slot = lobby.match ? -1 : order.find(i => lobby.seats[i] === null) ?? -1;
       if (slot < 0) return this.fail(c, "full", "That match has already begun");
       lobby.seats[slot] = c; c.lobby = lobby; c.slot = slot;
       if (lobby.seats.every(Boolean)) this.startMatch(lobby); else this.sendLobby(lobby);

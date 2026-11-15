@@ -6,7 +6,7 @@ import type { Command, GameConfig, TimedCommand } from "@lw/sim";
  * player's Commands and hands back the ticks the server applied, for the local sim to replay.
  */
 export interface NetHandlers {
-  lobby(code: string): void;                                   // waiting for an opponent
+  lobby(code: string, seated: number, seats: number): void;                                   // waiting for an opponent
   start(config: GameConfig, slot: number, names: string[]): void;
   tick(tick: number, cmds: TimedCommand[]): void;
   left(slot: number): void;
@@ -44,7 +44,7 @@ export class Net {
       let m: ServerMsg;
       try { m = JSON.parse(String(e.data)) as ServerMsg; } catch { return; }
       if (m.t === "welcome") this.send(first);
-      else if (m.t === "lobby") on.lobby(m.lobbyId);
+      else if (m.t === "lobby") on.lobby(m.lobbyId, m.slots.filter(Boolean).length, m.slots.length);
       else if (m.t === "gameStart") on.start(m.config, m.yourSlot, m.names);
       else if (m.t === "tick") on.tick(m.tick, m.cmds);
       else if (m.t === "playerLeft") on.left(m.slot);

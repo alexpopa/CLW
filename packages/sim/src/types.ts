@@ -47,22 +47,24 @@ export interface KeeperState {
   lane: number; x: number; y: number;           // where it stands
   tlane: number; tx: number; ty: number;        // where it was told to go (used when it has no job)
   jobs: KeeperJob[];                            // build orders, first is current
+  teleReady: number;                            // tick from which it may teleport again (the Sexton only)
 }
 export interface BeaconState { id: number; lane: number; x: number; owner: TeamId | null }
 export interface TeamState { hqHp: number; hqCooldown: number }
 
-/** Transient per-tick events for presentation (effects, sounds). Replaced on every step(). */
+/** Transient per-tick events for presentation (effects, sounds). Replaced on every step(). Positions are within `lane`. */
 export type SimEvent =
-  | { t: "shot"; id: number; unit: string; team: TeamId; to: number; x1: number; y1: number; x2: number; y2: number } // unit "hq" (id 0) = headquarters; to = struck unit id, 0 = cathedral
-  | { t: "arc"; team: TeamId; from: number; to: number; x1: number; y1: number; x2: number; y2: number }   // one leap of chain lightning
-  | { t: "raise"; team: TeamId; x: number; y: number }
-  | { t: "heal"; id: number; team: TeamId; x1: number; y1: number; x2: number; y2: number }
-  | { t: "death"; unit: string; team: TeamId; x: number; y: number }
+  | { t: "shot"; id: number; unit: string; team: TeamId; to: number; lane: number; x1: number; y1: number; x2: number; y2: number } // unit "hq" (id 0) = headquarters; to = struck unit id, 0 = cathedral
+  | { t: "arc"; team: TeamId; from: number; to: number; lane: number; x1: number; y1: number; x2: number; y2: number }   // one leap of chain lightning
+  | { t: "raise"; team: TeamId; lane: number; x: number; y: number }
+  | { t: "heal"; id: number; team: TeamId; lane: number; x1: number; y1: number; x2: number; y2: number }
+  | { t: "death"; unit: string; team: TeamId; lane: number; x: number; y: number }
   | { t: "capture"; beacon: number; team: TeamId }
   | { t: "wave" }
   | { t: "built"; player: PlayerId; slot: 0 | 1; unit: string; lane: number; x: number; y: number }
+  | { t: "teleport"; player: PlayerId; slot: 0 | 1; fromLane: number; fromX: number; fromY: number; lane: number; x: number; y: number }
   | { t: "hired"; player: PlayerId; unit: string }
-  | { t: "leave"; unit: string; team: TeamId; x: number; y: number }   // a mercenary's contract ends
+  | { t: "leave"; unit: string; team: TeamId; lane: number; x: number; y: number }   // a mercenary's contract ends
   | { t: "researched"; player: PlayerId; tier: number; unit: string | null };
 
 export interface GameState {
@@ -85,6 +87,7 @@ export interface GameState {
 export type Command =
   | { type: "build"; keeper: 0 | 1; unit: string; col: number; row: number; lane?: number } // queue a chantry for that keeper to raise
   | { type: "move"; keeper: 0 | 1; x: number; y: number; lane?: number }                    // walk there (drops its queue, refunded)
+  | { type: "teleport"; keeper: 0 | 1; x: number; y: number; lane?: number }                // the Sexton steps through the grave to any of his team's ground (drops his queue, refunded)
   | { type: "hire"; unit: string }                                                          // a mercenary band, through the Undertaker
   | { type: "sell"; buildingId: number }
   | { type: "invest"; lane?: number }
@@ -92,4 +95,5 @@ export type Command =
 
 export interface TimedCommand { player: PlayerId; cmd: Command }
 
+/** `lanes` defaults to one lane per player of a team. */
 export interface GameConfig { teamSize: 1 | 2 | 3; seed: number; lanes?: number; aiSlots?: PlayerId[] }

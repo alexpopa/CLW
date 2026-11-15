@@ -33,12 +33,12 @@ Chantries are raised by the player's two gravekeepers, who walk the building gro
 
 | Key | Keeper | Raises | Also |
 |---|---|---|---|
-| 1 | **Sexton** | Tiers I, II, III | |
+| 1 | **Sexton** | Tiers I, II, III | Teleports (T): at once to any ground of his side, in any lane; 8 s rest; cancels and refunds his queue |
 | 2 | **Undertaker** | Tiers I, II, III and IV | Hires mercenaries |
 
 Select a keeper (1 or 2, or click him), pick a card, click the ground. Gold is paid on the order; he walks there (9 lane units a second) and the chantry stands at once. Up to eight orders queue per keeper. A move order (right-click, or left-click with no unit chosen) cancels his queue and refunds it. The build menu is only shown while a keeper is selected, and tier IV and the mercenaries only appear in the Undertaker's menu. Card keys are 3 4 5 6 7 8 9 0.
 
-Keepers are written for team games: every order carries a lane, and a keeper may walk to any lane of his own team's ground, so in 2v2 and 3v3 a player will be able to build in an ally's lane.
+Keepers work across lanes: every order carries a lane, and a keeper may stand on any lane of his own team's ground. In 2v2 and 3v3 a player can therefore build in an ally's lane (the chantry is his, and musters into that lane). The Undertaker walks there through the gates between building grounds; the Sexton teleports. Mercenaries appear in whichever lane the Undertaker is standing in.
 
 ## The roster
 
@@ -191,6 +191,7 @@ The harness found and fixed several things that playing by hand would have taken
 
 - **A first-strike bias in the rules.** Units used to move one after another within a tick, so a unit later in the list saw its enemy already stepped into range and fired a tick earlier. In a mirrored fight one side won every time. Movement is now applied after every unit has decided. Three smaller asymmetries (pack spawn positions, burn timing, which Necromancer claims a corpse) were fixed the same way. A mirrored match now stays mirrored to the last tick.
 - **The Trebuchet** was by far the best unit for its gold. Its damage, area and rate of fire were cut and it gained a minimum range; what it keeps is reach beyond a tower's.
+- **Units that stood a hair out of reach.** A unit walking up to a stationary target could stop a fraction of a unit short because of integer rounding, and then never attack. It mostly hurt melee units, and made armies of them look weaker than they are. Units now step slightly inside their reach, and every cost was re-tuned afterwards.
 - **Fast units are worse than they look.** Hounds, cavalry, Shades and flyers outrun their army and meet the enemy alone. They were slowed toward the army's pace and made cheaper.
 - **Flyers** won every clash against armies without anti-air but lost most lane matches, because towers shoot upward. They were made much cheaper rather than tougher, to keep them a counter-pick.
 - **Support units** are only worth a fraction of an army; the Plague Doctor and the Reliquary were priced for that.
@@ -198,43 +199,13 @@ The harness found and fixed several things that playing by hand would have taken
 
 ### Where the numbers stand
 
-Measured with the tools above at the costs in the tables.
+The costs in the tables above come from the latest lane tuning pass, run after a rules fix that changed melee combat (units could stop a hair short of their target and never strike; see "What the testing changed"). In that pass, on the lane, most tier I to III units scored within about 15 points of even after three rounds; the Plague Doctor and the Reliquary were still weak and were strengthened rather than made cheaper, and the flyers and the Crimson Countess were still somewhat strong and were made dearer.
 
-**Massed clash, 3,300 gold each** (`npm run balance`): average margin against the other 19 fighting units, and each unit's worst matchup.
+In massed equal-gold clashes (`npm run balance`) every tier I to III unit averages between −33 and +31 against the rest, except the Necromancer (−58), which is priced for fighting behind a line. Every unit, tier IV included, loses clearly to something: the Belfry Titan and the Pale Rider to flyers and to the Hexbinder, the Ashen Seraph to the Witch Hunter and the Impaler, the Hellmouth to anything fast.
 
-| Unit | Average | Worst matchup | | Unit | Average | Worst matchup |
-|---|---:|---|---|---|---:|---|
-| Arbalester | −18 | Grave Hounds | | Necromancer | −51 | Crimson Countess |
-| Oathguard | −23 | Gargoyle | | Trebuchet | −25 | Gargoyle |
-| Pyre Zealot | +2 | Gargoyle | | Shade | +4 | Headsman |
-| Grave Hounds | +37 | Crimson Countess | | Bone Colossus | +19 | Ash Wyrm |
-| Flagellant | +25 | Gargoyle | | Ash Wyrm | +45 | Hexbinder |
-| Hexbinder | +3 | Grave Hounds | | Tempest Cantor | −40 | Grave Hounds |
-| Dreadknight | +24 | Grave Hounds | | Crimson Countess | +15 | Arbalester |
-| Gargoyle | +42 | Ash Wyrm | | Impaler | −44 | Crimson Countess |
-| Witch Hunter | −14 | Grave Hounds | | Pale Lich | −4 | Crimson Countess |
-| Iron Penitent | −1 | Gargoyle | | Headsman | +6 | Gargoyle |
+Tier IV and the mercenaries are priced by hand. They have been checked for having counters, not tuned on the lane, and nothing here has been tuned for 2v2 or 3v3. Run the three balance commands for current figures rather than trusting numbers written down here.
 
-Every unit has clear losing matchups, including the tier III units against tier I answers. The spread is deliberate and comes from pricing units for the lane rather than for a massed duel: melee units and flyers look strong when 3,300 gold of them meets 3,300 gold of archers in the open, and ranged casters and engines look weak, but on the lane the casters stand behind a front line and the fast units arrive piecemeal under tower fire.
-
-**Lane, three army sizes, eight minutes** (`npm run balance:lane`): each unit's average score against the other 21, where the unit takes its natural place in a plain army (a front-line unit with Arbalesters behind it, a ranged unit behind Oathguards, a support unit as a fifth of an Oathguard-and-Arbalester army). The score is the share of the enemy's towers and cathedral destroyed minus the share lost, so 0 is even and ±100 is a rout.
-
-| Unit | Lane | | Unit | Lane | | Unit | Lane |
-|---|---:|---|---|---:|---|---|---:|
-| Arbalester | −8 | | Dreadknight | +5 | | Bone Colossus | +28 |
-| Oathguard | −8 | | Gargoyle | −9 | | Ash Wyrm | +8 |
-| Pyre Zealot | −2 | | Witch Hunter | +27 | | Tempest Cantor | +6 |
-| Grave Hounds | −2 | | Iron Penitent | +4 | | Reliquary | −26 |
-| Flagellant | −3 | | Necromancer | +4 | | Crimson Countess | +3 |
-| Hexbinder | −12 | | Trebuchet | −19 | | Impaler | +3 |
-| Plague Doctor | −18 | | Shade | +11 | | Pale Lich | +5 |
-| | | | | | | Headsman | +5 |
-
-Seventeen of the 22 units are within 12 points of even. The five outside it are the open items: the Witch Hunter and the Bone Colossus are somewhat too good for their gold on the lane, and the Trebuchet, the Plague Doctor and the Reliquary somewhat too poor. One measurement of this kind moves by 10 to 20 points between runs, so these are leads, not verdicts.
-
-**Whole matches** (`npm run balance:ai`, 24 seeds): every match ended with a winner, in 16 to 30 minutes, and the two sides won about equally often (11 and 13). Both sides reached tier II in every match and tier III in nearly all.
-
-Which AI profile wins is **not** settled. Across tuning passes the win rates of the four profiles swung from one extreme to the other after changes of a few percent to single units. The cause is the test, not only the units: the sim has no randomness, so 24 seeds are really six pairings played over and over, and each is decided by an early engagement that then snowballs. Treat profile win rates as a smoke test. In the final run *siege line* won 9 of 9 and *host of the dead* 8 of 10, while *hunt and sky* won 0 of 7 and *blood court* 1 of 10. The profile built around melee specialists (*blood court*) lost most of its matches in every pass, which is consistent with the clash results for mixed armies: an army that is mostly melee specialists loses to a front line with ranged damage behind it. That is the first thing to look at with human playtests.
+Whole-match results between the four AI profiles are a smoke test only: the sim has no randomness, so a set of seeds is a handful of pairings replayed, each decided by an early engagement that snowballs, and the profile win rates swung from one extreme to the other between tuning passes.
 
 ### Known limits
 

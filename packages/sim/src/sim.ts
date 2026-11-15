@@ -29,6 +29,8 @@ export function keeperGround(team: TeamId, x: number, y: number): { x: number; y
   const lo = MAP.zoneStart, hi = MAP.zoneStart + MAP.zoneCols * MAP.cell, local = Math.max(lo, Math.min(hi, team === 0 ? x : MAP.laneLength - x));
   return { x: team === 0 ? local : MAP.laneLength - local, y: Math.max(500, Math.min(LANE_WIDTH - 500, y)) };
 }
+/** Full health of a cathedral in this match. */
+export const hqMax = (s: GameState): number => RULES.hqHp * s.laneCount;
 export const keeperOf = (s: GameState, player: PlayerId, slot: number): KeeperState | undefined => s.keepers.find(k => k.owner === player && k.slot === slot);
 /** Distance of the base towers from their team's own lane end. */
 export const baseTowerLocalX = (): number => MAP.zoneStart + MAP.zoneCols * MAP.cell + MAP.baseTowerAhead;
@@ -88,7 +90,7 @@ export function sellRefund(unit: string, produced: boolean): number {
 
 export function createGame(cfg: GameConfig): GameState {
   const n = cfg.teamSize;
-  const laneCount = cfg.lanes ?? 1;
+  const laneCount = cfg.lanes ?? n;
   const s: GameState = {
     tick: 0, rngState: cfg.seed >>> 0, nextId: 1, teamSize: n, laneCount,
     players: Array.from({ length: n * 2 }, (_, i) => ({
@@ -97,13 +99,13 @@ export function createGame(cfg: GameConfig): GameState {
       invest: Array.from({ length: laneCount }, () => 0),
       isAI: cfg.aiSlots?.includes(i) ?? false,
     })),
-    teams: [{ hqHp: RULES.hqHp, hqCooldown: 0 }, { hqHp: RULES.hqHp, hqCooldown: 0 }],
+    teams: [{ hqHp: RULES.hqHp * laneCount, hqCooldown: 0 }, { hqHp: RULES.hqHp * laneCount, hqCooldown: 0 }],
     beacons: [], buildings: [], keepers: [], units: [], events: [], winner: null,
   };
   // Two gravekeepers per player wait near the rear of their own building ground.
   for (const p of s.players) for (const slot of [0, 1] as const) {
     const at = keeperGround(p.team, p.team === 0 ? MAP.zoneStart + 4 * MAP.cell : MAP.laneLength - MAP.zoneStart - 4 * MAP.cell, LANE_WIDTH / 2 + (slot ? 3 : -3) * MAP.cell);
-    s.keepers.push({ owner: p.id, team: p.team, slot, lane: p.lane, ...at, tlane: p.lane, tx: at.x, ty: at.y, jobs: [] });
+    s.keepers.push({ owner: p.id, team: p.team, slot, lane: p.lane, ...at, tlane: p.lane, tx: at.x, ty: at.y, jobs: [], teleReady: 0 });
   }
   const lastB = MAP.beaconX.length - 1;
   for (let lane = 0; lane < laneCount; lane++) {
@@ -131,6 +133,7 @@ export function parseCommand(raw: unknown): Command | null {
   const keeper = r.keeper === 0 || r.keeper === 1 ? r.keeper : null;
   if (r.type === "build") return keeper !== null && typeof r.unit === "string" && Object.hasOwn(UNITS, r.unit) && int(r.col) && int(r.row) ? { type: "build", keeper, unit: r.unit, col: r.col, row: r.row, ...lane } : null;
   if (r.type === "move") return keeper !== null && int(r.x) && int(r.y) ? { type: "move", keeper, x: r.x, y: r.y, ...lane } : null;
+  if (r.type === "teleport") return keeper !== null && int(r.x) && int(r.y) ? { type: "teleport", keeper, x: r.x, y: r.y, ...lane } : null;
   if (r.type === "hire") return typeof r.unit === "string" && Object.hasOwn(UNITS, r.unit) ? { type: "hire", unit: r.unit } : null;
   if (r.type === "sell") return int(r.buildingId) ? { type: "sell", buildingId: r.buildingId } : null;
   if (r.type === "invest") return { type: "invest", ...lane };
@@ -160,6 +163,15 @@ function applyCommand(s: GameState, player: PlayerId, c: Command): void {
     k.jobs = [];
     const at = keeperGround(k.team, c.x, c.y);
     k.tlane = lane; k.tx = at.x; k.ty = at.y;
+  } else if (c.type === "teleport") {
+    const lane = c.lane ?? me.lane, k = keeperOf(s, player, c.keeper);
+    if (!k || !KEEPERS[k.slot].teleport || s.tick < k.teleReady || !Number.isInteger(lane) || lane < 0 || lane >= s.laneCount) return;
+    for (const j of k.jobs) me.credits += UNITS[j.unit]!.cost;
+    k.jobs = [];
+    const at = keeperGround(k.team, c.x, c.y);
+    s.events.push({ t: "teleport", player, slot: k.slot, fromLane: k.lane, fromX: k.x, fromY: k.y, lane, ...at });
+    k.lane = k.tlane = lane; k.x = k.tx = at.x; k.y = k.ty = at.y;
+    k.teleReady = s.tick + RULES.teleportCooldownTicks;
   } else if (c.type === "hire") {
     if (!isMerc(c.unit) || s.tick < me.mercReady) return;
     const def = UNITS[c.unit]!, k = s.keepers.find(q => q.owner === player && KEEPERS[q.slot].mercs);
@@ -269,7 +281,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
       base += Math.trunc((base * def.ramp.pct * u.ramp) / 100);
     }
     u.lastHit = target.id;
-    s.events.push({ t: "shot", id: u.id, unit: u.type, team: u.team, to: target.id, x1: u.x, y1: u.y, x2: target.x, y2: target.y });
+    s.events.push({ t: "shot", id: u.id, unit: u.type, team: u.team, to: target.id, lane: u.lane, x1: u.x, y1: u.y, x2: target.x, y2: target.y });
     if (def.line) {
       // Everything within `width` of the segment that starts at the attacker and runs `length` through the target.
       const dx = target.x - u.x, dy = target.y - u.y, len = Math.max(1, dist(u.x, u.y, target.x, target.y));
@@ -295,7 +307,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
         }
         if (!next) break;
         hit(u, def, next, force);
-        s.events.push({ t: "arc", team: u.team, from: from.id, to: next.id, x1: from.x, y1: from.y, x2: next.x, y2: next.y });
+        s.events.push({ t: "arc", team: u.team, from: from.id, to: next.id, lane: u.lane, x1: from.x, y1: from.y, x2: next.x, y2: next.y });
         struck.add(next); from = next;
       }
     }
@@ -360,7 +372,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
         else if (u.cooldown === 0) {
           change(patient, def.heal);
           rearm();
-          s.events.push({ t: "heal", id: u.id, team: u.team, x1: u.x, y1: u.y, x2: patient.x, y2: patient.y });
+          s.events.push({ t: "heal", id: u.id, team: u.team, lane: u.lane, x1: u.x, y1: u.y, x2: patient.x, y2: patient.y });
         }
       } else if (threatD > RULES.healerHoldRange && Math.abs(u.x - hqX(enemyTeam)) > RULES.healerHoldRange) advance();
       continue;
@@ -387,7 +399,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
           rearm();
           const dmg = def.damage + Math.trunc((def.damage * (def.bonus?.structure ?? 0)) / 100);
           hqDamage[enemyTeam] += dmg * (overtime ? RULES.overtimeHqDamageMult : 1);
-          s.events.push({ t: "shot", id: u.id, unit: u.type, team: u.team, to: 0, x1: u.x, y1: u.y, x2: hx, y2: u.y });
+          s.events.push({ t: "shot", id: u.id, unit: u.type, team: u.team, to: 0, lane: u.lane, x1: u.x, y1: u.y, x2: hx, y2: u.y });
         }
       } else advance();
     }
@@ -399,7 +411,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
   const half = MAP.laneLength / 2;
   s.units = s.units.filter(u => {
     if (!UNITS[u.type]!.merc || (u.team === 0 ? u.x < half : u.x > half)) return true;
-    s.events.push({ t: "leave", unit: u.type, team: u.team, x: u.x, y: u.y });
+    s.events.push({ t: "leave", unit: u.type, team: u.team, lane: u.lane, x: u.x, y: u.y });
     delta.delete(u);
     return false;
   });
@@ -459,7 +471,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
     if (best) {
       change(best, -Math.max(1, RULES.hqDamage - UNITS[best.type]!.armor));
       hq.hqCooldown = RULES.hqInterval;
-      s.events.push({ t: "shot", id: 0, unit: "hq", team, to: best.id, x1: hx, y1: LANE_WIDTH / 2, x2: best.x, y2: best.y });
+      s.events.push({ t: "shot", id: 0, unit: "hq", team, to: best.id, lane: best.lane, x1: hx, y1: LANE_WIDTH / 2, x2: best.x, y2: best.y });
     }
   }
 
@@ -470,7 +482,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
     s.units = s.units.filter(u => u.hp > 0 || (dead.push(u), false));
     for (const u of dead) {
       const def = UNITS[u.type]!;
-      s.events.push({ t: "death", unit: u.type, team: u.team, x: u.x, y: u.y });
+      s.events.push({ t: "death", unit: u.type, team: u.team, lane: u.lane, x: u.x, y: u.y });
       if (def.spawnOnDeath) for (let i = 0; i < def.spawnOnDeath.count; i++) {
         const [ox, oy] = SCATTER[i % SCATTER.length]!;
         addUnit(s, def.spawnOnDeath.unit, u.owner, u.team, u.lane, u.x + (u.team === 0 ? ox : -ox), Math.max(500, Math.min(LANE_WIDTH - 500, u.y + oy)));
@@ -495,7 +507,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
       const raise = UNITS[by.type]!.raise!;
       risen.add(corpse); by.abilityCd = raise.cooldown;
       addUnit(s, raise.unit, by.owner, by.team, corpse.lane, corpse.x, corpse.y);
-      s.events.push({ t: "raise", team: by.team, x: corpse.x, y: corpse.y });
+      s.events.push({ t: "raise", team: by.team, lane: corpse.lane, x: corpse.x, y: corpse.y });
     }
   }
   if (overtime && s.tick % TICK_RATE === 0) // sudden death: the cathedrals crumble, faster for whoever holds less ground

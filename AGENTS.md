@@ -3,10 +3,10 @@
 This repo is agent-agnostic. No tool-specific config is required. Read this first, then `docs/`.
 
 ## What this is
-A browser-based "line wars" RTS (inspired by the genre; Colonial Line Wars is the reference for *feel*). Players earn income, place production buildings that send a unit every wave, fight over shrines for income, and win by destroying the enemy cathedral. Horizontal scrolling map. 1v1 today; 2v2 / 3v3 planned, simple AI to fill slots.
+A browser-based "line wars" RTS (inspired by the genre; Colonial Line Wars is the reference for *feel*). Players earn income, place production buildings that send a unit every wave, fight over shrines for income, and win by destroying the enemy cathedral. Parallel lanes on a scrolling map: 1v1, 2v2 or 3v3 with one lane per player of a team, a simple AI to fill empty seats.
 **Legal:** original names, art, sounds and stats only. Never copy Blizzard/StarCraft assets, names, text or data.
 
-Read the [Colonial Line Wars research and recreation specification](docs/COLONIAL_LINE_WARS.md) for the original-game overview and the phased recreation plan. [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md) describes what is implemented today (one lane, 1v1 vs AI or online, production buildings raised by two gravekeepers, recurring waves, four researched unit tiers, hired mercenaries). [docs/UNITS.md](docs/UNITS.md) lists every unit, its ability and its counters, and explains how balance is measured: read it before changing any unit, and re-run the balance scripts after.
+Read the [Colonial Line Wars research and recreation specification](docs/COLONIAL_LINE_WARS.md) for the original-game overview and the phased recreation plan. [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md) describes what is implemented today (1v1 to 3v3 vs AI or online, one lane per player, production buildings raised by two gravekeepers, recurring waves, four researched unit tiers, hired mercenaries). [docs/UNITS.md](docs/UNITS.md) lists every unit, its ability and its counters, and explains how balance is measured: read it before changing any unit, and re-run the balance scripts after.
 
 **Art direction (owner decision):** gothic dark fantasy, 3D presentation with an elevated RTS camera, an elegant full-screen UI, and sound. All models, textures and audio are original and generated in code (`apps/client/src/models.ts`, `textures.ts`, `audio.ts`). Do not add placeholder shapes, downloaded asset packs, or anything that imitates another game's look.
 
@@ -39,7 +39,7 @@ npm run balance:ai   # whole autopilot-vs-autopilot matches, win rate per AI pro
 5. **Server is authoritative** for multiplayer. Never trust client-reported state.
 6. Secrets only via env (`.env.example` documents them). Never commit `.env`.
 7. Keep changes small, typed, and covered by tests where the sim is touched.
-8. **Design for team games now (owner decision).** 2v2 and 3v3 on three lanes are coming, and gravekeepers will walk to allies' lanes to build there. Anything new that stands, moves or is ordered somewhere carries a lane, and every command that places or sends something takes one; never assume a single lane or that a player only acts in his own.
+8. **Everything is lane-aware (owner decision).** Matches have one to three lanes, and gravekeepers build in allies' lanes. Anything new that stands, moves or is ordered somewhere carries a lane, and every command that places or sends something takes one; never assume a single lane or that a player only acts in his own.
 
 ## Layout
 ```

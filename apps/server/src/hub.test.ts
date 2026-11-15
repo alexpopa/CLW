@@ -84,7 +84,7 @@ describe("match server", () => {
 
     await a.say({ t: "hello", sessionToken: "guest:   " });
     expect(a.last("welcome")!.user.displayName).toBe("Wanderer");
-    await a.say({ t: "createLobby", settings: { teamSize: 3, aiFill: true } });
+    await a.say({ t: "createLobby", settings: { teamSize: 4, aiFill: true } });
     expect(a.last("error")!.code).toBe("unsupported");
     await a.say({ t: "joinLobby", lobbyId: "ZZZZ" });
     expect(a.last("error")!.code).toBe("notFound");
@@ -94,5 +94,33 @@ describe("match server", () => {
     for (const junk of [null, 7, "x", {}, { t: "cmd" }, { t: "cmd", cmd: { type: "win" } }]) await a.say(junk);
     run(10);
     expect(a.game.tick).toBe(10);
+  });
+
+  it("2v2 and 3v3: seats fill side by side, the match starts when all are taken or the host begins with autopilots", async () => {
+    const { hub, run } = setup();
+    const [a, b, c, d] = [player(hub), player(hub), player(hub), player(hub)];
+    for (const [p, name] of [[a, "Ann"], [b, "Bo"], [c, "Cy"], [d, "Di"]] as const) await p.say({ t: "hello", sessionToken: `guest:${name}` });
+    await a.say({ t: "createLobby", settings: { teamSize: 2, aiFill: false } });
+    const code = a.last("lobby")!.lobbyId;
+    expect(a.last("lobby")!.slots.length).toBe(4);
+    await b.say({ t: "joinLobby", lobbyId: code });
+    await c.say({ t: "joinLobby", lobbyId: code });
+    expect([b.last("lobby")!.yourSlot, c.last("lobby")!.yourSlot]).toEqual([2, 1]); // an opponent first, then an ally
+    expect(a.last("gameStart")).toBeUndefined();
+    await d.say({ t: "joinLobby", lobbyId: code });
+    expect(d.last("gameStart")).toMatchObject({ yourSlot: 3, names: ["Ann", "Cy", "Bo", "Di"] });
+    expect(a.game.laneCount).toBe(2);
+    // an ally builds in the host's lane
+    await c.say({ t: "cmd", cmd: { type: "build", keeper: 0, unit: "arbalester", col: 4, row: 4, lane: 0 } });
+    run(6 * TICK_RATE);
+    expect(a.game.buildings.find(q => q.owner === 1)).toMatchObject({ lane: 0, team: 0 });
+    expect(JSON.stringify(a.game)).toBe(JSON.stringify(d.game));
+
+    const solo = player(hub);
+    await solo.say({ t: "hello", sessionToken: "guest:Eve" });
+    await solo.say({ t: "createLobby", settings: { teamSize: 3, aiFill: false } });
+    await solo.say({ t: "start" });
+    expect(solo.last("gameStart")!.config).toMatchObject({ teamSize: 3, aiSlots: [1, 2, 3, 4, 5] });
+    expect(solo.game.laneCount).toBe(3);
   });
 });
