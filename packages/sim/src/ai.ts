@@ -1,5 +1,5 @@
-import { AI, INVEST_TIERS, MAP, UNITS, UNIT_ORDER } from "./data";
-import { beaconsHeld, canBuild, hqX, isUnlocked, researchOffer } from "./sim";
+import { AI, INVEST_TIERS, KEEPERS, MAP, MERC_ORDER, UNITS, UNIT_ORDER } from "./data";
+import { beaconsHeld, canPlan, hqX, isUnlocked, researchOffer } from "./sim";
 import type { Command, GameState, PlayerId } from "./types";
 
 const F = MAP.footprint;
@@ -20,7 +20,7 @@ export function pickCell(s: GameState, me: PlayerId, unit: string): { col: numbe
   const cols = Array.from({ length: SLOT_COLS }, (_, i) => i).sort((a, b) => Math.abs(a - start) - Math.abs(b - start) || b - a);
   for (const c of cols) for (const r of ROWS_CENTER_OUT) {
     const col = c * F, row = r * F + (c % 2);
-    if (canBuild(s, p.team, p.lane, col, row)) return { col, row };
+    if (canPlan(s, p.team, p.lane, col, row)) return { col, row };
   }
   return null;
 }
@@ -34,17 +34,22 @@ export function aiProfile(s: GameState, me: PlayerId): number {
 
 /**
  * Autopilot AI. Stateless: decides from the game state alone, plays by the same rules as a human.
- * Priorities: defend when threatened → answer enemy flyers → research the next step of its profile once
+ * It gives its two gravekeepers one order at a time (the Undertaker for tier IV, otherwise whichever is idle).
+ * Priorities: defend when threatened (hiring mercenaries if it can) → answer enemy flyers → research the next step of its profile once
  * established → invest when holding beacons → otherwise keep adding production toward its profile's army mix.
  */
 export function simpleAI(s: GameState, me: PlayerId): Command[] {
   const p = s.players[me]!;
   if (s.tick % AI.thinkTicks !== (me * 7) % AI.thinkTicks) return [];
-  const mine = s.buildings.filter(b => b.owner === me);
+  const keepers = s.keepers.filter(k => k.owner === me), queued = keepers.flatMap(k => k.jobs);
+  // What it owns or has already ordered counts the same when deciding what to add next.
+  const mine = [...s.buildings.filter(b => b.owner === me), ...queued];
   const profile = AI.profiles[aiProfile(s, me)]!;
   const build = (unit: string): Command[] => {
+    const keeper = keepers.filter(k => UNITS[unit]!.tier <= KEEPERS[k.slot].maxTier).sort((a, b) => a.jobs.length - b.jobs.length || a.slot - b.slot)[0];
+    if (!keeper || keeper.jobs.length > 0) return []; // one order at a time each
     const cell = pickCell(s, me, unit);
-    return cell && p.credits >= UNITS[unit]!.cost ? [{ type: "build", unit, ...cell }] : [];
+    return cell && p.credits >= UNITS[unit]!.cost ? [{ type: "build", keeper: keeper.slot, unit, ...cell }] : [];
   };
 
   // Next unit: the unlocked type furthest below its share in the profile.
@@ -66,6 +71,10 @@ export function simpleAI(s: GameState, me: PlayerId): Command[] {
   const myHq = hqX(p.team);
   const threatLine = Math.abs(MAP.beaconX[0]! - MAP.hqOffset);
   const threatened = s.units.some(u => u.team !== p.team && u.lane === p.lane && Math.abs(u.x - myHq) < threatLine);
+  if (threatened && s.tick >= p.mercReady) { // buy time: the dearest band it can pay for and still add a chantry
+    const band = [...MERC_ORDER].reverse().find(id => p.credits >= UNITS[id]!.cost + AI.mercReserve);
+    if (band) return [{ type: "hire", unit: band }];
+  }
   if (!threatened) {
     // Research: the first step of the profile's order that is still to do.
     const done = p.unlocked.length - UNIT_ORDER.filter(id => UNITS[id]!.free).length + (p.tier - 1);

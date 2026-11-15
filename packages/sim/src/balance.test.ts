@@ -11,6 +11,8 @@ const mass = (id: string): Army => massOf(id, GOLD);
 /** Margin of `a` over `b` for the same gold: +1 = a untouched and b wiped out. */
 const duel = (a: string, b: string): number => clash(mass(a), mass(b)).margin;
 const fighters = UNIT_ORDER.filter(id => UNITS[id]!.damage > 0);
+/** Tiers I to III are tuned against each other; tier IV is meant to be the strongest and is only checked for fairness and for having answers. */
+const tuned = fighters.filter(id => UNITS[id]!.tier <= 3);
 const arena = () => { const s = createGame({ teamSize: 1, seed: 1 }); s.units = []; return s; };
 
 describe("fairness", () => {
@@ -63,9 +65,9 @@ describe("counters (equal gold)", () => {
   it("elite units lose to their counters for the same gold", () => { beats("gargoyle", "colossus"); beats("arbalester", "countess"); beats("witchhunter", "wyrm"); });
 
   it("no unit beats everything, and every unit beats something", () => {
-    for (const a of fighters) {
+    for (const a of tuned) {
       let wins = 0, losses = 0;
-      for (const b of fighters) { if (a === b) continue; const m = duel(a, b); if (m > 0.15) wins++; if (m < -0.15) losses++; }
+      for (const b of tuned) { if (a === b) continue; const m = duel(a, b); if (m > 0.15) wins++; if (m < -0.15) losses++; }
       expect(wins, `${a} wins`).toBeGreaterThanOrEqual(1); // casters priced for fighting behind a line win few duels massed alone
       expect(losses, `${a} losses`).toBeGreaterThanOrEqual(3);
     }
@@ -283,7 +285,7 @@ describe("abilities", () => {
     expect(UNITS.colossus!.hp - b.hp).toBeGreaterThan((UNITS.colossus!.hp - a.hp) * 1.5);
     const g = arena();
     g.players[0]!.unlocked.push("hound"); g.players[0]!.credits = 1000;
-    step(g, [{ player: 0, cmd: { type: "build", unit: "hound", col: 4, row: 4 } }]);
+    step(g, [{ player: 0, cmd: { type: "build", keeper: 0, unit: "hound", col: 4, row: 4 } }]);
     run(g, 600);
     expect(g.units.filter(u => u.type === "hound").length).toBe(2);
   });

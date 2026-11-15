@@ -3,7 +3,7 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { LANE_WIDTH, MAP, RULES, UNITS, UNIT_ORDER, canBuild, cellCenter, hqX } from "@lw/sim";
+import { KEEPERS, LANE_WIDTH, MAP, MERC_ORDER, RULES, UNITS, UNIT_ORDER, canPlan, cellCenter, hqX } from "@lw/sim";
 import type { GameState, SimEvent, TeamId } from "@lw/sim";
 import { PAL, TEAM, box, cathedralModel, chantryModel, cloisterModel, fenceModel, graveyardModel, merge, precinctModel, shrineModel, unitModel, wholeModel } from "./models";
 import type { Gait, ModelDef, Part } from "./models";
@@ -17,9 +17,15 @@ const NEUTRAL = 0x8a90a6, UNIT_SCALE = 0.8, BUILDING_SCALE = 0.6;
 const SHRINE_Z = [-1.8, LANE_W + 1.8]; // shrines flank the lane instead of standing in it
 const FOOT = W(MAP.footprint * MAP.cell); // side of a building's footprint
 /** Soldiers are drawn at UNIT_SCALE; structures are modelled at world size. */
-const scaleOf = (type: string): number => (UNITS[type]?.structure ? 1 : UNIT_SCALE);
+const scaleOf = (type: string): number => (UNITS[type]?.structure ? 1 : UNITS[type] ? UNIT_SCALE : KEEPER_SCALE);
 
+/** Every model the HUD shows a portrait of. */
+export const PORTRAITS = [...UNIT_ORDER, ...MERC_ORDER, ...KEEPERS.map(k => k.id)];
+/** Gravekeepers are drawn through the same rig as units; this is the id their view is kept under. */
+export const keeperKey = (owner: number, slot: number): number => -(owner * 2 + slot + 1);
+const KEEPER_SCALE = 0.95;
 export interface ViewState {
+  selectedKeeper: 0 | 1 | null;
   selectedUnit: string | null;
   hoverCell: { col: number; row: number } | null;
   selectedBuilding: number | null;
@@ -36,12 +42,13 @@ const STRIDE: Record<Gait, number> = { walk: 0.02, shuffle: 0.016, gallop: 0.024
 /** How each unit's attack looks and sounds; anything not listed strikes in melee. */
 type Shot = "bolt" | "gun" | "orb" | "stone" | "flame" | "stake" | "lightning" | "beam";
 const SHOTS: Record<string, { kind: Shot; color: number }> = {
+  marksman: { kind: "gun", color: 0xfff1c9 }, fireeater: { kind: "flame", color: 0xff7a1a }, seraph: { kind: "orb", color: PAL.ember }, hellmouth: { kind: "stone", color: 0xff5a1f },
   arbalester: { kind: "bolt", color: PAL.bone }, witchhunter: { kind: "gun", color: 0xfff1c9 }, hexbinder: { kind: "orb", color: PAL.storm },
   necromancer: { kind: "orb", color: PAL.venom }, lich: { kind: "orb", color: PAL.frost }, trebuchet: { kind: "stone", color: 0x55586a },
   zealot: { kind: "flame", color: 0xff7a1a }, wyrm: { kind: "flame", color: 0xff5a1f }, ballista: { kind: "stake", color: 0x8c93a6 },
   cantor: { kind: "lightning", color: PAL.storm }, hq: { kind: "beam", color: 0 }, tower: { kind: "beam", color: 0 },
 };
-const MELEE: Record<string, number> = { countess: 0xff3b4f, shade: PAL.ghost, colossus: 0xcdbf9f, headsman: 0xffffff, gargoyle: 0xc8ccd8, hound: 0xe2d7bc };
+const MELEE: Record<string, number> = { titan: 0xffd27a, rider: 0xdfe6ff, ogre: 0xcdbf9f, countess: 0xff3b4f, shade: PAL.ghost, colossus: 0xcdbf9f, headsman: 0xffffff, gargoyle: 0xc8ccd8, hound: 0xe2d7bc };
 export const shotKind = (unit: string): Shot | "melee" => SHOTS[unit]?.kind ?? "melee";
 interface Particle { sprite: THREE.Sprite; vx: number; vy: number; vz: number; born: number; life: number; s0: number; s1: number; grav: number }
 interface Flight { mesh: THREE.Object3D; from: THREE.Vector3; to: THREE.Vector3; born: number; life: number; arc: number; beam: boolean; onEnd?: () => void }
@@ -69,6 +76,7 @@ export class Renderer {
   private shots: Flight[] = [];
   private prev = new Map<number, { x: number; y: number }>();
   private hover!: THREE.Mesh; private range!: THREE.Mesh; private selRing!: THREE.Mesh;
+  private keeperRing!: THREE.Mesh; private wayMark!: THREE.Mesh; private ghostMarks: THREE.Mesh[] = [];
   private ray = new THREE.Raycaster(); private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private dist = 60; private lastEmber = 0;
   camX = 30; // camera target along the lane, world units
@@ -170,6 +178,8 @@ export class Renderer {
     this.hover = flat(new THREE.PlaneGeometry(FOOT, FOOT), 0x7dff9a, 0.45);
     this.range = flat(new THREE.RingGeometry(0.985, 1, 64), 0xffffff, 0.5);
     this.selRing = flat(new THREE.RingGeometry(1.3, 1.45, 40), 0xffd77a, 0.9);
+    this.keeperRing = flat(new THREE.RingGeometry(0.75, 0.9, 6), 0x8dffb0, 0.95);
+    this.wayMark = flat(new THREE.RingGeometry(0.25, 0.42, 4), 0x8dffb0, 0.9);
   }
 
   resize(): void {
@@ -221,7 +231,7 @@ export class Renderer {
     const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     r.setSize(220, 260); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.2;
     const out: Record<string, string> = {};
-    for (const id of UNIT_ORDER) {
+    for (const id of PORTRAITS) {
       const sc = new THREE.Scene(), model = wholeModel(id, team);
       sc.add(new THREE.HemisphereLight(0xc4cdea, 0x4a4450, 2));
       const key = new THREE.DirectionalLight(0xfff0d8, 3.4); key.position.set(-3, 5, 6); sc.add(key); const rim = new THREE.DirectionalLight(0x9ab8ff, 2); rim.position.set(4, 3, -5); sc.add(rim);
@@ -245,6 +255,7 @@ export class Renderer {
   snapshot(s: GameState): void {
     this.prev.clear();
     for (const u of s.units) this.prev.set(u.id, { x: u.x, y: u.y });
+    for (const k of s.keepers) this.prev.set(keeperKey(k.owner, k.slot), { x: k.x, y: k.y });
   }
   reset(): void {
     for (const v of this.units.values()) this.scene.remove(v.root);
@@ -292,16 +303,17 @@ export class Renderer {
           this.shoot(new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1, 4), bright(color)), from, to, now, 90, 0, true);
           this.spark(to.x, to.y, to.z, 0xffffff, 150, 0.7, 0.1, 0, 0, 0, 0, now);
         } else if (kind === "orb") {
-          const burst = e.unit === "lich";
+          const burst = e.unit === "lich" || e.unit === "seraph";
           this.shoot(new THREE.Mesh(new THREE.IcosahedronGeometry(burst ? 0.24 : 0.16, 1), bright(color)), from, to, now, 110 + from.distanceTo(to) * 34, burst ? 1.2 : 0.5, false, () => {
-            const t = performance.now(), n = burst ? 14 : 5, reach = burst ? W(UNITS.lich!.splash) * 2 : 1.5;
+            const t = performance.now(), n = burst ? 14 : 5, reach = burst ? W(UNITS[e.unit]!.splash) * 2 : 1.5;
             this.spark(to.x, to.y, to.z, color, 260, burst ? 4 : 1.2, 0.2, 0, 0, 0, 0, t);
             for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; this.spark(to.x, burst ? 0.3 : to.y, to.z, color, 420 + Math.random() * 240, 0.7, 0.15, Math.cos(a) * reach, burst ? 0.6 : 1 + rnd(1), Math.sin(a) * reach, 0, t); }
           });
         } else if (kind === "stone") {
           this.shoot(this.mesh(new THREE.IcosahedronGeometry(0.2, 0), new THREE.MeshStandardMaterial({ color, flatShading: true })), from, to, now, 700, 6, false, () => {
             const t = performance.now();
-            this.spark(to.x, 0.6, to.z, 0xffd9a0, 260, 2, 9, 0, 0, 0, 0, t);
+            this.spark(to.x, 0.6, to.z, 0xffd9a0, 260, 2, e.unit === "hellmouth" ? 14 : 9, 0, 0, 0, 0, t);
+            if (e.unit === "hellmouth") for (let i = 0; i < 16; i++) this.spark(to.x + rnd(4), 0.3, to.z + rnd(4), i % 2 ? 0xff5a1f : 0xffc04a, 900 + Math.random() * 600, 1.2, 0.2, rnd(2), 2 + Math.random() * 3, rnd(2), 0, t);
             for (let i = 0; i < 12; i++) this.spark(to.x + rnd(2), 0.4, to.z + rnd(2), 0x6d6050, 700 + Math.random() * 500, 1.4, 4.5, rnd(6), 2 + Math.random() * 4, rnd(6), -6, t);
           });
         } else if (kind === "flame") {
@@ -318,15 +330,20 @@ export class Renderer {
           this.shoot(new THREE.Mesh(new THREE.CylinderGeometry(hq ? 0.09 : 0.06, hq ? 0.09 : 0.06, 1, 5), bright(TEAM[e.team].glow)), from, to, now, hq ? 200 : 180, 0, true);
           this.spark(to.x, to.y, to.z, TEAM[e.team].glow, hq ? 260 : 200, hq ? 1.2 : 0.6, hq ? 3 : 1.5, 0, 0, 0, 0, now);
         } else {
-          const big = e.unit === "colossus" || e.unit === "headsman" || e.unit === "penitent";
+          const big = e.unit === "colossus" || e.unit === "headsman" || e.unit === "penitent" || e.unit === "titan" || e.unit === "ogre" || e.unit === "rider";
           for (let i = 0; i < (big ? 6 : 3); i++) this.spark(to.x + rnd(0.3), to.y + rnd(0.3), to.z + 0.2, color, 150 + Math.random() * 120, big ? 0.9 : 0.55, 0.15, rnd(big ? 5 : 3), 1.5 + rnd(2), rnd(big ? 4 : 2), -9, now);
-          if (e.unit === "colossus") for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; this.spark(to.x, 0.3, to.z, 0x6d6050, 520, 0.9, 2.4, Math.cos(a) * 4, 0.8, Math.sin(a) * 4, 0, now); }
+          if (e.unit === "colossus" || e.unit === "titan" || e.unit === "ogre") for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; this.spark(to.x, 0.3, to.z, 0x6d6050, 520, 0.9, 2.4, Math.cos(a) * 4, 0.8, Math.sin(a) * 4, 0, now); }
           else if (e.unit === "countess") for (let i = 0; i < 3; i++) this.spark(to.x, to.y, to.z, 0xff2b45, 420, 0.5, 0.15, (from.x - to.x) * 2.2 + rnd(1), 0.6 + rnd(1), (from.z - to.z) * 2.2 + rnd(1), 0, now); // blood drawn back to her
         }
       } else if (e.t === "arc") lightning(chest(e.from, e.x1, e.y1), chest(e.to, e.x2, e.y2), PAL.storm);
       else if (e.t === "raise") {
         for (let i = 0; i < 12; i++) this.spark(W(e.x) + rnd(0.8), 0.1 + Math.random() * 0.4, W(e.y) + rnd(0.8), PAL.venom, 700 + Math.random() * 400, 0.6, 0.1, 0, 1.6 + Math.random() * 2, 0, 0, now);
         this.spark(W(e.x), 0.4, W(e.y), PAL.venom, 380, 0.6, 3.4, 0, 0, 0, 0, now);
+      } else if (e.t === "built") {
+        const k = this.units.get(keeperKey(e.player, e.slot)); if (k) k.lastAttack = now; // the spade comes down
+        for (let i = 0; i < 14; i++) { const a = (i / 14) * Math.PI * 2; this.spark(W(e.x), 0.3, W(e.y), i % 3 ? 0x6d6050 : 0xe9c56b, 520 + Math.random() * 260, 0.8, 2.2, Math.cos(a) * 3, 1 + Math.random() * 1.5, Math.sin(a) * 3, -2, now); }
+      } else if (e.t === "leave") {
+        for (let i = 0; i < 8; i++) this.spark(W(e.x) + rnd(0.8), 0.4 + Math.random() * 1.6, W(e.y) + rnd(0.8), i % 2 ? 0xe9c56b : 0x8d8a92, 600 + Math.random() * 300, 0.5, 1.6, rnd(1), 1.2, rnd(1), 0, now);
       } else if (e.t === "heal") {
         const v = this.units.get(e.id); if (v) v.lastAttack = now;
         const from = new THREE.Vector3(W(e.x1), 1.3, W(e.y1)), to = new THREE.Vector3(W(e.x2), 0.7, W(e.y2));
@@ -383,11 +400,13 @@ export class Renderer {
     const seen = new Set<number>(), byId = new Map<number, GameState["units"][number]>();
     for (const u of s.units) byId.set(u.id, u);
     const ease = Math.min(1, dt * 0.012);
-    for (const u of s.units) {
+    // Gravekeepers are posed by the same code as soldiers: they walk, turn and swing a spade, but are not units.
+    const walkers = s.keepers.map(k => ({ id: keeperKey(k.owner, k.slot), type: KEEPERS[k.slot].id, team: k.team, x: k.x, y: k.y, target: 0, dotUntil: 0, slowUntil: 0 }));
+    for (const u of [...s.units, ...walkers]) {
       seen.add(u.id);
       let view = this.units.get(u.id);
       if (!view) { view = this.makeUnit(u.type, u.team, now); this.units.set(u.id, view); }
-      const def = view.def, gait = def.gait ?? "walk", sd = UNITS[u.type]!, fixed = sd.structure === true;
+      const def = view.def, gait = def.gait ?? "walk", sd = UNITS[u.type] ?? { structure: false, range: 1500 }, fixed = sd.structure === true;
       const pr = this.prev.get(u.id) ?? u, moving = pr.x !== u.x || pr.y !== u.y;
       const k0 = scaleOf(u.type), grow = k0 === 1 ? 1 : Math.min(1, 0.4 + (now - view.born) / 350), side = u.team === 0 ? 1 : -1;
       view.root.position.set(W(pr.x + (u.x - pr.x) * alpha), 0, W(pr.y + (u.y - pr.y) * alpha));
@@ -470,7 +489,7 @@ export class Renderer {
       live.add(b.id);
       let g = this.buildings.get(b.id);
       if (!g) { g = this.makeBuilding(b.unit, b.team); const p = cellCenter(b.team, b.col, b.row); g.position.set(W(p.x), 0, W(p.y)); this.buildings.set(b.id, g); }
-      g.scale.y = BUILDING_SCALE * Math.max(0.08, Math.min(1, 1 - (b.readyTick - s.tick) / RULES.buildTicks));
+      g.scale.y = BUILDING_SCALE * Math.min(1, 0.15 + (s.tick - b.readyTick + alpha) / 7); // it springs up the moment the keeper arrives
     }
     for (const [id, g] of this.buildings) if (!live.has(id)) { this.scene.remove(g); this.buildings.delete(id); }
 
@@ -502,14 +521,33 @@ export class Renderer {
     });
 
     // placement and selection markers
-    const def = v.selectedUnit ? UNITS[v.selectedUnit] : undefined;
-    this.hover.visible = this.range.visible = !!(def && v.hoverCell);
-    if (def && v.hoverCell) {
-      const p = cellCenter(myTeam, v.hoverCell.col, v.hoverCell.row);
-      const ok = canBuild(s, myTeam, s.players[v.me]!.lane, v.hoverCell.col, v.hoverCell.row) && s.players[v.me]!.credits >= def.cost;
+    const def = v.selectedUnit ? UNITS[v.selectedUnit] : undefined, placing = def && v.selectedKeeper !== null && v.hoverCell;
+    this.hover.visible = this.range.visible = !!placing;
+    if (def && placing) {
+      const p = cellCenter(myTeam, v.hoverCell!.col, v.hoverCell!.row);
+      const ok = canPlan(s, myTeam, s.players[v.me]!.lane, v.hoverCell!.col, v.hoverCell!.row) && s.players[v.me]!.credits >= def.cost;
       this.hover.position.set(W(p.x), 0.16, W(p.y)); (this.hover.material as THREE.MeshBasicMaterial).color.set(ok ? 0x7dff9a : 0xff5a4a);
       this.range.position.set(W(p.x), 0.17, W(p.y)); this.range.scale.setScalar(W(def.range));
     }
+    // my keepers: a ring under the selected one, a pennant where each was sent, a ghost footprint for every chantry on order
+    let ghosts = 0;
+    this.keeperRing.visible = this.wayMark.visible = false;
+    for (const k of s.keepers) {
+      if (k.owner !== v.me) continue;
+      const view = this.units.get(keeperKey(k.owner, k.slot)), chosen = k.slot === v.selectedKeeper;
+      if (chosen && view) {
+        this.keeperRing.visible = true; this.keeperRing.position.set(view.root.position.x, 0.19, view.root.position.z); this.keeperRing.rotation.z = -now * 0.0015;
+        if (k.jobs.length === 0 && (k.x !== k.tx || k.y !== k.ty)) { this.wayMark.visible = true; this.wayMark.position.set(W(k.tx), 0.2, W(k.ty)); this.wayMark.scale.setScalar(0.8 + Math.sin(now * 0.008) * 0.15); }
+      }
+      for (const j of k.jobs) {
+        let g = this.ghostMarks[ghosts];
+        if (!g) { g = this.hover.clone(); g.material = new THREE.MeshBasicMaterial({ color: 0xe9c56b, transparent: true, opacity: 0.3, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }); this.scene.add(g); this.ghostMarks.push(g); }
+        const p = cellCenter(k.team, j.col, j.row);
+        g.visible = true; g.position.set(W(p.x), 0.15, W(p.y)); (g.material as THREE.MeshBasicMaterial).opacity = (chosen ? 0.34 : 0.2) + Math.sin(now * 0.006 + ghosts) * 0.08;
+        ghosts++;
+      }
+    }
+    for (let i = ghosts; i < this.ghostMarks.length; i++) this.ghostMarks[i]!.visible = false;
     const sel = s.buildings.find(b => b.id === v.selectedBuilding);
     this.selRing.visible = !!sel;
     if (sel) { const p = cellCenter(sel.team, sel.col, sel.row); this.selRing.position.set(W(p.x), 0.18, W(p.y)); this.selRing.rotation.z = now * 0.001; }

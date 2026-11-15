@@ -392,4 +392,218 @@ export const ROSTER: Record<string, (t: Pal) => ModelDef> = {
     weapon: { pivot: [0, 1.92, 0.44], anim: "swing",
       geo: merge([box(0.1, 0.6, 0.1, PAL.bone, 0.1, 0.22, 0, { rz: -0.5 }), box(0.3, 0.07, 0.07, PAL.bronze, 0.32, 0.52, 0), plate([[0, 0.07], [1.0, 0.07], [1.2, 0], [1.0, -0.05], [0.6, -0.07], [0.5, -0.02], [0, -0.07]], 0.04, PAL.rust, 0.3, 0.56, 0, { rz: 1.2 })]) },
   }),
+  // ---------- Tier IV ----------
+  // Belfry Titan: a cathedral tower walking, a bronze bell swinging in its open chest, its spire for a head.
+  titan: t => {
+    const arm = (): G => merge([ball(0.75, PAL.stoneLo, 0, 0, 0, 1), box(0.8, 2.2, 0.8, PAL.stone, 0.25, -1.1, 0, { rz: 0.25 }), box(0.9, 0.3, 0.9, PAL.stoneHi, 0.4, -1.7, 0, { rz: 0.25 }),
+      box(0.7, 2.0, 0.7, PAL.stoneLo, 1.0, -2.6, 0, { rz: 0.8 }), box(1.3, 1.3, 1.3, PAL.stone, 1.9, -3.2, 0), ...[-0.4, 0.4].flatMap(z => [-0.4, 0.4].map(x => cyl(0, 0.2, 0.5, 4, PAL.stoneHi, 1.9 + x, -2.35, z)))]);
+    const legGeo = (): G => merge([box(1.0, 1.4, 1.0, PAL.stoneLo, 0, -0.7, 0), box(1.15, 0.3, 1.15, PAL.stoneHi, 0, -1.3, 0), box(0.9, 1.3, 0.9, PAL.stone, 0, -2.0, 0), box(1.5, 0.5, 1.3, PAL.stoneLo, 0.2, -2.85, 0)]);
+    return {
+      height: 9.4, gait: "stomp",
+      body: merge([
+        cyl(1.7, 1.9, 1.0, 8, PAL.stoneLo, 0, 3.4, 0), cyl(1.5, 1.7, 0.5, 8, PAL.stoneHi, 0, 4.1, 0),
+        ...Array.from({ length: 8 }, (_, i) => { const a = (i / 8) * Math.PI * 2 + Math.PI / 8; return box(0.5, 2.4, 0.5, PAL.stone, Math.cos(a) * 1.45, 5.5, Math.sin(a) * 1.45, { ry: -a }); }),
+        cyl(1.7, 1.5, 0.5, 8, PAL.stoneHi, 0, 6.9, 0), cyl(1.55, 1.7, 0.8, 8, PAL.stone, 0, 7.5, 0),
+        ...Array.from({ length: 8 }, (_, i) => { const a = (i / 8) * Math.PI * 2; return box(0.5, 0.5, 0.5, PAL.stoneHi, Math.cos(a) * 1.55, 8.1, Math.sin(a) * 1.55, { ry: -a }); }),
+        cyl(0, 1.25, 2.6, 8, PAL.roof, 0, 9.2, 0), box(0.1, 0.8, 0.1, PAL.gold, 0, 10.8, 0), box(0.1, 0.1, 0.5, PAL.gold, 0, 10.95, 0),
+        box(0.1, 2.6, 1.3, t.main, 1.75, 3.1, 0), box(0.12, 0.16, 1.4, PAL.gold, 1.78, 4.3, 0), box(0.14, 0.9, 0.16, PAL.bone, 1.82, 3.3, 0), box(0.14, 0.16, 0.6, PAL.bone, 1.82, 3.5, 0),
+        box(0.1, 1.8, 1.2, t.lo, -1.75, 3.3, 0), box(3.0, 0.6, 3.4, PAL.stoneLo, 0, 2.9, 0),
+      ]),
+      glow: merge([box(0.1, 0.5, 0.26, t.glow, 1.56, 7.55, 0.4), box(0.1, 0.5, 0.26, t.glow, 1.56, 7.55, -0.4), ball(0.3, PAL.candle, 0, 4.6, 0, 0)]),
+      legs: [{ pivot: [0, 3.1, 0.85], geo: legGeo() }, { pivot: [0, 3.1, -0.85], geo: legGeo() }],
+      parts: [
+        { motion: "sway", pivot: [0, 6.6, 0], amp: 1.4, geo: merge([box(0.12, 0.5, 0.12, PAL.iron, 0, -0.25, 0), cyl(0.5, 1.0, 1.3, 10, PAL.bronze, 0, -1.1, 0), cyl(1.05, 1.05, 0.14, 10, PAL.gold, 0, -1.75, 0), ball(0.22, PAL.iron, 0, -1.95, 0, 0)]) },
+        { motion: "arm", side: -1, amp: 0.35, pivot: [0, 6.3, -2.1], geo: arm() },
+      ],
+      weapon: { pivot: [0, 6.3, 2.1], anim: "chop", geo: arm() },
+    };
+  },
+  // Ashen Seraph: a burnt angel on six wings under a broken halo, carrying a lance of cinders.
+  seraph: t => ({
+    height: 4.2, gait: "fly", hover: 3.8,
+    body: merge([
+      cyl(0.3, 0.14, 1.9, 8, PAL.ink, 0, 1.3, 0, { rz: -0.1 }), box(0.56, 0.9, 0.9, PAL.shadow, 0.04, 2.6, 0), box(0.6, 0.5, 0.5, PAL.iron, 0.08, 2.7, 0),
+      ...[2.3, 2.6, 2.9].map(y => box(0.03, 0.06, 0.5, PAL.ember, 0.34, y, 0)),
+      ball(0.24, PAL.ink, 0.06, 3.4, 0, 1), box(0.3, 0.1, 0.4, PAL.iron, 0.1, 3.52, 0),
+      plate([[0, 0.3], [0, -0.3], [-1.7, -0.45], [-1.4, -0.15], [-1.9, 0.1], [-1.5, 0.3]], 0.05, t.main, 0.3, 1.9, 0, { rx: HALF, rz: HALF - 0.1 }),
+      box(0.62, 0.1, 0.94, PAL.gold, 0.04, 2.14, 0),
+    ]),
+    glow: merge([
+      ...Array.from({ length: 9 }, (_, i) => { const a = (i / 12) * Math.PI * 2 - 0.4; return box(0.06, 0.1, 0.3, PAL.ember, -0.1, 3.5 + Math.sin(a) * 0.62, Math.cos(a) * 0.62, { rx: -a }); }),
+      ball(0.07, PAL.flame, 0.26, 3.42, 0, 0), box(0.04, 0.5, 0.06, PAL.ember, 0.36, 2.6, 0.2, { rx: 0.3 }),
+    ]),
+    parts: [
+      ...wings([-0.1, 3.0, 0.4], 3.4, 1.7, PAL.iron, 0x8a8590, 5, 0.9),
+      ...wings([-0.2, 2.5, 0.4], 2.6, 1.4, PAL.iron, 0x6f6a78, 5, 0.9).map(w => ({ ...w, phase: 0.9 })),
+      ...wings([-0.3, 2.0, 0.36], 1.9, 1.1, PAL.iron, t.lo, 5, 0.9).map(w => ({ ...w, phase: 1.8 })),
+    ],
+    weapon: { pivot: [0.1, 2.9, 0.56], anim: "thrust",
+      geo: merge([box(0.5, 0.18, 0.18, PAL.shadow, 0.2, -0.06, 0), cyl(0.05, 0.05, 4.2, 6, PAL.iron, 0.9, 0.2, 0, { rz: -HALF + 0.25 })]),
+      glow: merge([cyl(0, 0.16, 1.2, 4, PAL.ember, 3.3, 0.83, 0, { rz: -HALF + 0.25 }), ball(0.1, PAL.flame, 2.75, 0.68, 0, 0)]) },
+  }),
+  // Pale Rider: a shrouded reaper on a horse of bare bone.
+  rider: t => ({
+    height: 4.6, gait: "gallop",
+    body: merge([
+      box(1.9, 0.3, 0.3, PAL.bone, 0, 1.75, 0), ...[-0.6, -0.3, 0, 0.3, 0.6].flatMap(x => [box(0.08, 0.7, 0.05, PAL.bone, x, 1.42, 0.3, { rx: -0.25 }), box(0.08, 0.7, 0.05, PAL.bone, x, 1.42, -0.3, { rx: 0.25 })]),
+      box(0.5, 0.4, 0.6, PAL.bone, -0.9, 1.7, 0), box(0.5, 0.44, 0.6, PAL.bone, 0.85, 1.72, 0),
+      box(0.26, 1.1, 0.26, PAL.bone, 1.15, 2.3, 0, { rz: -0.55 }), ...[2.1, 2.4].map(y => box(0.3, 0.1, 0.34, PAL.stoneHi, 1.1 + (y - 2.1) * 0.6, y, 0, { rz: -0.55 })),
+      ...skull(0.3, 1.6, 2.86, 0), box(0.6, 0.24, 0.3, PAL.bone, 1.95, 2.66, 0, { rz: -0.3 }),
+      box(1.5, 0.7, 0.86, t.lo, -0.1, 1.6, 0), box(1.54, 0.08, 0.9, PAL.gold, -0.1, 1.94, 0), ...[-0.6, -0.2, 0.2].map(x => box(0.3, 0.4, 0.88, t.main, x, 1.1, 0)),
+      cyl(0.3, 0.5, 1.2, 8, PAL.pale, -0.1, 2.6, 0), box(0.5, 0.2, 0.8, PAL.habit, -0.1, 3.2, 0),
+      cyl(0.26, 0.32, 0.5, 8, PAL.pale, -0.04, 3.5, 0), cyl(0, 0.26, 0.46, 8, PAL.pale, -0.14, 3.94, 0, { rz: 0.5 }), box(0.06, 0.3, 0.3, PAL.ink, 0.2, 3.48, 0),
+      box(0.22, 0.8, 0.2, PAL.pale, 0.1, 2.0, 0.5), box(0.22, 0.8, 0.2, PAL.pale, 0.1, 2.0, -0.5),
+    ]),
+    glow: merge([ball(0.06, t.glow, 1.88, 2.9, 0.14, 0), ball(0.06, t.glow, 1.88, 2.9, -0.14, 0), ball(0.04, t.glow, 0.24, 3.52, 0.07, 0), ball(0.04, t.glow, 0.24, 3.52, -0.07, 0)]),
+    legs: [
+      { pivot: [0.8, 1.5, 0], geo: merge([box(0.14, 1.5, 0.14, PAL.bone, 0, -0.75, 0.25), box(0.14, 1.5, 0.14, PAL.bone, 0, -0.75, -0.25), box(0.24, 0.14, 0.2, PAL.ink, 0.04, -1.45, 0.25), box(0.24, 0.14, 0.2, PAL.ink, 0.04, -1.45, -0.25)]) },
+      { pivot: [-0.8, 1.5, 0], geo: merge([box(0.14, 1.5, 0.14, PAL.bone, 0, -0.75, 0.25), box(0.14, 1.5, 0.14, PAL.bone, 0, -0.75, -0.25), box(0.24, 0.14, 0.2, PAL.ink, 0.04, -1.45, 0.25), box(0.24, 0.14, 0.2, PAL.ink, 0.04, -1.45, -0.25)]) },
+    ],
+    parts: [
+      { motion: "cape", pivot: [-0.36, 3.2, 0], geo: plate([[0, 0.45], [0, -0.45], [-1.2, -0.7], [-2.4, -0.5], [-2.0, -0.2], [-2.6, 0.05], [-2.0, 0.3], [-2.3, 0.6], [-1.2, 0.7]], 0.06, PAL.habit, 0, 0, 0, { rx: HALF, rz: HALF - 0.2 }) },
+      { motion: "tail", pivot: [-1.1, 1.9, 0], amp: 0.7, geo: merge([0, 1, 2, 3].map(i => box(0.26, 0.1, 0.1, PAL.bone, -0.16 - i * 0.26, -i * 0.1, 0, { rz: 0.35 }))) },
+    ],
+    weapon: { pivot: [0, 3.1, 0.5], anim: "swing",
+      geo: merge([box(0.5, 0.18, 0.18, PAL.pale, 0.2, -0.05, 0), cyl(0.05, 0.05, 3.8, 6, PAL.wood, 0.5, 0.6, 0, { rz: -0.1 }),
+        plate([[0, 0.12], [1.1, 0.5], [2.1, 0.2], [2.6, -0.5], [1.9, 0], [1.0, 0.2], [0, -0.12]], 0.06, PAL.steelHi, 0.66, 2.3, 0)]) },
+  }),
+  // Hellmouth: a bronze bombard cast as a horned, screaming head, its throat full of fire.
+  hellmouth: t => ({
+    height: 3.6, gait: "roll",
+    body: merge([
+      box(3.6, 0.4, 1.5, PAL.wood, -0.2, 1.0, 0), box(3.7, 0.12, 1.6, PAL.iron, -0.2, 1.24, 0), box(0.3, 0.9, 1.5, PAL.iron, -1.9, 1.5, 0), box(0.3, 0.5, 1.5, PAL.iron, 1.3, 1.4, 0),
+      ...[-1.2, 0.4].flatMap(x => [0.74, -0.74].map(z => box(0.5, 0.9, 0.12, PAL.iron, x, 1.5, z))),
+      box(0.1, 1.4, 1.3, t.main, -2.1, 2.3, 0), box(0.12, 0.14, 1.4, PAL.gold, -2.12, 3.0, 0), box(0.14, 0.7, 0.14, PAL.bone, -2.18, 2.4, 0), box(0.14, 0.14, 0.5, PAL.bone, -2.18, 2.55, 0),
+      cyl(0.16, 0.16, 0.9, 6, PAL.stoneLo, -1.5, 0.5, 1.3), cyl(0.16, 0.16, 0.9, 6, PAL.stoneLo, -1.2, 0.5, 1.45), ball(0.3, PAL.ink, -0.8, 0.3, 1.4, 0), ball(0.3, PAL.ink, -0.3, 0.3, 1.5, 0),
+    ]),
+    parts: [wheel(1.0, 0.95, 0.75, PAL.iron), wheel(1.0, -0.95, 0.75, PAL.iron), wheel(-1.3, 0.95, 0.75, PAL.iron), wheel(-1.3, -0.95, 0.75, PAL.iron),
+      { motion: "sway", pivot: [-0.4, 1.9, 0.86], amp: 0.6, geo: merge(Array.from({ length: 5 }, (_, i) => box(0.12, 0.2, 0.06, i % 2 ? PAL.steel : PAL.iron, 0, -0.1 - i * 0.2, 0, { ry: i % 2 ? HALF : 0 }))) }],
+    weapon: { pivot: [-0.3, 2.3, 0], anim: "recoil",
+      geo: merge([
+        cyl(0.62, 0.74, 2.6, 10, PAL.bronze, 0, 0, 0, { rz: -HALF + 0.22 }), ...[-0.9, -0.3, 0.3].map(x => cyl(0.78, 0.78, 0.16, 10, PAL.gold, x, x * 0.22, 0, { rz: -HALF + 0.22 })),
+        box(1.3, 1.3, 1.5, PAL.bronze, 1.7, 0.4, 0, { rz: 0.22 }), box(1.0, 0.36, 1.3, PAL.bronze, 2.5, 0.98, 0, { rz: 0.1 }), box(0.9, 0.3, 1.2, PAL.bronze, 2.35, -0.1, 0, { rz: 0.5 }),
+        ...[-0.4, 0, 0.4].flatMap(z => [cyl(0, 0.1, 0.34, 4, PAL.bone, 2.75, 0.74, z, { rz: Math.PI }), cyl(0, 0.1, 0.3, 4, PAL.bone, 2.6, 0.2, z)]),
+        cyl(0, 0.2, 1.1, 5, PAL.iron, 1.4, 1.4, 0.56, { rx: 0.5, rz: 0.5 }), cyl(0, 0.2, 1.1, 5, PAL.iron, 1.4, 1.4, -0.56, { rx: -0.5, rz: 0.5 }),
+        box(0.4, 0.14, 1.56, PAL.gold, 1.9, 1.0, 0, { rz: 0.22 }),
+      ]),
+      glow: merge([ball(0.34, PAL.ember, 2.2, 0.5, 0, 1), ball(0.12, PAL.flame, 2.0, 0.92, 0.6, 0), ball(0.12, PAL.flame, 2.0, 0.92, -0.6, 0)]) },
+  }),
+
+  // ---------- mercenaries ----------
+  // Gallowglass: a tall mailed axeman from over the sea, shield slung on his back.
+  gallowglass: t => ({
+    height: 3.2,
+    body: merge([
+      cyl(0.36, 0.5, 1.5, 8, PAL.steel, 0, 1.55, 0), box(0.6, 0.3, 0.9, PAL.leather, 0, 2.2, 0), box(0.58, 0.1, 0.84, PAL.leather, 0, 1.3, 0),
+      box(0.06, 0.9, 0.3, t.main, 0.42, 1.2, 0, { rz: 0.12 }), box(0.3, 0.12, 0.3, t.main, 0.02, 2.36, -0.5),
+      ball(0.22, PAL.skin, 0.04, 2.56, 0), box(0.3, 0.3, 0.1, 0x8a5a2a, 0.16, 2.4, 0.0), cyl(0.18, 0.28, 0.4, 8, PAL.steelHi, 0.02, 2.8, 0), cyl(0, 0.18, 0.2, 8, PAL.steelHi, 0.02, 3.08, 0), box(0.05, 0.3, 0.06, PAL.steelHi, 0.27, 2.62, 0),
+      cyl(0.6, 0.6, 0.08, 10, PAL.wood, -0.42, 1.8, 0, { rz: HALF }), cyl(0.2, 0.2, 0.12, 8, PAL.steelHi, -0.48, 1.8, 0, { rz: HALF }), cyl(0.62, 0.62, 0.04, 10, t.lo, -0.39, 1.8, 0, { rz: HALF }),
+    ]),
+    legs: [leg(PAL.leather, PAL.dark, 0.2), leg(PAL.leather, PAL.dark, -0.2)],
+    weapon: { pivot: [0.06, 2.2, 0.5], anim: "chop",
+      geo: merge([box(0.22, 0.7, 0.22, PAL.steel, 0.12, -0.2, 0, { rz: 0.45 }), cyl(0.045, 0.045, 2.9, 6, PAL.wood, 0.34, 0.6, 0, { rz: -0.1 }),
+        plate([[0, 0.5], [0.6, 0.8], [0.9, 0.2], [0.8, -0.5], [0.3, -0.2], [0, -0.3]], 0.06, PAL.steelHi, 0.46, 1.6, 0)]) },
+  }),
+  // Free Marksman: a poacher in a feathered hat and a patched cloak, with a gun longer than he is.
+  marksman: t => ({
+    height: 2.9,
+    body: merge([
+      box(0.44, 0.9, 0.68, PAL.moss, 0, 1.45, 0), box(0.5, 0.1, 0.72, PAL.leather, 0, 1.1, 0), box(0.5, 0.08, 0.1, PAL.leather, 0.02, 1.56, 0.3, { rx: 0.6 }),
+      box(0.3, 0.14, 0.3, t.main, 0.02, 1.8, 0.44), ball(0.2, PAL.skin, 0.03, 2.12, 0), box(0.2, 0.16, 0.34, PAL.leather, 0.1, 2.0, 0),
+      cyl(0.6, 0.62, 0.05, 10, PAL.leather, 0, 2.3, 0, { rz: 0.12 }), cyl(0.2, 0.26, 0.26, 8, PAL.leather, 0, 2.44, 0), plate([[0, 0], [-0.2, 0.7], [-0.36, 0.2]], 0.04, t.main, -0.1, 2.5, 0.2, { rz: -0.2 }),
+    ]),
+    legs: [leg(PAL.dark, PAL.leather, 0.18), leg(PAL.dark, PAL.leather, -0.18)],
+    parts: [{ motion: "cape", pivot: [-0.24, 1.9, 0], amp: 0.9, geo: merge([box(0.06, 1.2, 0.76, PAL.moss, -0.04, -0.6, 0, { rz: -0.08 }), box(0.07, 0.3, 0.3, t.lo, -0.02, -0.7, 0.1)]) }],
+    weapon: { pivot: [0.06, 1.76, 0.42], anim: "recoil",
+      geo: merge([box(0.5, 0.18, 0.18, PAL.moss, 0.22, -0.06, 0), box(0.6, 0.16, 0.1, PAL.wood, 0.5, -0.12, 0, { rz: -0.15 }), cyl(0.035, 0.045, 2.1, 6, PAL.iron, 1.6, -0.04, 0, { rz: -HALF }), box(0.06, 0.6, 0.04, PAL.wood, 1.5, -0.4, 0, { rz: 0.2 })]) },
+  }),
+  // Fire-Eater: a masked carnival fire-breather in motley, a torch in each hand.
+  fireeater: t => {
+    const torch = (): G => merge([box(0.18, 0.6, 0.18, PAL.skin, 0.1, 0.16, 0, { rz: -0.6 }), cyl(0.04, 0.04, 0.9, 5, PAL.wood, 0.42, 0.6, 0, { rz: -0.3 }), cyl(0.1, 0.07, 0.2, 6, PAL.iron, 0.56, 1.02, 0, { rz: -0.3 })]);
+    const flame = (): G => merge([cyl(0, 0.16, 0.5, 6, PAL.flame, 0.62, 1.34, 0), ball(0.12, PAL.candle, 0.6, 1.14, 0, 0)]);
+    return {
+      height: 2.9,
+      body: merge([
+        box(0.5, 0.9, 0.74, PAL.skin, 0.02, 1.48, 0), cyl(0.5, 0.42, 0.3, 8, PAL.blood, 0, 1.06, 0), box(0.52, 0.1, 0.1, PAL.gold, 0.02, 1.7, 0.2, { rx: 0.7 }), box(0.52, 0.1, 0.1, PAL.gold, 0.02, 1.7, -0.2, { rx: -0.7 }),
+        ball(0.22, PAL.skin, 0.04, 2.16, 0), box(0.1, 0.3, 0.4, PAL.bone, 0.2, 2.16, 0), box(0.06, 0.06, 0.1, PAL.ink, 0.26, 2.2, 0.1), box(0.06, 0.06, 0.1, PAL.ink, 0.26, 2.2, -0.1),
+        cyl(0, 0.1, 0.4, 5, t.main, 0.0, 2.5, 0.14, { rx: 0.5 }), cyl(0, 0.1, 0.4, 5, PAL.bone, 0.0, 2.5, -0.14, { rx: -0.5 }), ball(0.05, PAL.gold, 0, 2.66, 0.24, 0), ball(0.05, PAL.gold, 0, 2.66, -0.24, 0),
+      ]),
+      glow: ball(0.06, PAL.flame, 0.3, 2.06, 0, 0),
+      legs: [leg(t.main, PAL.leather, 0.2), leg(PAL.bone, PAL.leather, -0.2)],
+      parts: [{ motion: "arm", side: -1, amp: 0.6, pivot: [0.04, 1.84, -0.46], geo: torch(), glow: flame() }],
+      weapon: { pivot: [0.04, 1.84, 0.46], anim: "thrust", geo: torch(), glow: flame() },
+    };
+  },
+  // Shackled Ogre: a pit-fighter the size of a cart, still wearing its irons, swinging its own chain.
+  ogre: t => ({
+    height: 5.2, gait: "stomp",
+    body: merge([
+      ball(1.25, 0x6f7a62, 0, 2.5, 0, 1), box(1.3, 1.3, 2.0, 0x66705a, 0.05, 3.5, 0), box(1.5, 0.3, 2.1, PAL.leather, 0, 1.75, 0),
+      box(0.1, 1.1, 1.3, t.main, 0.95, 1.2, 0, { rz: 0.1 }), box(0.1, 0.9, 1.2, t.lo, -0.9, 1.3, 0, { rz: -0.1 }),
+      ball(0.6, 0x6f7a62, 0, 4.0, 1.15, 0), ball(0.6, 0x6f7a62, 0, 4.0, -1.15, 0),
+      ball(0.46, 0x7a8468, 0.2, 4.56, 0, 1), box(0.5, 0.3, 0.6, 0x66705a, 0.45, 4.36, 0), cyl(0, 0.07, 0.24, 4, PAL.bone, 0.62, 4.5, 0.2), cyl(0, 0.07, 0.24, 4, PAL.bone, 0.62, 4.5, -0.2),
+      cyl(0.5, 0.5, 0.1, 8, PAL.iron, 0.2, 4.3, 0), box(0.06, 0.12, 0.14, PAL.ink, 0.6, 4.7, 0.16), box(0.06, 0.12, 0.14, PAL.ink, 0.6, 4.7, -0.16),
+      cyl(0, 0.14, 0.5, 5, PAL.bone, 0.1, 5.1, 0, { rz: -0.3 }),
+    ]),
+    legs: [
+      { pivot: [0, 1.7, 0.6], geo: merge([box(0.8, 1.7, 0.8, 0x66705a, 0, -0.85, 0), box(1.0, 0.3, 0.9, 0x5a6350, 0.12, -1.55, 0), cyl(0.5, 0.5, 0.2, 8, PAL.iron, 0, -1.2, 0)]) },
+      { pivot: [0, 1.7, -0.6], geo: merge([box(0.8, 1.7, 0.8, 0x66705a, 0, -0.85, 0), box(1.0, 0.3, 0.9, 0x5a6350, 0.12, -1.55, 0), cyl(0.5, 0.5, 0.2, 8, PAL.iron, 0, -1.2, 0)]) },
+    ],
+    parts: [
+      { motion: "arm", side: -1, amp: 0.5, pivot: [0, 3.9, -1.3], geo: merge([box(0.6, 1.9, 0.6, 0x6f7a62, 0.15, -0.9, 0, { rz: 0.2 }), cyl(0.4, 0.4, 0.3, 8, PAL.iron, 0.34, -1.7, 0), ball(0.42, 0x66705a, 0.4, -2.1, 0, 0)]) },
+      { motion: "sway", pivot: [0.34, 2.1, -1.3], amp: 0.9, geo: merge(Array.from({ length: 5 }, (_, i) => box(0.16, 0.26, 0.08, i % 2 ? PAL.steel : PAL.iron, 0, -0.13 - i * 0.26, 0, { ry: i % 2 ? HALF : 0 }))) },
+    ],
+    weapon: { pivot: [0, 3.9, 1.3], anim: "swing",
+      geo: merge([box(0.6, 1.7, 0.6, 0x6f7a62, 0.3, 0.5, 0, { rz: -0.5 }), cyl(0.4, 0.4, 0.3, 8, PAL.iron, 0.72, 1.2, 0),
+        ...Array.from({ length: 7 }, (_, i) => box(0.18, 0.3, 0.1, i % 2 ? PAL.steel : PAL.iron, 0.9 + i * 0.2, 1.5 + i * 0.22, 0, { rz: -0.75, ry: i % 2 ? HALF : 0 })), ball(0.5, PAL.iron, 2.5, 3.2, 0, 1),
+        ...[[0.5, 0], [-0.5, 0], [0, 0.5], [0, -0.5]].map(([dx, dy]) => cyl(0, 0.12, 0.3, 4, PAL.steelHi, 2.5 + dx!, 3.2 + dy!, 0, { rz: Math.atan2(-dx!, dy!) }))]) },
+  }),
+
+  // ---------- gravekeepers: the player's builders ----------
+  // Sexton: a stooped old gravedigger with a spade, a lantern and the parish keys.
+  sexton: t => ({
+    height: 2.7,
+    body: merge([
+      box(0.5, 0.9, 0.72, PAL.leather, 0.06, 1.42, 0, { rz: -0.2 }), box(0.54, 0.1, 0.76, PAL.dark, 0, 1.06, 0), box(0.12, 0.16, 0.2, PAL.gold, 0.3, 1.06, 0),
+      box(0.3, 0.2, 0.76, t.main, 0.14, 1.84, 0, { rz: -0.2 }), box(0.07, 0.6, 0.22, t.lo, 0.42, 1.5, 0.12, { rz: -0.1 }),
+      ball(0.21, PAL.skin, 0.2, 2.06, 0), box(0.16, 0.5, 0.3, PAL.steelHi, 0.34, 1.82, 0, { rz: -0.15 }), box(0.1, 0.1, 0.1, PAL.skin, 0.42, 2.06, 0),
+      cyl(0.6, 0.64, 0.05, 10, PAL.hat, 0.18, 2.24, 0, { rz: -0.14 }), cyl(0.22, 0.3, 0.3, 8, PAL.hat, 0.16, 2.4, 0, { rz: -0.14 }), cyl(0.31, 0.31, 0.07, 8, t.main, 0.17, 2.3, 0, { rz: -0.14 }),
+      box(0.2, 0.2, 0.2, PAL.leather, 0.1, 1.74, -0.44),
+    ]),
+    legs: [leg(PAL.dark, PAL.hat, 0.19), leg(PAL.dark, PAL.hat, -0.19)],
+    parts: [
+      { motion: "sway", pivot: [0.5, 1.4, -0.5], geo: merge([box(0.2, 0.6, 0.18, PAL.leather, -0.2, 0.2, 0, { rz: 0.8 }), box(0.03, 0.3, 0.03, PAL.ink, 0, -0.15, 0), box(0.26, 0.06, 0.26, PAL.iron, 0, -0.3, 0), box(0.26, 0.06, 0.26, PAL.iron, 0, -0.66, 0), cyl(0, 0.18, 0.16, 4, PAL.iron, 0, -0.2, 0)]), glow: box(0.18, 0.28, 0.18, PAL.candle, 0, -0.48, 0) },
+      { motion: "sway", pivot: [-0.1, 1.04, 0.4], amp: 1.5, phase: 1, geo: merge([cyl(0.1, 0.1, 0.03, 8, PAL.gold, 0, -0.1, 0, { rx: HALF }), box(0.04, 0.3, 0.04, PAL.gold, -0.04, -0.3, 0), box(0.04, 0.26, 0.04, PAL.steelHi, 0.05, -0.28, 0)]) },
+    ],
+    weapon: { pivot: [0.1, 1.74, 0.44], anim: "chop",
+      geo: merge([box(0.2, 0.6, 0.2, PAL.leather, 0.12, -0.1, 0, { rz: 0.5 }), cyl(0.045, 0.045, 2.2, 6, PAL.wood, 0.36, 0.3, 0, { rz: -0.1 }), box(0.3, 0.06, 0.06, PAL.wood, 0.26, 1.4, 0),
+        plate([[-0.22, 0.3], [0.22, 0.3], [0.24, -0.1], [0, -0.36], [-0.24, -0.1]], 0.04, PAL.steelHi, 0.47, -0.95, 0, { ry: HALF })]) },
+  }),
+  // Undertaker: tall and thin in a frock coat and a stovepipe hat, a coffin on his back, the ledger in his hand and a raven on his shoulder.
+  undertaker: t => ({
+    height: 3.7,
+    body: merge([
+      cyl(0.26, 0.36, 1.3, 8, PAL.ink, 0, 1.6, 0), box(0.46, 0.3, 0.74, PAL.ink, 0, 2.3, 0), box(0.1, 0.9, 0.2, PAL.pale, 0.3, 1.8, 0), box(0.12, 0.2, 0.24, t.main, 0.34, 2.2, 0),
+      ...[1.4, 1.7, 2.0].map(y => ball(0.04, PAL.gold, 0.33, y, 0.1, 0)),
+      ball(0.19, PAL.pale, 0.03, 2.66, 0), box(0.1, 0.12, 0.12, PAL.pale, 0.2, 2.62, 0), box(0.2, 0.2, 0.36, PAL.ink, -0.06, 2.6, 0),
+      cyl(0.44, 0.44, 0.05, 12, PAL.hat, 0.02, 2.84, 0), cyl(0.24, 0.26, 0.9, 10, PAL.hat, 0.02, 3.3, 0), cyl(0.28, 0.28, 0.14, 10, t.main, 0.02, 2.96, 0),
+      plate([[-0.36, 1.0], [0.36, 1.0], [0.5, 0.5], [0.3, -1.0], [-0.3, -1.0], [-0.5, 0.5]], 0.36, PAL.wood, -0.5, 1.9, 0, { ry: HALF, rx: 0.12 }),
+      box(0.04, 0.9, 0.08, PAL.gold, -0.72, 2.0, 0, { rz: 0.12 }), box(0.04, 0.08, 0.4, PAL.gold, -0.74, 2.3, 0), box(0.5, 0.08, 0.1, PAL.leather, -0.1, 2.1, 0.3, { rx: 0.5 }), box(0.5, 0.08, 0.1, PAL.leather, -0.1, 2.1, -0.3, { rx: -0.5 }),
+      box(0.2, 0.2, 0.2, PAL.ink, 0.02, 2.3, -0.44),
+    ]),
+    glow: merge([ball(0.03, t.glow, 0.2, 2.7, 0.07, 0), ball(0.03, t.glow, 0.2, 2.7, -0.07, 0)]),
+    legs: [
+      { pivot: [0, 1.2, 0.14], geo: merge([box(0.2, 1.2, 0.22, PAL.ink, 0, -0.6, 0), box(0.36, 0.14, 0.24, PAL.hat, 0.07, -1.13, 0)]) },
+      { pivot: [0, 1.2, -0.14], geo: merge([box(0.2, 1.2, 0.22, PAL.ink, 0, -0.6, 0), box(0.36, 0.14, 0.24, PAL.hat, 0.07, -1.13, 0)]) },
+    ],
+    parts: [
+      { motion: "cape", pivot: [-0.2, 1.5, 0], amp: 0.7, geo: merge([box(0.05, 1.0, 0.3, PAL.ink, -0.03, -0.5, 0.17, { rz: -0.08 }), box(0.05, 1.0, 0.3, PAL.ink, -0.03, -0.5, -0.17, { rz: -0.08 })]) },
+      { motion: "sway", pivot: [-0.2, 2.96, 0], amp: 0.8, geo: merge([box(0.5, 0.1, 0.03, t.main, -0.25, -0.02, 0.1, { rz: 0.3 }), box(0.4, 0.1, 0.03, t.lo, -0.2, -0.06, -0.1, { rz: 0.5 })]) },
+      { motion: "bob", pivot: [-0.02, 2.56, 0.5], amp: 0.2, geo: merge([box(0.34, 0.2, 0.18, PAL.ink, 0, 0, 0, { rz: 0.3 }), ball(0.1, PAL.ink, 0.2, 0.14, 0, 0), cyl(0, 0.04, 0.16, 4, PAL.gold, 0.34, 0.12, 0, { rz: -HALF }), plate([[0, 0], [-0.4, 0.1], [-0.3, -0.1]], 0.03, PAL.ink, -0.14, 0, 0)]) },
+      { motion: "arm", side: -1, amp: 0.3, pivot: [0.02, 2.3, -0.44], geo: merge([box(0.16, 0.7, 0.16, PAL.ink, 0.16, -0.24, 0, { rz: 0.7 }), box(0.34, 0.44, 0.08, PAL.leather, 0.5, -0.4, 0, { rz: 0.2 }), box(0.3, 0.4, 0.03, PAL.bone, 0.5, -0.4, 0.05, { rz: 0.2 })]) },
+    ],
+    weapon: { pivot: [0.04, 2.3, 0.44], anim: "chop",
+      geo: merge([box(0.16, 0.7, 0.16, PAL.ink, 0.12, -0.2, 0, { rz: 0.5 }), cyl(0.035, 0.035, 2.3, 6, PAL.ink, 0.36, -0.5, 0), ball(0.09, PAL.gold, 0.36, 0.68, 0, 0),
+        box(0.36, 0.2, 0.2, PAL.iron, 0.36, 0.5, 0), box(0.12, 0.26, 0.26, PAL.steelHi, 0.56, 0.5, 0)]) },
+  }),
 };

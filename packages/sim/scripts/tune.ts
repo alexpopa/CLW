@@ -7,7 +7,7 @@
 import { UNITS, UNIT_ORDER, clash, massOf, stream } from "../src/index";
 import type { Army } from "../src/index";
 
-const TARGET: Record<number, number> = { 1: -0.06, 2: 0, 3: 0.06 }; // later tiers cost research, so they may be a little better
+const TARGET: Record<number, number> = { 1: -0.06, 2: 0, 3: 0.06, 4: 0.12 }; // later tiers cost research, so they may be a little better
 const ids = UNIT_ORDER.filter(id => UNITS[id]!.damage > 0);
 const escorted = (id: string, gold: number): Army => {
   const escort = UNITS[id]!.role === "front" ? "arbalester" : "oathguard";
@@ -29,7 +29,7 @@ export function averages(): Record<string, number> {
  * arbalesters behind it, a ranged unit behind oathguards, a support unit as a fifth of an oathguard-and-arbalester army)
  * and meets every other unit doing the same, wave after wave, for eight minutes. Slower, but it counts towers, travel and reinforcement.
  */
-const all = [...UNIT_ORDER];
+const all = UNIT_ORDER.filter(id => UNITS[id]!.tier <= 3); // tier IV is priced by hand: its fights are long, and it is meant to be the strongest
 const army = (id: string, gold: number): Army => {
   const d = UNITS[id]!, a: Army = {};
   const add = (unit: string, share: number) => { a[unit] = (a[unit] ?? 0) + massOf(unit, gold * share)[unit]!; };

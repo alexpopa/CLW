@@ -1,7 +1,7 @@
 import { Rng } from "./rng";
-import { INVEST_TIERS, LANE_WIDTH, MAP, RESEARCH, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH } from "./data";
+import { INVEST_TIERS, KEEPERS, LANE_WIDTH, MAP, RESEARCH, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH } from "./data";
 import type { UnitDef } from "./data";
-import type { BeaconState, Command, GameConfig, GameState, PlayerId, PlayerState, TeamId, TimedCommand, UnitState } from "./types";
+import type { Command, GameConfig, GameState, KeeperState, PlayerId, PlayerState, TeamId, TimedCommand, UnitState } from "./types";
 
 // ---- geometry helpers (shared with the client) ----
 export const hqX = (team: TeamId): number => (team === 0 ? MAP.hqOffset : MAP.laneLength - MAP.hqOffset);
@@ -18,6 +18,18 @@ export function canBuild(s: GameState, team: TeamId, lane: number, col: number, 
   if (col < 0 || col > MAP.zoneCols - f || row < 0 || row > MAP.zoneRows - f) return false;
   return !s.buildings.some(b => b.team === team && b.lane === lane && Math.abs(b.col - col) < f && Math.abs(b.row - row) < f);
 }
+/** True when a chantry may be ORDERED there: free now, and not already promised to another of the team's build orders. */
+export function canPlan(s: GameState, team: TeamId, lane: number, col: number, row: number): boolean {
+  const f = MAP.footprint;
+  return canBuild(s, team, lane, col, row)
+    && !s.keepers.some(k => k.team === team && k.jobs.some(j => j.lane === lane && Math.abs(j.col - col) < f && Math.abs(j.row - row) < f));
+}
+/** The nearest point to (x, y) that a keeper of `team` may stand on: its building ground, never the lane. */
+export function keeperGround(team: TeamId, x: number, y: number): { x: number; y: number } {
+  const lo = MAP.zoneStart, hi = MAP.zoneStart + MAP.zoneCols * MAP.cell, local = Math.max(lo, Math.min(hi, team === 0 ? x : MAP.laneLength - x));
+  return { x: team === 0 ? local : MAP.laneLength - local, y: Math.max(500, Math.min(LANE_WIDTH - 500, y)) };
+}
+export const keeperOf = (s: GameState, player: PlayerId, slot: number): KeeperState | undefined => s.keepers.find(k => k.owner === player && k.slot === slot);
 /** Distance of the base towers from their team's own lane end. */
 export const baseTowerLocalX = (): number => MAP.zoneStart + MAP.zoneCols * MAP.cell + MAP.baseTowerAhead;
 /** Living guard towers of a team in a lane. */
@@ -47,7 +59,8 @@ export function incomeOf(s: GameState, player: PlayerId): number {
 }
 
 // ---- research helpers ----
-export const isBuildable = (unit: string): boolean => { const d = Object.hasOwn(UNITS, unit) ? UNITS[unit] : undefined; return !!d && !d.structure && !d.summoned; };
+export const isBuildable = (unit: string): boolean => { const d = Object.hasOwn(UNITS, unit) ? UNITS[unit] : undefined; return !!d && !d.structure && !d.summoned && !d.merc; };
+export const isMerc = (unit: string): boolean => Object.hasOwn(UNITS, unit) && UNITS[unit]!.merc === true;
 export const isUnlocked = (p: PlayerState, unit: string): boolean => p.unlocked.includes(unit);
 /** What the "research" command would start for this player, or null if it may not start (ignoring gold and a research already under way). */
 export function researchOffer(p: PlayerState, unit?: string): { tier: number; unit: string | null; cost: number; ticks: number } | null {
@@ -80,13 +93,18 @@ export function createGame(cfg: GameConfig): GameState {
     tick: 0, rngState: cfg.seed >>> 0, nextId: 1, teamSize: n, laneCount,
     players: Array.from({ length: n * 2 }, (_, i) => ({
       id: i, team: (i < n ? 0 : 1) as TeamId, lane: (i % n) % laneCount,
-      credits: RULES.startCredits, tier: 1, unlocked: UNIT_ORDER.filter(id => UNITS[id]!.free), research: null,
+      credits: RULES.startCredits, tier: 1, unlocked: UNIT_ORDER.filter(id => UNITS[id]!.free), research: null, mercReady: 0,
       invest: Array.from({ length: laneCount }, () => 0),
       isAI: cfg.aiSlots?.includes(i) ?? false,
     })),
     teams: [{ hqHp: RULES.hqHp, hqCooldown: 0 }, { hqHp: RULES.hqHp, hqCooldown: 0 }],
-    beacons: [], buildings: [], units: [], events: [], winner: null,
+    beacons: [], buildings: [], keepers: [], units: [], events: [], winner: null,
   };
+  // Two gravekeepers per player wait near the rear of their own building ground.
+  for (const p of s.players) for (const slot of [0, 1] as const) {
+    const at = keeperGround(p.team, p.team === 0 ? MAP.zoneStart + 4 * MAP.cell : MAP.laneLength - MAP.zoneStart - 4 * MAP.cell, LANE_WIDTH / 2 + (slot ? 3 : -3) * MAP.cell);
+    s.keepers.push({ owner: p.id, team: p.team, slot, lane: p.lane, ...at, tlane: p.lane, tx: at.x, ty: at.y, jobs: [] });
+  }
   const lastB = MAP.beaconX.length - 1;
   for (let lane = 0; lane < laneCount; lane++) {
     // Each team starts holding the shrine nearest its cathedral, guarded by two towers.
@@ -110,7 +128,10 @@ export function parseCommand(raw: unknown): Command | null {
   const r = raw as Record<string, unknown>;
   const lane = r.lane === undefined ? {} : int(r.lane) ? { lane: r.lane } : null;
   if (!lane) return null;
-  if (r.type === "build") return typeof r.unit === "string" && Object.hasOwn(UNITS, r.unit) && int(r.col) && int(r.row) ? { type: "build", unit: r.unit, col: r.col, row: r.row, ...lane } : null;
+  const keeper = r.keeper === 0 || r.keeper === 1 ? r.keeper : null;
+  if (r.type === "build") return keeper !== null && typeof r.unit === "string" && Object.hasOwn(UNITS, r.unit) && int(r.col) && int(r.row) ? { type: "build", keeper, unit: r.unit, col: r.col, row: r.row, ...lane } : null;
+  if (r.type === "move") return keeper !== null && int(r.x) && int(r.y) ? { type: "move", keeper, x: r.x, y: r.y, ...lane } : null;
+  if (r.type === "hire") return typeof r.unit === "string" && Object.hasOwn(UNITS, r.unit) ? { type: "hire", unit: r.unit } : null;
   if (r.type === "sell") return int(r.buildingId) ? { type: "sell", buildingId: r.buildingId } : null;
   if (r.type === "invest") return { type: "invest", ...lane };
   if (r.type === "research") {
@@ -124,15 +145,31 @@ function applyCommand(s: GameState, player: PlayerId, c: Command): void {
   const me = s.players[player];
   if (!me) return;
   if (c.type === "build") {
-    const lane = c.lane ?? me.lane;
-    if (!isBuildable(c.unit) || !isUnlocked(me, c.unit)) return;
+    const lane = c.lane ?? me.lane, k = keeperOf(s, player, c.keeper);
+    if (!k || k.jobs.length >= RULES.keeperQueue || !isBuildable(c.unit) || !isUnlocked(me, c.unit)) return;
     const def = UNITS[c.unit]!;
-    if (me.credits < def.cost) return;
+    if (def.tier > KEEPERS[k.slot].maxTier || me.credits < def.cost) return;
     if (!Number.isInteger(lane) || lane < 0 || lane >= s.laneCount) return;
-    if (!canBuild(s, me.team, lane, c.col, c.row)) return;
-    me.credits -= def.cost;
-    s.buildings.push({ id: s.nextId++, owner: player, team: me.team, lane, col: c.col, row: c.row,
-      unit: def.id, readyTick: s.tick + RULES.buildTicks, produced: false });
+    if (!canPlan(s, me.team, lane, c.col, c.row)) return;
+    me.credits -= def.cost; // paid on the order, handed back if the chantry cannot be raised
+    k.jobs.push({ unit: def.id, lane, col: c.col, row: c.row });
+  } else if (c.type === "move") {
+    const lane = c.lane ?? me.lane, k = keeperOf(s, player, c.keeper);
+    if (!k || !Number.isInteger(lane) || lane < 0 || lane >= s.laneCount) return;
+    for (const j of k.jobs) me.credits += UNITS[j.unit]!.cost;
+    k.jobs = [];
+    const at = keeperGround(k.team, c.x, c.y);
+    k.tlane = lane; k.tx = at.x; k.ty = at.y;
+  } else if (c.type === "hire") {
+    if (!isMerc(c.unit) || s.tick < me.mercReady) return;
+    const def = UNITS[c.unit]!, k = s.keepers.find(q => q.owner === player && KEEPERS[q.slot].mercs);
+    if (!k || me.credits < def.cost) return;
+    me.credits -= def.cost; me.mercReady = s.tick + RULES.mercCooldownTicks;
+    // The band forms up in front of the base towers of the lane the Undertaker is in.
+    const local = baseTowerLocalX() + RULES.mercAhead, n = def.count ?? 1;
+    for (let i = 0; i < n; i++)
+      addUnit(s, def.id, player, me.team, k.lane, me.team === 0 ? local : MAP.laneLength - local, LANE_WIDTH / 2 + Math.trunc((i - (n - 1) / 2) * 2 * MAP.cell));
+    s.events.push({ t: "hired", player, unit: def.id });
   } else if (c.type === "sell") {
     const i = s.buildings.findIndex(b => b.id === c.buildingId && b.owner === player);
     if (i < 0) return;
@@ -309,7 +346,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
       }
     }
     const moveToward = (tx: number, ty: number, d: number, want: number) => {
-      const m = Math.min(speed, want);
+      const m = Math.min(speed, want + 40); // step a hair inside reach: rounding must never leave it standing just short
       if (d <= 0 || m <= 0) return;
       moves.push([u, Math.trunc(((tx - u.x) * m) / d), Math.trunc(((ty - u.y) * m) / d)]);
     };
@@ -357,6 +394,39 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
   }
   for (const apply of afflict) apply();
   for (const [u, dx, dy] of moves) { u.x += dx; u.y = Math.max(500, Math.min(LANE_WIDTH - 500, u.y + dy)); }
+
+  // Mercenaries are paid as far as the middle of the lane: there the contract ends and they walk off.
+  const half = MAP.laneLength / 2;
+  s.units = s.units.filter(u => {
+    if (!UNITS[u.type]!.merc || (u.team === 0 ? u.x < half : u.x > half)) return true;
+    s.events.push({ t: "leave", unit: u.type, team: u.team, x: u.x, y: u.y });
+    delta.delete(u);
+    return false;
+  });
+
+  // Gravekeepers walk to their next job (or to where they were sent) and raise the chantry the moment they arrive.
+  for (const k of s.keepers) {
+    const job = k.jobs[0], goal = job ? { ...cellCenter(k.team, job.col, job.row), lane: job.lane } : { x: k.tx, y: k.ty, lane: k.tlane };
+    if (k.lane !== goal.lane) { // cross to the neighbouring lane's ground over the shared edge
+      const down = goal.lane > k.lane, edge = down ? LANE_WIDTH - 500 : 500;
+      if (k.y === edge) { k.lane += down ? 1 : -1; k.y = down ? 500 : LANE_WIDTH - 500; }
+      else k.y += Math.max(-RULES.keeperSpeed, Math.min(RULES.keeperSpeed, edge - k.y));
+      continue;
+    }
+    const d = dist(k.x, k.y, goal.x, goal.y), reach = job ? RULES.keeperReach : 0;
+    if (d > reach) {
+      const m = Math.min(RULES.keeperSpeed, d - reach);
+      k.x += Math.trunc(((goal.x - k.x) * m) / d); k.y += Math.trunc(((goal.y - k.y) * m) / d);
+      if (m === RULES.keeperSpeed) continue; // still on the way; a shorter last step means it has arrived
+      if (!job) { k.x = goal.x; k.y = goal.y; }
+    }
+    if (!job) continue;
+    k.jobs.shift(); k.tlane = k.lane; k.tx = k.x; k.ty = k.y;
+    if (canBuild(s, k.team, job.lane, job.col, job.row)) {
+      s.buildings.push({ id: s.nextId++, owner: k.owner, team: k.team, lane: job.lane, col: job.col, row: job.row, unit: job.unit, readyTick: s.tick, produced: false });
+      s.events.push({ t: "built", player: k.owner, slot: k.slot, unit: job.unit, lane: job.lane, x: goal.x, y: goal.y });
+    } else s.players[k.owner]!.credits += UNITS[job.unit]!.cost;
+  }
 
   // Units keep a little room around themselves, so lines form instead of one stacked blob. Flyers only crowd flyers.
   const room = RULES.unitSpacing;
@@ -457,7 +527,6 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
   if (s.tick % RULES.incomeIntervalTicks === 0) for (const p of s.players) p.credits += incomeOf(s, p.id);
   if (s.tick % RULES.waveIntervalTicks === 0) {
     for (const b of s.buildings) {
-      if (b.readyTick > s.tick) continue;
       const pos = cellCenter(b.team, b.col, b.row), count = UNITS[b.unit]!.count ?? 1;
       b.produced = true;
       for (let i = 0; i < count; i++) {

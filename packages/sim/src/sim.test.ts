@@ -5,6 +5,10 @@ import type { GameConfig, GameState, TimedCommand } from "./index";
 /** Most tests want an empty lane: no guard towers. */
 const createGame = (cfg: GameConfig): GameState => { const s = newGame(cfg); s.units = []; return s; };
 const ticks = (s: GameState, n: number) => { for (let i = 0; i < n; i++) step(s); };
+/** Chantries standing plus those ordered and on their way. */
+const planned = (s: GameState) => s.buildings.length + s.keepers.reduce((n, k) => n + k.jobs.length, 0);
+/** Long enough for a gravekeeper to walk anywhere on its ground. */
+const WALK = 4 * TICK_RATE;
 function aiMatch(seed: number, maxTicks: number): GameState {
   const s = newGame({ teamSize: 1, seed, aiSlots: [0, 1] });
   for (let i = 0; i < maxTicks && s.winner === null; i++) {
@@ -23,7 +27,7 @@ describe("sim", () => {
 
   it("building costs credits and produces one unit per wave at the building's cell", () => {
     const s = createGame({ teamSize: 1, seed: 1 });
-    step(s, [{ player: 0, cmd: { type: "build", unit: "arbalester", col: 2, row: 3 } }]);
+    step(s, [{ player: 0, cmd: { type: "build", keeper: 0, unit: "arbalester", col: 2, row: 3 } }]);
     expect(s.players[0]!.credits).toBe(RULES.startCredits - UNITS.arbalester!.cost);
     ticks(s, RULES.waveIntervalTicks - 2);
     expect(s.units.length).toBe(0);
@@ -37,22 +41,25 @@ describe("sim", () => {
   it("rejects invalid builds: occupied cell, out of zone, locked tier, unaffordable", () => {
     const s = createGame({ teamSize: 1, seed: 1 });
     step(s, [
-      { player: 0, cmd: { type: "build", unit: "arbalester", col: 0, row: 0 } },
-      { player: 0, cmd: { type: "build", unit: "arbalester", col: 0, row: 0 } },
-      { player: 0, cmd: { type: "build", unit: "arbalester", col: 1, row: 1 } },             // overlaps the first
-      { player: 0, cmd: { type: "build", unit: "arbalester", col: MAP.zoneCols - 1, row: 0 } }, // hangs out of the zone
-      { player: 0, cmd: { type: "build", unit: "doctor", col: 4, row: 0 } },
-      { player: 0, cmd: { type: "build", unit: "tower", col: 6, row: 0 } },
+      { player: 0, cmd: { type: "build", keeper: 0, unit: "arbalester", col: 0, row: 0 } },
+      { player: 0, cmd: { type: "build", keeper: 0, unit: "arbalester", col: 0, row: 0 } },
+      { player: 0, cmd: { type: "build", keeper: 0, unit: "arbalester", col: 1, row: 1 } },             // overlaps the first
+      { player: 0, cmd: { type: "build", keeper: 0, unit: "arbalester", col: MAP.zoneCols - 1, row: 0 } }, // hangs out of the zone
+      { player: 0, cmd: { type: "build", keeper: 0, unit: "doctor", col: 4, row: 0 } },
+      { player: 0, cmd: { type: "build", keeper: 0, unit: "tower", col: 6, row: 0 } },
     ]);
-    expect(s.buildings.length).toBe(1);
-    step(s, [{ player: 0, cmd: { type: "build", unit: "oathguard", col: 1, row: 2 } }, { player: 0, cmd: { type: "build", unit: "oathguard", col: 3, row: 3 } }]);
-    expect(s.buildings.length).toBe(2); // third is unaffordable
+    expect(planned(s)).toBe(1);
+    step(s, [{ player: 0, cmd: { type: "build", keeper: 0, unit: "oathguard", col: 1, row: 2 } }, { player: 0, cmd: { type: "build", keeper: 0, unit: "oathguard", col: 3, row: 3 } }]);
+    expect(planned(s)).toBe(2); // third is unaffordable
+    ticks(s, WALK);
+    expect(s.buildings.length).toBe(2);
   });
 
   it("refunds 75% before the first wave and 25% after", () => {
     const s = createGame({ teamSize: 1, seed: 1 });
     s.players[0]!.credits = 1000;
-    step(s, [{ player: 0, cmd: { type: "build", unit: "oathguard", col: 0, row: 0 } }, { player: 0, cmd: { type: "build", unit: "oathguard", col: 0, row: 2 } }]);
+    step(s, [{ player: 0, cmd: { type: "build", keeper: 0, unit: "oathguard", col: 0, row: 0 } }, { player: 0, cmd: { type: "build", keeper: 0, unit: "oathguard", col: 0, row: 2 } }]);
+    ticks(s, WALK);
     const [a, b] = s.buildings;
     const before = s.players[0]!.credits;
     step(s, [{ player: 0, cmd: { type: "sell", buildingId: a!.id } }, { player: 1, cmd: { type: "sell", buildingId: b!.id } }]);
@@ -95,33 +102,36 @@ describe("sim", () => {
     const p = s.players[0]!;
     p.credits = 5000;
     expect(p.unlocked).toEqual(["arbalester", "oathguard", "zealot"]);
-    step(s, [{ player: 0, cmd: { type: "build", unit: "hound", col: 0, row: 0 } },      // tier 1, but not studied
+    step(s, [{ player: 0, cmd: { type: "build", keeper: 0, unit: "hound", col: 0, row: 0 } },      // tier 1, but not studied
       { player: 0, cmd: { type: "research", unit: "doctor" } },                            // tier 2 is not open
       { player: 0, cmd: { type: "research", unit: "tower" } }, { player: 0, cmd: { type: "research", unit: "skeleton" } },
       { player: 0, cmd: { type: "research", unit: "oathguard" } }]);                       // already known
-    expect([s.buildings.length, p.research, p.credits]).toEqual([0, null, 5000]);
+    expect([planned(s), p.research, p.credits]).toEqual([0, null, 5000]);
     step(s, [{ player: 0, cmd: { type: "research", unit: "hound" } }, { player: 0, cmd: { type: "research" } }]); // the second must wait
     expect(p.credits).toBe(5000 - UNIT_RESEARCH[1]!.cost);
     ticks(s, UNIT_RESEARCH[1]!.ticks - 2);
     expect(p.unlocked).not.toContain("hound");
     ticks(s, 1);
     expect(p.unlocked).toContain("hound");
-    step(s, [{ player: 0, cmd: { type: "build", unit: "hound", col: 0, row: 0 } }, { player: 0, cmd: { type: "research" } }]);
-    expect(s.buildings.length).toBe(1);
+    step(s, [{ player: 0, cmd: { type: "build", keeper: 0, unit: "hound", col: 0, row: 0 } }, { player: 0, cmd: { type: "research" } }]);
+    expect(planned(s)).toBe(1);
     ticks(s, RESEARCH[2]!.ticks);
     expect(p.tier).toBe(2);
-    step(s, [{ player: 0, cmd: { type: "build", unit: "doctor", col: 4, row: 0 } }]);     // open tier, unstudied unit
-    expect(s.buildings.length).toBe(1);
+    step(s, [{ player: 0, cmd: { type: "build", keeper: 0, unit: "doctor", col: 4, row: 0 } }]);     // open tier, unstudied unit
+    expect(planned(s)).toBe(1);
     step(s, [{ player: 0, cmd: { type: "research", unit: "doctor" } }]);
     ticks(s, UNIT_RESEARCH[2]!.ticks);
-    step(s, [{ player: 0, cmd: { type: "build", unit: "doctor", col: 4, row: 0 } }, { player: 0, cmd: { type: "research", unit: "colossus" } }]);
-    expect(s.buildings.length).toBe(2);
+    step(s, [{ player: 0, cmd: { type: "build", keeper: 0, unit: "doctor", col: 4, row: 0 } }, { player: 0, cmd: { type: "research", unit: "colossus" } }]);
+    expect(planned(s)).toBe(2);
     expect(p.research).toBeNull();                                                         // tier 3 is not open
     step(s, [{ player: 0, cmd: { type: "research" } }]);
     ticks(s, RESEARCH[3]!.ticks);
     expect(p.tier).toBe(3);
     step(s, [{ player: 0, cmd: { type: "research" } }]);
-    expect(p.research).toBeNull();                                                         // there is no fourth tier
+    ticks(s, RESEARCH[4]!.ticks);
+    expect(p.tier).toBe(4);
+    step(s, [{ player: 0, cmd: { type: "research" } }]);
+    expect(p.research).toBeNull();                                                         // there is no fifth tier
   });
 
   it("units fight; armor reduces damage; doctors heal", () => {
@@ -195,16 +205,72 @@ describe("sim", () => {
     expect(s.winner).toBe(0);
   });
 
+  it("gravekeepers walk to the spot and raise the chantry at once; orders queue, and walking away refunds them", () => {
+    const s = createGame({ teamSize: 1, seed: 1 });
+    const k = s.keepers.find(q => q.owner === 0 && q.slot === 0)!, start = { x: k.x, y: k.y };
+    step(s, [{ player: 0, cmd: { type: "build", keeper: 0, unit: "arbalester", col: 20, row: 20 } },
+      { player: 0, cmd: { type: "build", keeper: 0, unit: "arbalester", col: 20, row: 20 } },   // that ground is already promised
+      { player: 0, cmd: { type: "build", keeper: 1, unit: "arbalester", col: 21, row: 21 } },   // ...also to the other keeper
+      { player: 0, cmd: { type: "build", keeper: 0, unit: "oathguard", col: 0, row: 0 } },
+      { player: 1, cmd: { type: "build", keeper: 0, unit: "arbalester", col: 20, row: 20 } }]); // the enemy has its own ground
+    expect(k.jobs.length).toBe(2);
+    expect(s.players[0]!.credits).toBe(RULES.startCredits - UNITS.arbalester!.cost - UNITS.oathguard!.cost);
+    expect(s.buildings.length).toBe(0);                     // nobody is there yet
+    let arrived = 0;
+    while (s.buildings.filter(b => b.owner === 0).length === 0) { step(s); arrived++; }
+    expect(arrived).toBeGreaterThan(10);                    // it had to walk
+    expect(s.buildings.find(b => b.owner === 0)).toMatchObject({ unit: "arbalester", col: 20, row: 20, readyTick: s.tick - 1 });
+    expect(Math.hypot(k.x - start.x, k.y - start.y)).toBeGreaterThan(10000);
+    step(s, [{ player: 0, cmd: { type: "move", keeper: 0, x: 0, y: 12000 } }]); // off the ground: it stops at the edge, and the oathguard order is dropped
+    expect(k.jobs.length).toBe(0);
+    expect(s.players[0]!.credits).toBe(RULES.startCredits - UNITS.arbalester!.cost);
+    ticks(s, WALK * 2);
+    expect([k.x, k.y]).toEqual([MAP.zoneStart, 12000]);
+    expect(s.buildings.filter(b => b.owner === 0).length).toBe(1);
+    ticks(s, RULES.waveIntervalTicks);
+    expect(s.units.filter(u => u.type === "arbalester" && u.team === 0).length).toBe(1); // it musters from the very next wave
+  });
+
+  it("only the Undertaker raises tier IV and hires mercenaries, who fight to the middle of the lane and leave", () => {
+    const s = createGame({ teamSize: 1, seed: 1 });
+    const p = s.players[0]!;
+    p.credits = 10000; p.tier = 4; p.unlocked.push("titan");
+    step(s, [{ player: 0, cmd: { type: "build", keeper: 0, unit: "titan", col: 4, row: 4 } }]);
+    expect(planned(s)).toBe(0);
+    step(s, [{ player: 0, cmd: { type: "build", keeper: 1, unit: "titan", col: 4, row: 4 } },
+      { player: 0, cmd: { type: "build", keeper: 1, unit: "gallowglass", col: 8, row: 8 } }, // mercenaries are hired, not built
+      { player: 0, cmd: { type: "hire", unit: "gallowglass" } }, { player: 0, cmd: { type: "hire", unit: "ogre" } }, // one hiring at a time
+      { player: 0, cmd: { type: "hire", unit: "arbalester" } }]);
+    expect(planned(s)).toBe(1);
+    expect(p.credits).toBe(10000 - UNITS.titan!.cost - UNITS.gallowglass!.cost);
+    const band = s.units.filter(u => u.type === "gallowglass");
+    expect(band.length).toBe(UNITS.gallowglass!.count);
+    expect(band.every(u => u.team === 0 && u.x > MAP.zoneStart + MAP.zoneCols * MAP.cell)).toBe(true); // in front of the building ground
+    spawn(s, "arbalester", 1, 150000);
+    const foe = s.units[s.units.length - 1]!;
+    let leftAt = -1;
+    for (let i = 0; i < 90 * TICK_RATE && leftAt < 0; i++) { step(s); if (s.events.some(e => e.t === "leave")) leftAt = s.tick; }
+    expect(s.units).not.toContain(foe);                    // they cut down what stood in their way
+    expect(leftAt).toBeGreaterThan(0);
+    expect(s.units.some(u => u.type === "gallowglass")).toBe(false);
+    step(s, [{ player: 0, cmd: { type: "hire", unit: "ogre" } }]);
+    expect(s.units.filter(u => u.type === "ogre").length).toBe(1);
+  });
+
   it("parseCommand accepts only well-formed commands and drops unknown fields", () => {
-    expect(parseCommand({ type: "build", unit: "arbalester", col: 2, row: 4, credits: 9999 })).toEqual({ type: "build", unit: "arbalester", col: 2, row: 4 });
+    expect(parseCommand({ type: "build", keeper: 1, unit: "arbalester", col: 2, row: 4, credits: 9999 })).toEqual({ type: "build", keeper: 1, unit: "arbalester", col: 2, row: 4 });
+    expect(parseCommand({ type: "move", keeper: 0, x: 30000, y: 12000, speed: 9 })).toEqual({ type: "move", keeper: 0, x: 30000, y: 12000 });
+    expect(parseCommand({ type: "hire", unit: "ogre" })).toEqual({ type: "hire", unit: "ogre" });
     expect(parseCommand({ type: "invest", lane: 0 })).toEqual({ type: "invest", lane: 0 });
     expect(parseCommand({ type: "research", unit: "hound", tier: 3 })).toEqual({ type: "research", unit: "hound" });
     expect(parseCommand({ type: "research" })).toEqual({ type: "research" });
-    for (const bad of [null, 5, "build", {}, { type: "win" }, { type: "build", unit: "__proto__", col: 0, row: 0 }, { type: "build", unit: "arbalester", col: "0", row: 0 },
-      { type: "build", unit: "arbalester", col: 0.5, row: 0 }, { type: "sell", buildingId: "1" }, { type: "research", unit: "toString" }, { type: "research", unit: 3 }, { type: "invest", lane: "length" }])
+    for (const bad of [null, 5, "build", {}, { type: "win" }, { type: "build", keeper: 0, unit: "__proto__", col: 0, row: 0 }, { type: "build", keeper: 0, unit: "arbalester", col: "0", row: 0 },
+      { type: "build", keeper: 0, unit: "arbalester", col: 0.5, row: 0 }, { type: "build", unit: "arbalester", col: 0, row: 0 }, { type: "build", keeper: 2, unit: "arbalester", col: 0, row: 0 },
+      { type: "move", keeper: 0, x: 1.5, y: 0 }, { type: "move", keeper: "0", x: 1, y: 0 }, { type: "hire", unit: "hasOwnProperty" }, { type: "hire" }, { type: "sell", buildingId: "1" }, { type: "research", unit: "toString" }, { type: "research", unit: 3 }, { type: "invest", lane: "length" }])
       expect(parseCommand(bad)).toBeNull();
     const s = createGame({ teamSize: 1, seed: 1 });
-    step(s, [{ player: 0, cmd: { type: "invest", lane: "length" as unknown as number } }, { player: 0, cmd: { type: "build", unit: "constructor", col: 0, row: 0 } }]);
+    step(s, [{ player: 0, cmd: { type: "invest", lane: "length" as unknown as number } }, { player: 0, cmd: { type: "build", keeper: 0, unit: "constructor", col: 0, row: 0 } },
+      { player: 0, cmd: { type: "build", keeper: 7 as 0, unit: "arbalester", col: 0, row: 0 } }, { player: 0, cmd: { type: "move", keeper: 0, x: 0, y: 0, lane: 9 } }]);
     expect(s.players[0]!.credits).toBe(RULES.startCredits);
     expect(s.players[0]!.invest).toEqual([0]);
   });

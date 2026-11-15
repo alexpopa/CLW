@@ -22,10 +22,23 @@ A player starts with three known units: the Arbalester, the Oathguard and the Py
 | Study a tier II unit | 150 | 18 s |
 | The Third Rite (opens tier III) | 800 | 45 s |
 | Study a tier III unit | 260 | 25 s |
+| The Fourth Rite (opens tier IV) | 1,500 | 60 s |
+| Study a tier IV unit | 450 | 35 s |
 
-Learning everything costs 4,750 gold and almost eight minutes of research time, which is more than a match allows early on. The intended decision is the one the original game is built on: which few units to learn, and when to stop adding chantries and pay for the next rite.
+Learning everything costs 8,050 gold and eleven minutes of research time, which is more than a match allows early on. The intended decision is the one the original game is built on: which few units to learn, and when to stop adding chantries and pay for the next rite.
 
-In the client, the unit bar shows one tier at a time. Clicking a card you know selects it for building; clicking a card of an open tier that you have not studied starts its study; cards of a sealed tier show the tier's numeral.
+## Gravekeepers
+
+Chantries are raised by the player's two gravekeepers, who walk the building ground and are not units (they cannot fight or be harmed, and never enter the lane).
+
+| Key | Keeper | Raises | Also |
+|---|---|---|---|
+| 1 | **Sexton** | Tiers I, II, III | |
+| 2 | **Undertaker** | Tiers I, II, III and IV | Hires mercenaries |
+
+Select a keeper (1 or 2, or click him), pick a card, click the ground. Gold is paid on the order; he walks there (9 lane units a second) and the chantry stands at once. Up to eight orders queue per keeper. A move order (right-click, or left-click with no unit chosen) cancels his queue and refunds it. The build menu is only shown while a keeper is selected, and tier IV and the mercenaries only appear in the Undertaker's menu. Card keys are 3 4 5 6 7 8 9 0.
+
+Keepers are written for team games: every order carries a lane, and a keeper may walk to any lane of his own team's ground, so in 2v2 and 3v3 a player will be able to build in an ally's lane.
 
 ## The roster
 
@@ -78,6 +91,12 @@ Opened by the Third Rite (800 gold, 45 s). Each study costs 260 gold and takes 2
 
 - **Skeleton:** 90 health, 10 damage a second, melee. Raised by a Necromancer or left by a fallen Bone Colossus. Crumbles after 40 seconds. Skeletons are not worth anything to a Necromancer when they die (they cannot be raised again).
 - **Guard Tower:** 2,400 health, armor 2, 24 damage every 0.6 s, reach 9. Strikes ground and air. Four per side; see [GAME_DESIGN.md](GAME_DESIGN.md).
+
+## Tier IV and mercenaries
+
+Tier IV is the top of the roster: four units, each several times the price of a tier III unit, and only the Undertaker can raise them. They are meant to be the strongest things on the lane and each still has an answer: the Belfry Titan and the Pale Rider cannot reach flyers and are slowed and executed like any giant; the Ashen Seraph is a flyer and dies to silver shot and the Impaler; the Hellmouth cannot shoot up or close.
+
+Mercenaries are not built. The Undertaker pays once, the band appears in front of the base towers, and it leaves at the middle of the lane. A chantry of a comparable unit costs three to five times as much but musters every wave for the rest of the match, so mercenaries are worth it only to survive a push or to take the middle shrine at a moment that matters. Their dead can be raised by Necromancers like anyone else's.
 
 ## Abilities
 

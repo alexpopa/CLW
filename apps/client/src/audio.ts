@@ -118,9 +118,11 @@ export class Sound {
         else if (kind === "lightning") this.play("zap", v, p);
         else if (kind === "orb") this.play(e.unit === "lich" ? "frost" : "curse", v, p);
         else if (kind === "beam") this.play("smite", v * (e.unit === "tower" ? 0.6 : 1), p);
-        else if (e.unit === "colossus" || e.unit === "penitent") this.play("thud", v, p);
+        else if (e.unit === "colossus" || e.unit === "penitent" || e.unit === "ogre") this.play("thud", v, p);
+        else if (e.unit === "titan") { this.play("thud", v, p); this.play("bell", v * 0.5, p); }
         else this.play("clang", v, p);
       } else if (e.t === "raise") this.play("raise", ...at(e.x));
+      else if (e.t === "built") this.play("build", ...at(e.x));
       else if (e.t === "heal") this.play("heal", ...at(e.x1));
       else if (e.t === "death") this.play(e.unit === "tower" ? "boom" : "death", ...at(e.x));
       else if (e.t === "capture") { const i = e.beacon - 1; this.play(e.team === myTeam ? "capture" : "lost", 1, ((MAP.beaconX[i] ?? 0) / 1000 - camX) / 60); }

@@ -1,7 +1,7 @@
-import { canBuild, createGame, isUnlocked, researchOffer, simpleAI, step, unitsOfTier, INVEST_TIERS, MAP, MAX_TIER, TICK_RATE, UNITS } from "@lw/sim";
+import { canPlan, createGame, isUnlocked, researchOffer, simpleAI, step, INVEST_TIERS, KEEPERS, MAP, TICK_RATE, UNITS } from "@lw/sim";
 import type { Command, GameState, TimedCommand } from "@lw/sim";
 import { Renderer } from "./scene";
-import { createHud, RITE } from "./hud";
+import { CARD_KEYS, MERC_TAB, RITE, createHud, tabUnits } from "./hud";
 import { Sound } from "./audio";
 import { hostedAccounts, matchCredentials, Net } from "./net";
 
@@ -29,7 +29,10 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   let pending: Command[] = [];
   let acc = 0, last = performance.now();
   let selectedUnit: string | null = null, selectedBuilding: number | null = null;
-  let tierTab = 1;                         // which tier's cards the bar shows
+  let tierTab = 1;                         // which tier's cards the bar shows (MERC_TAB = mercenaries)
+  let selectedKeeper: 0 | 1 | null = null; // the gravekeeper taking orders; the build menu shows only while one is chosen
+  /** Tabs the chosen keeper offers: the Sexton tiers I-III, the Undertaker those plus tier IV and the mercenaries. */
+  const tabs = (): number[] => { const k = selectedKeeper === null ? null : KEEPERS[selectedKeeper]; return k ? [...Array.from({ length: k.maxTier }, (_, i) => i + 1), ...(k.mercs ? [MERC_TAB] : [])] : []; };
   let hoverCell: { col: number; row: number } | null = null;
   const keys = new Set<string>();
   let mouseX = -1, mouseInside = false;
@@ -39,7 +42,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   const send = (cmd: Command) => { if (!running || ended) return; if (online) net?.command(cmd); else pending.push(cmd); };
   const begin = (state: GameState, slot: number) => {
     game = state; ME = slot; pending = []; inbox = []; acc = 0; ended = false; running = true; paused = false; speed = online ? 1 : speed;
-    selectedUnit = null; selectedBuilding = null; tierTab = 1;
+    selectedUnit = null; selectedBuilding = null; tierTab = 1; selectedKeeper = null;
     view.reset(); view.camX = home(); view.clampCam(); hud.hideOverlay(); sound.play("bell");
     const team = me().team;
     hud.setSide(team, (pics[team] ??= view.portraits(team)));
@@ -80,8 +83,22 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
 
   const pics: Record<number, Record<string, string>> = { 0: view.portraits(0) }; // card portraits per side
   const hud = createHud(hudRoot, pics[0]!, {
+    selectKeeper(slot) {
+      selectedKeeper = slot; selectedBuilding = null; sound.play("click");
+      if (!tabs().includes(tierTab)) tierTab = 1;
+      if (selectedUnit && UNITS[selectedUnit]!.tier > KEEPERS[slot].maxTier) selectedUnit = null;
+    },
     selectUnit(id) {
       const p = me(), d = UNITS[id]!;
+      if (selectedKeeper === null) return;
+      if (d.merc) {
+        if (!KEEPERS[selectedKeeper].mercs) deny("Only the Undertaker hires mercenaries");
+        else if (game.tick < p.mercReady) deny("The last band is still signing on");
+        else if (p.credits < d.cost) deny("Not enough gold");
+        else { send({ type: "hire", unit: id }); sound.play("coin"); hud.toast(`${d.name} hired`); }
+        return;
+      }
+      if (d.tier > KEEPERS[selectedKeeper].maxTier) { deny("Only the Undertaker can raise it"); return; }
       if (isUnlocked(p, id)) { selectedUnit = selectedUnit === id ? null : id; selectedBuilding = null; sound.play("click"); return; }
       const offer = researchOffer(p, id);
       if (!offer) deny(`Sealed until ${RITE[d.tier]}`);
@@ -89,7 +106,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
       else if (p.credits < offer.cost) deny(`Studying the ${d.name} costs ${offer.cost} gold`);
       else { send({ type: "research", unit: id }); sound.play("study"); hud.toast(`Studying the ${d.name}`); }
     },
-    setTier(tier) { tierTab = Math.max(1, Math.min(MAX_TIER, tier)); sound.play("click"); },
+    setTier(tier) { if (tabs().includes(tier)) { tierTab = tier; selectedUnit = null; sound.play("click"); } },
     invest() {
       const tier = INVEST_TIERS[me().invest[me().lane] ?? 0];
       if (!tier) deny("The tithe cannot be raised further");
@@ -141,21 +158,35 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     }
     hoverCell = cellUnder(e);
   });
+  /** Send the chosen keeper walking to a point on the ground (the sim keeps him on the building ground). */
+  const walkTo = (w: { x: number; y: number }) => { if (selectedKeeper === null) return; send({ type: "move", keeper: selectedKeeper, x: Math.round(w.x), y: Math.round(w.y) }); selectedUnit = null; sound.play("click"); };
   canvas.addEventListener("pointerup", e => {
     const wasDrag = down?.moved; down = null;
     if (e.button !== 0 || wasDrag || !running) return;
-    const cell = cellUnder(e);
+    const w = view.pick(e.clientX, e.clientY), cell = w && view.cellAt(me().team, w.x, w.y);
     const F = MAP.footprint;
+    // clicking a gravekeeper chooses him, unless a chantry is being placed right there
+    const near = w && !selectedUnit ? game.keepers.filter(k => k.owner === ME && k.lane === me().lane).map(k => ({ k, d: Math.hypot(k.x - w.x, k.y - w.y) })).sort((a, b) => a.d - b.d)[0] : undefined;
+    if (near && near.d < 1700) { hud.actions.selectKeeper(near.k.slot); return; }
     const existing = cell && game.buildings.find(b => b.team === me().team && b.lane === me().lane
       && cell.at.col >= b.col && cell.at.col < b.col + F && cell.at.row >= b.row && cell.at.row < b.row + F);
     if (existing) { selectedBuilding = existing.owner === ME ? existing.id : null; selectedUnit = null; sound.play("click"); }
-    else if (cell && selectedUnit) {
+    else if (cell && selectedUnit && selectedKeeper !== null) {
+      const k = game.keepers.find(q => q.owner === ME && q.slot === selectedKeeper);
       if (me().credits < UNITS[selectedUnit]!.cost) deny("Not enough gold");
-      else if (!canBuild(game, me().team, me().lane, cell.col, cell.row)) deny("No room there");
-      else { send({ type: "build", unit: selectedUnit, col: cell.col, row: cell.row }); sound.play("build"); }
-    } else selectedBuilding = null;
+      else if (!canPlan(game, me().team, me().lane, cell.col, cell.row)) deny("No room there");
+      else if (k && k.jobs.length >= 8) deny("He has enough to do already");
+      else { send({ type: "build", keeper: selectedKeeper, unit: selectedUnit, col: cell.col, row: cell.row }); sound.play("click"); }
+    } else if (w && selectedKeeper !== null && !selectedUnit && selectedBuilding === null) walkTo(w);
+    else selectedBuilding = null;
   });
-  canvas.addEventListener("contextmenu", e => { e.preventDefault(); selectedUnit = null; selectedBuilding = null; });
+  // right-click: stop placing, or send the chosen keeper walking
+  canvas.addEventListener("contextmenu", e => {
+    e.preventDefault();
+    const w = view.pick(e.clientX, e.clientY);
+    if (selectedUnit || selectedBuilding !== null) { selectedUnit = null; selectedBuilding = null; }
+    else if (w && running) walkTo(w);
+  });
   canvas.addEventListener("wheel", e => { e.preventDefault(); view.camX += (e.deltaX + e.deltaY) * view.unitsPerPixel(); view.clampCam(); }, { passive: false });
   addEventListener("mousemove", e => { mouseX = e.clientX; mouseInside = true; });
   document.addEventListener("mouseleave", () => { mouseInside = false; });
@@ -166,14 +197,14 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     if (e.target instanceof HTMLInputElement) return; // typing a name or a code
     keys.add(k);
     if (e.repeat || !running) return;
-    const n = Number(k);
-    const row = unitsOfTier(tierTab);
-    if (n >= 1 && n <= row.length) hud.actions.selectUnit(row[n - 1]!);
-    else if (k === "tab") { e.preventDefault(); hud.actions.setTier(e.shiftKey ? (tierTab + MAX_TIER - 2) % MAX_TIER + 1 : tierTab % MAX_TIER + 1); }
+    const card = CARD_KEYS.indexOf(k), row = tabUnits(tierTab), open = tabs();
+    if (k === "1" || k === "2") hud.actions.selectKeeper(k === "1" ? 0 : 1);
+    else if (card >= 0 && card < row.length && selectedKeeper !== null) hud.actions.selectUnit(row[card]!);
+    else if (k === "tab") { e.preventDefault(); if (open.length) hud.actions.setTier(open[(open.indexOf(tierTab) + (e.shiftKey ? open.length - 1 : 1)) % open.length]!); }
     else if (k === "e") hud.actions.invest();
     else if (k === "r") hud.actions.research();
     else if (k === "x" || k === "delete" || k === "backspace") hud.actions.sell();
-    else if (k === "escape") { selectedUnit = null; selectedBuilding = null; }
+    else if (k === "escape") { if (selectedUnit || selectedBuilding !== null) { selectedUnit = null; selectedBuilding = null; } else selectedKeeper = null; }
     else if (k === "p") hud.actions.togglePause();
     else if (k === " ") { e.preventDefault(); view.camX = home(); view.clampCam(); }
   });
@@ -194,7 +225,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     for (const e of game.events) {
       if (e.t === "researched" && e.player === ME) {
         if (e.unit) hud.toast(`${UNITS[e.unit]!.name} studied — its chantry may now be raised`);
-        else { hud.toast(`${RITE[e.tier]} is complete — choose what to study`); tierTab = e.tier; }
+        else { hud.toast(`${RITE[e.tier]} is complete — choose what to study`); if (tabs().includes(e.tier)) tierTab = e.tier; }
         sound.play("capture");
       }
       else if (e.t === "capture") hud.toast(e.team === me().team ? "Shrine claimed" : "Shrine lost");
@@ -231,8 +262,8 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
       }
     }
     if (selectedBuilding !== null && !game.buildings.some(b => b.id === selectedBuilding)) selectedBuilding = null;
-    view.draw(game, { selectedUnit, hoverCell, selectedBuilding, me: ME }, paused || ended ? 1 : Math.min(1, acc / TICK_MS), now, dt);
-    hud.update(game, { me: ME, tier: tierTab, selectedUnit, selectedBuilding, speed, paused, camFrac: view.viewRange() });
+    view.draw(game, { selectedKeeper, selectedUnit, hoverCell, selectedBuilding, me: ME }, paused || ended ? 1 : Math.min(1, acc / TICK_MS), now, dt);
+    hud.update(game, { me: ME, keeper: selectedKeeper, tier: tierTab, selectedUnit, selectedBuilding, speed, paused, camFrac: view.viewRange() });
   };
   requestAnimationFrame(frame);
 

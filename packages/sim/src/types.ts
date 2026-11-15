@@ -10,6 +10,7 @@ export interface PlayerState {
   tier: number;               // highest tier opened by a rite
   unlocked: string[];         // units this player may build, in the order they were learned
   research: ResearchState | null; // one research at a time
+  mercReady: number;          // tick from which the next mercenary band may be hired
   invest: number[];           // personal investment level per lane
   isAI: boolean;
 }
@@ -18,7 +19,7 @@ export interface BuildingState {
   id: number; owner: PlayerId; team: TeamId; lane: number;
   col: number; row: number;   // cell in the team's production zone (col 0 = rear, nearest own HQ)
   unit: string;
-  readyTick: number;          // construction completes at this tick
+  readyTick: number;          // tick it was raised (it musters from the next wave on)
   produced: boolean;          // has spawned at least once (affects sell refund)
 }
 export interface UnitState {
@@ -35,6 +36,18 @@ export interface UnitState {
   abilityCd: number;          // ticks until its ability (Raise Dead) is ready again
   expire: number;             // tick at which a summoned unit crumbles, 0 = never
 }
+/** A chantry a keeper has been told to raise and is walking to. It is paid for when ordered and refunded if it cannot be built. */
+export interface KeeperJob { unit: string; lane: number; col: number; row: number }
+/**
+ * A gravekeeper: the player's builder. Walks the building ground of its own team (any lane of it, so in team
+ * games it can cross to an ally's lane), never the lane itself. Not a unit: it cannot fight or be harmed.
+ */
+export interface KeeperState {
+  owner: PlayerId; team: TeamId; slot: 0 | 1;   // slot 0 = Sexton, slot 1 = Undertaker (see KEEPERS in data.ts)
+  lane: number; x: number; y: number;           // where it stands
+  tlane: number; tx: number; ty: number;        // where it was told to go (used when it has no job)
+  jobs: KeeperJob[];                            // build orders, first is current
+}
 export interface BeaconState { id: number; lane: number; x: number; owner: TeamId | null }
 export interface TeamState { hqHp: number; hqCooldown: number }
 
@@ -47,6 +60,9 @@ export type SimEvent =
   | { t: "death"; unit: string; team: TeamId; x: number; y: number }
   | { t: "capture"; beacon: number; team: TeamId }
   | { t: "wave" }
+  | { t: "built"; player: PlayerId; slot: 0 | 1; unit: string; lane: number; x: number; y: number }
+  | { t: "hired"; player: PlayerId; unit: string }
+  | { t: "leave"; unit: string; team: TeamId; x: number; y: number }   // a mercenary's contract ends
   | { t: "researched"; player: PlayerId; tier: number; unit: string | null };
 
 export interface GameState {
@@ -59,6 +75,7 @@ export interface GameState {
   teams: [TeamState, TeamState];
   beacons: BeaconState[];
   buildings: BuildingState[];
+  keepers: KeeperState[];
   units: UnitState[];
   events: SimEvent[];
   winner: TeamId | null;
@@ -66,7 +83,9 @@ export interface GameState {
 
 /** Everything a player can do. The ONLY way to change state besides step(). Must be serializable. */
 export type Command =
-  | { type: "build"; unit: string; col: number; row: number; lane?: number }
+  | { type: "build"; keeper: 0 | 1; unit: string; col: number; row: number; lane?: number } // queue a chantry for that keeper to raise
+  | { type: "move"; keeper: 0 | 1; x: number; y: number; lane?: number }                    // walk there (drops its queue, refunded)
+  | { type: "hire"; unit: string }                                                          // a mercenary band, through the Undertaker
   | { type: "sell"; buildingId: number }
   | { type: "invest"; lane?: number }
   | { type: "research"; unit?: string }; // no unit = the next rite (opens a tier); unit = study that unit

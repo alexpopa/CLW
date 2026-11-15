@@ -23,8 +23,8 @@ The accounts Worker and basic sign-in screen are implemented. The hosted client 
 Match history, simple Elo, leaderboards, replays (seed+log), sound/music, settings, tutorial.
 
 ## M5 — Content & balance
-**Done:** 22 units in three tiers with automatic abilities, per-unit research, flyers and anti-air, rigged unit animation, a combat test harness and balance scripts (see [UNITS.md](UNITS.md)).
-**Still to do:** balance against human play, upgrades, a fourth tier, AI difficulty levels.
+**Done:** 26 units in four tiers with automatic abilities, per-unit research, flyers and anti-air, two gravekeepers who do the building (tier IV and mercenaries through the Undertaker), four mercenary bands, rigged unit animation, a combat test harness and balance scripts (see [UNITS.md](UNITS.md)).
+**Still to do:** balance against human play (tier IV and mercenary prices are first estimates), upgrades, AI difficulty levels.
 
 ## Backlog
 Mobile controls, spectating, custom lobbies/passwords, anti-cheat hardening, localization.
