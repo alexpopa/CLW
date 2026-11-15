@@ -346,7 +346,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
       }
     }
     const moveToward = (tx: number, ty: number, d: number, want: number) => {
-      const m = Math.min(speed, want);
+      const m = Math.min(speed, want + (def.merc ? RULES.mercApproachPad : 0));
       if (d <= 0 || m <= 0) return;
       moves.push([u, Math.trunc(((tx - u.x) * m) / d), Math.trunc(((ty - u.y) * m) / d)]);
     };

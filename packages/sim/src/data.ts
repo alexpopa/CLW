@@ -264,6 +264,7 @@ export const RULES = {
   keeperReach: 2500,              // a keeper raises a chantry once this close to its centre; the chantry stands at once
   keeperQueue: 8,                 // build orders one keeper can have waiting
   mercCooldownTicks: sec(6),      // pause between two hirings
+  mercApproachPad: 40,           // step inside attack range so a hired band can clear foes and reach midfield
   mercAhead: 3 * UNIT,            // mercenaries appear this far in front of the base towers
   sellRefundFreshPct: 75,         // before the building's first wave
   sellRefundUsedPct: 25,          // after it has produced
