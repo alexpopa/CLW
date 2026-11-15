@@ -48,13 +48,13 @@ describe("match server", () => {
     expect(b.last("gameStart")).toMatchObject({ yourSlot: 1 });
     expect(a.last("gameStart")!.config.aiSlots).toEqual([]);
 
-    await a.say({ t: "cmd", cmd: { type: "build", unit: "arbalester", col: 20, row: 10 }, clientSeq: 1 });
-    await b.say({ t: "cmd", cmd: { type: "build", unit: "oathguard", col: 20, row: 4, credits: 99999 }, clientSeq: 1 });
-    await b.say({ t: "cmd", cmd: { type: "build", unit: "__proto__", col: 0, row: 0 }, clientSeq: 2 }); // dropped
+    await a.say({ t: "cmd", cmd: { type: "build", keeper: 0, lane: 0, unit: "arbalester", col: 20, row: 10 }, clientSeq: 1 });
+    await b.say({ t: "cmd", cmd: { type: "build", keeper: 0, lane: 0, unit: "oathguard", col: 20, row: 4, credits: 99999 }, clientSeq: 1 });
+    await b.say({ t: "cmd", cmd: { type: "build", keeper: 0, lane: 0, unit: "__proto__", col: 0, row: 0 }, clientSeq: 2 }); // dropped
     await b.say({ t: "cmd", cmd: { type: "sell", buildingId: 1 }, clientSeq: 3 });                     // not theirs: no effect
     run(40 * TICK_RATE);
     expect(a.game.tick).toBe(40 * TICK_RATE);
-    expect(a.game.buildings.map(x => [x.owner, x.unit])).toEqual([[0, "arbalester"], [1, "oathguard"]]);
+    expect([...a.game.buildings].sort((x, y) => x.owner - y.owner).map(x => [x.owner, x.unit])).toEqual([[0, "arbalester"], [1, "oathguard"]]);
     expect(a.game.units.filter(u => u.type !== "tower").length).toBe(2); // one wave from each side
     expect(JSON.stringify(a.game)).toBe(JSON.stringify(b.game));
   });

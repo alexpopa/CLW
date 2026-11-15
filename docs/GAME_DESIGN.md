@@ -1,4 +1,4 @@
-# Game design (current build: one lane, 1v1, three unit tiers)
+# Game design (current build: one lane, 1v1, four unit tiers)
 
 Working title: **Gravemarch**. This describes what is implemented. For the original game and the long-term plan see the [Colonial Line Wars research and recreation specification](COLONIAL_LINE_WARS.md); this build is [Phase 1](COLONIAL_LINE_WARS.md#38-phase-1--functional-core) of it plus the unit roster, research and abilities of the later phases. Every unit, its ability, its counters and how balance is tested are in [UNITS.md](UNITS.md). The shared [project rules](../AGENTS.md) govern implementation.
 
