@@ -62,6 +62,36 @@ const QUALITY = [
   { pixels: 1, shadow: 512, bloom: false },
   { pixels: 1, shadow: 0, bloom: false },
 ];
+/**
+ * The Deadly Fog: sheets of drifting vapour stacked over the lane, each a warped noise field, so that it reads as a
+ * rolling bank with depth and never as a solid slab. vP.x is the distance from the caster's lane end, vP.y across the lane.
+ */
+const FOG_VERT = `varying vec2 vP; void main(){ vP = position.xz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const FOG_FRAG = `
+varying vec2 vP; uniform float uFront, uTime, uFade, uLayer, uWidth; uniform vec3 uTint;
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
+float fbm(vec2 p){ float a = 0.5, v = 0.0; for (int i = 0; i < 4; i++) { v += a * noise(p); p = p * 2.03 + vec2(17.0, 9.0); a *= 0.5; } return v; }
+void main(){
+  float t = uTime;
+  vec2 q = vP * 0.085 + vec2(-t * 0.06, t * 0.014) * (1.0 + uLayer * 0.35) + uLayer * 7.3;
+  vec2 curl = vec2(fbm(q * 1.7 + t * 0.03), fbm(q * 1.7 + 5.2 - t * 0.02));
+  float d = fbm(q + curl * 1.5);
+  float edge = uFront + (fbm(vec2(vP.y * 0.16 + uLayer * 3.1, t * 0.12)) - 0.55) * 16.0 - uLayer * 2.5; // ragged, and the high sheets trail
+  float body = smoothstep(edge, edge - 9.0, vP.x);
+  float crest = body * smoothstep(edge - 16.0, edge - 1.0, vP.x);
+  float side = smoothstep(-2.5, 2.0, vP.y) * smoothstep(uWidth + 2.5, uWidth - 2.0, vP.y) * smoothstep(-9.0, -2.0, vP.x);
+  float dens = smoothstep(0.33, 0.72, d);
+  float a = body * side * uFade * (0.05 + 0.34 * dens + 0.24 * crest * dens);
+  vec3 col = mix(vec3(0.0, 0.05, 0.03), vec3(0.16, 0.62, 0.27), dens);
+  col = mix(col, uTint, 0.08) + pow(dens, 3.0) * vec3(0.2, 0.5, 0.22) + crest * dens * vec3(0.12, 0.6, 0.22);
+  gl_FragColor = vec4(col, a);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+type FogView = { g: THREE.Group; front: { value: number }; time: { value: number }; fade: { value: number }; mote: number };
+
 export class Renderer {
   private renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
   private scene = new THREE.Scene();
@@ -87,6 +117,7 @@ export class Renderer {
   private hover!: THREE.Mesh; private range!: THREE.Mesh; private selRing!: THREE.Mesh;
   private keeperRing!: THREE.Mesh; private wayMark!: THREE.Mesh; private ghostMarks: THREE.Mesh[] = [];
   private ray = new THREE.Raycaster(); private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private fogs = new Map<number, FogView>(); // by the player who called it: each may only once
   private dist = 60; private lastEmber = 0; private hqScale = 1; private flash = 0;
   camX = 30; // camera target along the lanes, world units
   camZ = MID_Z; // ...and across them
@@ -365,7 +396,30 @@ export class Renderer {
     for (const b of this.buildings.values()) this.scene.remove(b);
     for (const p of this.particles) this.scene.remove(p.sprite);
     for (const sh of this.shots) this.scene.remove(sh.mesh);
+    for (const f of this.fogs.values()) this.dropFog(f);
+    this.fogs.clear();
     this.units.clear(); this.buildings.clear(); this.dying = []; this.particles = []; this.shots = []; this.prev.clear();
+  }
+
+  private makeFog(team: TeamId, lane: number): FogView {
+    const reach = W(RULES.fogReach), g = new THREE.Group(), geo = new THREE.BufferGeometry();
+    const x0 = -10, x1 = reach + 12, z0 = -3, z1 = LANE_W + 3;
+    geo.setAttribute("position", new THREE.Float32BufferAttribute([x0, 0, z0, x0, 0, z1, x1, 0, z0, x1, 0, z1], 3)); geo.setIndex([0, 1, 2, 2, 1, 3]);
+    const view: FogView = { g, front: { value: 0 }, time: { value: 0 }, fade: { value: 0 }, mote: 0 };
+    const sheets = QUALITY[this.quality]!.bloom ? 4 : 2; // fewer on a struggling phone
+    for (let i = 0; i < sheets; i++) {
+      const m = new THREE.Mesh(geo, new THREE.ShaderMaterial({
+        vertexShader: FOG_VERT, fragmentShader: FOG_FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+        uniforms: { uFront: view.front, uTime: view.time, uFade: view.fade, uLayer: { value: i }, uWidth: { value: LANE_W }, uTint: { value: new THREE.Color(TEAM[team].glow) } },
+      }));
+      m.position.y = 0.5 + (i * 3.3) / Math.max(1, sheets - 1); m.renderOrder = 5 + i; m.frustumCulled = false; g.add(m);
+    }
+    g.position.set(team === 0 ? 0 : LANE_LEN, 0, LZ(lane)); g.scale.x = team === 0 ? 1 : -1; this.scene.add(g);
+    return view;
+  }
+  private dropFog(f: FogView): void {
+    this.scene.remove(f.g);
+    f.g.traverse(o => { if (o instanceof THREE.Mesh) (o.material as THREE.Material).dispose(); });
   }
 
   private spark(x: number, y: number, z: number, color: number, life: number, s0: number, s1: number, vx = 0, vy = 0, vz = 0, grav = 0, now = performance.now()): void {
@@ -478,6 +532,11 @@ export class Renderer {
         this.shoot(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1, 5), new THREE.MeshBasicMaterial({ color: new THREE.Color(PAL.heal).multiplyScalar(1.6), transparent: true, toneMapped: false })), from, to, now, 260, 0, true);
         for (let i = 0; i < 4; i++) this.spark(to.x + rnd(0.6), 0.3 + Math.random() * 0.6, to.z + rnd(0.6), PAL.heal, 600 + Math.random() * 300, 0.45, 0.08, 0, 1.4, 0, 0, now);
       } else if (e.t === "death") {
+        // taken by a Deadly Fog: the breath leaves him as a pale green wisp
+        if (e.unit !== "tower" && s.fogs.some(f => f.team !== e.team && f.lane === e.lane && (f.team === 0 ? e.x : MAP.laneLength - e.x) <= RULES.fogReach)) {
+          this.spark(W(e.x), 1.2, Zy(e.y), 0x9dffb8, 700, 0.8, 3.2, 0, 1.2, 0, 0, now);
+          for (let i = 0; i < 5; i++) this.spark(W(e.x) + rnd(0.7), 0.4 + Math.random(), Zy(e.y) + rnd(0.7), i % 2 ? 0x7dffa0 : 0xe9ffe8, 900 + Math.random() * 600, 0.45, 0.05, rnd(0.8), 2 + Math.random() * 2.5, rnd(0.8), 0, now);
+        }
         if (e.unit === "tower") for (let i = 0; i < 26; i++) this.spark(W(e.x) + rnd(2), 0.5 + Math.random() * 4, Zy(e.y) + rnd(2), i % 5 ? 0x6d6050 : 0xffb060, 900 + Math.random() * 700, 1.4, 4.5, rnd(5), 1 + Math.random() * 3, rnd(5), -4, now);
         else if (e.unit === "colossus") for (let i = 0; i < 18; i++) this.spark(W(e.x) + rnd(2.4), 0.4 + Math.random() * 3, Zy(e.y) + rnd(2.4), i % 3 ? 0xcdbf9f : TEAM[e.team].glow, 800 + Math.random() * 500, 1, 3, rnd(4), 1 + Math.random() * 2, rnd(4), -3, now);
         else for (let i = 0; i < 4; i++) this.spark(W(e.x) + rnd(0.6), 0.3, Zy(e.y) + rnd(0.6), e.unit === "skeleton" ? 0xb9ae93 : e.unit === "shade" ? PAL.ghost : 0x5d5348, 600 + Math.random() * 300, 0.6, 1.8, rnd(1.2), 1, rnd(1.2), 0, now);
@@ -526,6 +585,21 @@ export class Renderer {
     // lightning lights the whole field for a moment; while a storm rages the night itself turns colder and flickers
     const glare = Math.max(0, 1 - (now - this.flash) / 320), raging = s.storms.length > 0 ? 0.5 + 0.5 * Math.sin(now / 90) * Math.sin(now / 37) : 0;
     this.moon.intensity = 2.5 + glare * 7 + raging * 0.9;
+
+    // Deadly Fogs: the bank rolls with the sim's front, breathes in when called and thins away as it lifts
+    for (const [owner, f] of this.fogs) if (!s.fogs.some(q => q.owner === owner)) { this.dropFog(f); this.fogs.delete(owner); }
+    for (const q of s.fogs) {
+      let f = this.fogs.get(q.owner);
+      if (!f) { f = this.makeFog(q.team, q.lane); this.fogs.set(q.owner, f); }
+      const age = s.tick + alpha - q.from, front = (W(RULES.fogReach) * Math.min(age, RULES.fogRollTicks)) / RULES.fogRollTicks;
+      f.front.value = front + 4; f.time.value = now / 1000;
+      f.fade.value = Math.min(1, age / 25) * Math.max(0, Math.min(1, (RULES.fogRollTicks + RULES.fogHoldTicks - age) / 60));
+      if (now - f.mote > 45 && f.fade.value > 0.3) { // pale motes torn loose along the leading edge
+        f.mote = now;
+        const x = q.team === 0 ? front : LANE_LEN - front, z = LZ(q.lane) + Math.random() * LANE_W;
+        this.spark(x + (Math.random() - 0.5) * 6, 0.3 + Math.random() * 2, z, Math.random() < 0.3 ? 0xe9ffe8 : 0x7dffa0, 900 + Math.random() * 700, 0.5, 0.05, (q.team === 0 ? 1 : -1) * (1 + Math.random() * 2), 0.8 + Math.random() * 1.6, (Math.random() - 0.5) * 1.5, 0, now);
+      }
+    }
 
     // units
     const seen = new Set<number>(), byId = new Map<number, GameState["units"][number]>();

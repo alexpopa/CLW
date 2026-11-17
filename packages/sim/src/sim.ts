@@ -1,7 +1,7 @@
 import { Rng } from "./rng";
 import { INVEST_TIERS, KEEPERS, LANE_WIDTH, MAP, RESEARCH, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH } from "./data";
 import type { UnitDef } from "./data";
-import type { Command, GameConfig, GameState, KeeperState, PlayerId, PlayerState, TeamId, TimedCommand, UnitState } from "./types";
+import type { Command, FogState, GameConfig, GameState, KeeperState, PlayerId, PlayerState, TeamId, TimedCommand, UnitState } from "./types";
 
 // ---- geometry helpers (shared with the client) ----
 export const hqX = (team: TeamId): number => (team === 0 ? MAP.hqOffset : MAP.laneLength - MAP.hqOffset);
@@ -80,6 +80,12 @@ export function stormBlock(s: GameState, p: PlayerState): "tier" | "resting" | "
   return p.tier < RULES.stormTier ? "tier" : s.tick < p.stormReady ? "resting" : p.credits < RULES.stormCost ? "gold" : null;
 }
 
+/** How far a fog has rolled from its team's lane end at this tick, or -1 once it has lifted. */
+export function fogFront(s: GameState, f: FogState): number {
+  const age = s.tick - f.from;
+  return age > RULES.fogRollTicks + RULES.fogHoldTicks ? -1 : Math.trunc((RULES.fogReach * Math.min(age, RULES.fogRollTicks)) / RULES.fogRollTicks);
+}
+
 /** Create a unit at full health and add it to the lane. */
 export function addUnit(s: GameState, type: string, owner: PlayerId, team: TeamId, lane: number, x: number, y: number): UnitState {
   const def = UNITS[type]!;
@@ -100,12 +106,12 @@ export function createGame(cfg: GameConfig): GameState {
     tick: 0, rngState: cfg.seed >>> 0, nextId: 1, teamSize: n, laneCount,
     players: Array.from({ length: n * 2 }, (_, i) => ({
       id: i, team: (i < n ? 0 : 1) as TeamId, lane: (i % n) % laneCount,
-      credits: RULES.startCredits, tier: 1, unlocked: UNIT_ORDER.filter(id => UNITS[id]!.free), research: null, mercReady: 0, stormReady: 0,
+      credits: RULES.startCredits, tier: 1, unlocked: UNIT_ORDER.filter(id => UNITS[id]!.free), research: null, mercReady: 0, stormReady: 0, fogUsed: false,
       invest: Array.from({ length: laneCount }, () => 0),
       isAI: cfg.aiSlots?.includes(i) ?? false,
     })),
     teams: [{ hqHp: RULES.hqHp * laneCount, hqCooldown: 0 }, { hqHp: RULES.hqHp * laneCount, hqCooldown: 0 }],
-    beacons: [], buildings: [], keepers: [], storms: [], units: [], events: [], winner: null,
+    beacons: [], buildings: [], keepers: [], storms: [], fogs: [], units: [], events: [], winner: null,
   };
   // Two gravekeepers per player wait near the rear of their own building ground.
   for (const p of s.players) for (const slot of [0, 1] as const) {
@@ -141,6 +147,7 @@ export function parseCommand(raw: unknown): Command | null {
   if (r.type === "teleport") return keeper !== null && int(r.x) && int(r.y) ? { type: "teleport", keeper, x: r.x, y: r.y, ...lane } : null;
   if (r.type === "hire") return typeof r.unit === "string" && Object.hasOwn(UNITS, r.unit) ? { type: "hire", unit: r.unit } : null;
   if (r.type === "storm") return { type: "storm" };
+  if (r.type === "fog") return { type: "fog", ...lane };
   if (r.type === "sell") return int(r.buildingId) ? { type: "sell", buildingId: r.buildingId } : null;
   if (r.type === "invest") return { type: "invest", ...lane };
   if (r.type === "research") {
@@ -192,6 +199,12 @@ function applyCommand(s: GameState, player: PlayerId, c: Command): void {
     me.credits -= RULES.stormCost; me.stormReady = s.tick + RULES.stormCooldownTicks;
     s.storms.push({ owner: player, team: me.team, from: s.tick, until: s.tick + RULES.stormTicks });
     s.events.push({ t: "storm", player, team: me.team });
+  } else if (c.type === "fog") {
+    const lane = c.lane ?? me.lane;
+    if (me.fogUsed || !Number.isInteger(lane) || lane < 0 || lane >= s.laneCount) return;
+    me.fogUsed = true;
+    s.fogs.push({ owner: player, team: me.team, lane, from: s.tick });
+    s.events.push({ t: "fog", player, team: me.team, lane });
   } else if (c.type === "sell") {
     const i = s.buildings.findIndex(b => b.id === c.buildingId && b.owner === player);
     if (i < 0) return;
@@ -330,6 +343,14 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
     let struck = 0;
     for (const u of s.units) if (u.team !== st.team && !isStructure(u)) { change(u, -RULES.stormDamage); struck++; }
     s.events.push({ t: "bolt", team: st.team, struck });
+  }
+
+  // Deadly Fogs: every enemy soldier inside one dies.
+  s.fogs = s.fogs.filter(f => fogFront(s, f) >= 0);
+  for (const f of s.fogs) {
+    const front = fogFront(s, f);
+    for (const u of s.units)
+      if (u.team !== f.team && u.lane === f.lane && !isStructure(u) && (f.team === 0 ? u.x : MAP.laneLength - u.x) <= front) change(u, -u.hp);
   }
 
   for (const u of s.units) {

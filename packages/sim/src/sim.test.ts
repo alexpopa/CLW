@@ -352,6 +352,28 @@ describe("sim", () => {
     expect(foes[0]!.hp).toBe(before - 2 * strikes * RULES.stormDamage);
     expect(parseCommand({ type: "storm", junk: 1 })).toEqual({ type: "storm" });
   });
+  it("the Deadly Fog rolls down one lane from the caster's cathedral, kills every enemy soldier it covers, and comes once a match", () => {
+    const s = createGame({ teamSize: 2, seed: 1 });
+    const near = addUnit(s, "titan", 2, 1, 1, 60000, 12000), wings = addUnit(s, "wyrm", 3, 1, 1, RULES.fogReach - 2000, 5000);
+    const beyond = addUnit(s, "oathguard", 2, 1, 1, 470000, 12000), other = addUnit(s, "titan", 2, 1, 0, 60000, 12000);
+    const mine = addUnit(s, "titan", 0, 0, 1, 50000, 3000), tower = addUnit(s, "tower", 2, 1, 1, 70000, 20000);
+    const alive = (u: { id: number }) => s.units.some(q => q.id === u.id);
+    step(s, [{ player: 0, cmd: { type: "fog", lane: 1 } }, { player: 0, cmd: { type: "fog", lane: 0 } }]); // the second call finds it spent
+    expect([s.fogs.length, s.fogs[0]!.lane, s.players[0]!.fogUsed, s.players[0]!.credits]).toEqual([1, 1, true, RULES.startCredits]);
+    expect(alive(near)).toBe(true);                         // it has not reached him yet
+    ticks(s, Math.ceil((RULES.fogRollTicks * 60000) / RULES.fogReach) + 2);
+    // the greatest dies like the least; the far one still waits; the other lane, his own men and towers are untouched
+    expect([alive(near), alive(wings), alive(other), alive(mine), alive(tower)]).toEqual([false, true, true, true, true]);
+    ticks(s, RULES.fogRollTicks);
+    expect([alive(wings), alive(beyond)]).toEqual([false, true]);
+    expect(MAP.laneLength - beyond.x).toBeLessThan(MAP.laneLength - RULES.fogReach); // still outside it
+    ticks(s, RULES.fogHoldTicks + 2);
+    expect(s.fogs.length).toBe(0);
+    step(s, [{ player: 0, cmd: { type: "fog" } }, { player: 2, cmd: { type: "fog" } }]);   // the enemy still has his own: it rolls from his end
+    expect(s.fogs.map(f => [f.team, f.lane])).toEqual([[1, 0]]);
+    expect(parseCommand({ type: "fog", lane: 1, junk: 1 })).toEqual({ type: "fog", lane: 1 });
+    expect(parseCommand({ type: "fog", lane: 1.5 })).toBeNull();
+  });
   it("a player may raise the tithe on an ally's lane: it lifts his own income from that lane's shrines and nobody else's", () => {
     const s = createGame({ teamSize: 2, seed: 1 });
     const before = [0, 1, 2].map(p => incomeOf(s, p));

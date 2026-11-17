@@ -270,6 +270,10 @@ export const RULES = {
   // soldier on the whole board (every lane, ground and air; not towers) for `stormDamage` each `stormInterval`, through armor.
   // Storms stack: two at once strike twice as hard.
   stormTier: 3, stormCost: 500, stormCooldownTicks: sec(150), stormTicks: sec(10), stormInterval: sec(1), stormDamage: 9,
+  // The Deadly Fog: a last resort, free, once a match for each player. It rolls out of the caster's cathedral down one
+  // lane, reaching `fogReach` from the lane end (halfway between the home shrine and the middle one) after `fogRollTicks`,
+  // stands for `fogHoldTicks` and lifts. Every enemy soldier it covers dies, whatever it is; towers and cathedrals do not.
+  fogReach: 180 * UNIT, fogRollTicks: sec(18), fogHoldTicks: sec(5),
   sellRefundFreshPct: 75,         // before the building's first wave
   sellRefundUsedPct: 25,          // after it has produced
   acquireRange: 9 * UNIT,         // units notice enemies at max(this, weapon range + acquirePad)
@@ -312,6 +316,8 @@ export const AI = {
   mercReserve: 200,               // when threatened it hires mercenaries only with this much gold to spare
   stormMinFoes: 16,               // calls the storm once this many enemy soldiers are on the board...
   stormReserve: 250,              // ...and it has this much gold to spare
+  fogMinFoes: 10,                 // calls the fog down its lane once this many enemy soldiers stand where it will roll...
+  fogHqPct: 50,                   // ...or any at all once the cathedral is below this share of its health
   investBuildingsPerLevel: 3,     // needs this many buildings per investment level before investing again
   investMinBeacons: 2,
 };

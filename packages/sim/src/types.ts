@@ -12,6 +12,7 @@ export interface PlayerState {
   research: ResearchState | null; // one research at a time
   mercReady: number;          // tick from which the next mercenary band may be hired
   stormReady: number;         // tick from which the next Storm of Wrath may be called
+  fogUsed: boolean;           // the Deadly Fog has been called: once a match, never again
   invest: number[];           // personal investment level per lane
   isAI: boolean;
 }
@@ -51,6 +52,11 @@ export interface KeeperState {
 }
 /** A Storm of Wrath raging against the enemies of `team`: it strikes every `stormInterval` counted from `from`, and ends at `until`. */
 export interface StormState { owner: PlayerId; team: TeamId; from: number; until: number }
+/**
+ * A Deadly Fog of `team` in `lane`: it rolls out from the team's own lane end, counted from `from`, to `RULES.fogReach`,
+ * stands a while and lifts. Every enemy soldier it covers dies.
+ */
+export interface FogState { owner: PlayerId; team: TeamId; lane: number; from: number }
 export interface BeaconState { id: number; lane: number; x: number; owner: TeamId | null }
 export interface TeamState { hqHp: number; hqCooldown: number }
 
@@ -67,6 +73,7 @@ export type SimEvent =
   | { t: "teleport"; player: PlayerId; slot: 0 | 1; fromLane: number; fromX: number; fromY: number; lane: number; x: number; y: number }
   | { t: "hired"; player: PlayerId; unit: string }
   | { t: "storm"; player: PlayerId; team: TeamId }   // a storm is called by `team`
+  | { t: "fog"; player: PlayerId; team: TeamId; lane: number }   // a Deadly Fog is called by `team` in `lane`
   | { t: "bolt"; team: TeamId; struck: number }      // one volley of a storm of `team`: `struck` enemy soldiers were hit
   | { t: "leave"; unit: string; team: TeamId; lane: number; x: number; y: number }   // a mercenary's contract ends
   | { t: "researched"; player: PlayerId; tier: number; unit: string | null };
@@ -83,6 +90,7 @@ export interface GameState {
   buildings: BuildingState[];
   keepers: KeeperState[];
   storms: StormState[];
+  fogs: FogState[];
   units: UnitState[];
   events: SimEvent[];
   winner: TeamId | null;
@@ -94,6 +102,7 @@ export type Command =
   | { type: "move"; keeper: 0 | 1; x: number; y: number; lane?: number }                    // walk there (drops its queue, refunded)
   | { type: "teleport"; keeper: 0 | 1; x: number; y: number; lane?: number }                // the Sexton steps through the grave to any of his team's ground (drops his queue, refunded)
   | { type: "storm" }                                                                      // call the Storm of Wrath (tier III, costly, long cooldown)
+  | { type: "fog"; lane?: number }                                                         // call the Deadly Fog down that lane (free, once a match)
   | { type: "hire"; unit: string }                                                          // a mercenary band, through the Undertaker
   | { type: "sell"; buildingId: number }
   | { type: "invest"; lane?: number }

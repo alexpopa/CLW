@@ -6,7 +6,7 @@ import "@fontsource/im-fell-english/400.css";
 import "@fontsource/im-fell-english/400-italic.css";
 import "@fontsource/unifrakturcook/700.css";
 import "./hud.css";
-import { INVEST_TIERS, KEEPERS, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, hqMax, hqX, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, stormBlock, unitsOfTier } from "@lw/sim";
+import { INVEST_TIERS, KEEPERS, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, hqMax, hqX, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, fogFront, stormBlock, unitsOfTier } from "@lw/sim";
 import type { GameState, PlayerState } from "@lw/sim";
 import { TEAM } from "./models";
 import { LANE_GAP, LANE_PITCH, LANE_W, fieldZ } from "./layout";
@@ -20,6 +20,7 @@ export interface HudActions {
   setInvestLane(lane: number): void;          // which lane's shrines the next tithe is raised on (mine or an ally's)
   research(): void;
   storm(): void;                              // call the Storm of Wrath
+  fog(): void;                                // call the Deadly Fog down the lane in view
   teleport(): void;                           // arm the Sexton's teleport
   home(): void;                               // look at my own cathedral
   cancel(): void;                             // back out one step (what Esc does)
@@ -36,6 +37,7 @@ export interface HudActions {
 }
 export interface HudView { me: number; keeper: 0 | 1 | null; tier: number; selectedUnit: string | null; selectedBuilding: number | null; speed: number; paused: boolean;
   investLane: number;                         // the lane the tithe button acts on
+  fogLane: number;                            // the lane the Deadly Fog would roll down: the one in view
   teleport: boolean;                          // the Sexton's teleport is armed: the next click on friendly ground sends him there
   camRect: [number, number, number, number];  // the part of the field on screen, as fractions [x0, x1, z0, z1]
   names: string[] }                           // display name per seat (online), empty in solo play
@@ -103,6 +105,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       <button class="act" id="invest"><span class="key"><b>3</b></span><strong><span>Raise the tithe</span><span class="num" id="investC"></span></strong><em id="investT"></em><span id="investL"></span></button>
       <button class="act" id="research"><span class="key"><b>4</b></span><strong><span id="researchH">The Second Rite</span><span class="num" id="researchC"></span></strong><em id="researchT"></em><i class="fill" id="researchBar"></i></button>
       <button class="act" id="storm"><span class="key"><b>5</b></span><strong><span>Storm of Wrath</span><span class="num" id="stormC"></span></strong><em id="stormT"></em><i class="fill" id="stormBar"></i></button>
+      <button class="act" id="fog"><span class="key"><b>6</b></span><strong><span>Deadly Fog</span><span class="num">Once</span></strong><em id="fogT"></em><i class="fill" id="fogBar"></i></button>
     </div>
   </div>
   </div>
@@ -134,7 +137,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
     };
     hovers(b, id);
   });
-  for (const id of ["invest", "research", "storm"]) hovers($(id), id);
+  for (const id of ["invest", "research", "storm", "fog"]) hovers($(id), id);
   root.querySelectorAll<HTMLButtonElement>(".tier").forEach(b => { b.onclick = () => { peek = null; act.setTier(Number(b.dataset.tier)); }; });
   $("tbTele").onclick = () => { peek = null; act.teleport(); };
   $("tbHome").onclick = () => act.home();
@@ -146,6 +149,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   $("invest").onclick = e => { const chip = (e.target as HTMLElement).closest<HTMLElement>("[data-lane]"); if (chip) act.setInvestLane(Number(chip.dataset.lane)); else act.invest(); };
   $("research").onclick = () => act.research();
   $("storm").onclick = () => act.storm();
+  $("fog").onclick = () => act.fog();
   $("tip").onclick = e => {
     const id = (e.target as HTMLElement).id;
     if (id === "sell") act.sell();
@@ -191,6 +195,10 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       c.fillStyle = b.owner === null ? "#8a8474" : col(b.owner);
       c.save(); c.translate(X(b.x), Z(b.lane, LANE_WIDTH / 2)); c.rotate(Math.PI / 4); c.fillRect(-4, -4, 8, 8); c.restore();
     }
+    for (const f of s.fogs) { // the bank itself, as far as it has rolled
+      const front = fogFront(s, f), x = f.team === 0 ? 0 : MAP.laneLength - front;
+      c.globalAlpha = 0.45; c.fillStyle = "#7dffa0"; c.fillRect(X(x), Z(f.lane, 0), X(front), laneH); c.globalAlpha = 1;
+    }
     for (const u of s.units) {
       c.fillStyle = col(u.team);
       const x = X(u.x), z = Z(u.lane, u.y);
@@ -230,6 +238,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
           <dt>Study</dt><dd>You begin knowing three units. Click any other card of an open tier to study it; your scholars learn one thing at a time. The Rites (4) open the higher tiers (Z X C or Tab to browse them), whose units must each be studied in turn.</dd>
           <dt>Counters</dt><dd>Every unit has its own gift and its own bane: flyers shrug off swords, fire clears swarms, lanterns unmask shades. Hover a card to read it.</dd>
           <dt>Storm</dt><dd>Once The Third Rite is done you may call the Storm of Wrath (5): for a price, lightning strikes every enemy soldier on the field for ten seconds. Then the sky must rest.</dd>
+          <dt>Fog</dt><dd>Once in the whole war you may call the Deadly Fog (6). It costs nothing: it rolls slowly out of your cathedral, halfway to the middle shrine, and every enemy soldier it touches dies. In team games it rolls down the lane you are looking at.</dd>
           <dt>Tithe</dt><dd>Raise the tithe (3) to earn more from every shrine your side holds in a lane. In team games you may raise it on an ally's lane too (Shift+3 changes lane); it only ever raises your own income.</dd>
           <dt>Team games</dt><dd>In 2v2 and 3v3 every player has a lane, and all share one cathedral. Your keepers may build in any lane of your side: the Undertaker walks there, the Sexton steps through the grave (T, then click the ground or the map).</dd>
           <dt>Survey</dt><dd>Drag, scroll, use the arrow keys, or click the map in the corner. Space returns to your cathedral.</dd>
@@ -428,6 +437,13 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       $("storm").classList.toggle("poor", block === "gold"); $("storm").classList.toggle("done", block === "tier" || block === "resting");
       $("storm").classList.toggle("raging", mine > 0); root.classList.toggle("stormed", theirs > 0);
 
+      const myFog = s.fogs.find(q => q.owner === v.me), fogLeft = myFog ? RULES.fogRollTicks + RULES.fogHoldTicks - (s.tick - myFog.from) : 0;
+      const theirFog = s.fogs.some(q => q.team !== p.team), fogSecs = secs(RULES.fogRollTicks);
+      set("fogT", myFog ? (fogFront(s, myFog) < RULES.fogReach ? "Rolling out · nothing lives in it" : `Standing · ${secs(fogLeft)}s`) : p.fogUsed ? "Spent · it comes but once" : s.laneCount > 1 ? `Death down ${laneName(v.fogLane)}` : "Death rolls from your cathedral");
+      $("fogBar").style.width = myFog ? `${Math.max(0, (fogLeft / (RULES.fogRollTicks + RULES.fogHoldTicks)) * 100)}%` : "0%";
+      $("fog").classList.toggle("done", p.fogUsed && !myFog); $("fog").classList.toggle("rolling", !!myFog); $("fog").classList.toggle("ready", !p.fogUsed);
+      root.classList.toggle("fogged", theirFog);
+
       const b = s.buildings.find(q => q.id === v.selectedBuilding);
       const unit = hover && UNITS[hover] ? hover : !hover ? peek ?? v.selectedUnit : null;
       const go = (label: string) => (touch && peek === unit ? `<button id="confirm">${label}</button>` : "");
@@ -443,6 +459,10 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
         <p>For ${secs(RULES.stormTicks)} seconds lightning falls on <b>every enemy soldier on the whole field</b>, in every lane, on the ground and in the air: ${RULES.stormDamage} damage a second to each, ${strikes * RULES.stormDamage} in all, through any armor. Towers and cathedrals are spared.</p>
         <p class="stats">It thins a swarm and softens the great; it will not win a battle alone. Storms called together strike together.</p>
         <p class="hint">${block === "tier" ? "Sealed until The Third Rite is complete." : `The sky rests ${secs(RULES.stormCooldownTicks)} seconds between your storms.`}</p>`);
+      else if (hover === "fog") tip(`<h3>Deadly Fog<span class="num">Once</span></h3>
+        <p>A last resort. A killing fog pours out of your cathedral and rolls slowly down ${s.laneCount > 1 ? `<b>${laneName(v.fogLane)}</b>` : "the lane"}, as far as halfway between your shrine and the middle one. <b>Every enemy soldier it touches dies</b>, the greatest like the least, on the ground and in the air. Towers and cathedrals are spared.</p>
+        <p class="stats">It takes ${fogSecs} seconds to roll out and stands ${secs(RULES.fogHoldTicks)} more; whatever marches into it meanwhile dies too. It costs nothing.</p>
+        <p class="hint">${p.fogUsed ? "You have called it. It will not come again this war." : `It comes once in the whole war: keep it for the hour the gates are about to fall.${s.laneCount > 1 ? " It rolls down the lane you are looking at." : ""}`}</p>`);
       else if (hover === "keeper0" || hover === "keeper1") {
         const slot = Number(hover.slice(6)), k = KEEPERS[slot]!, mine = s.keepers.find(q => q.owner === v.me && q.slot === slot);
         tip(`<h3>${k.name}<span class="num">${slot + 1}</span></h3><p>${k.blurb}</p>

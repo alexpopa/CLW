@@ -119,6 +119,9 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 #investL i.own{color:#cfc6ad}#investL i.on{color:#14110a;background:var(--gold);border-color:var(--gold)}#investL i:hover{border-color:var(--gold)}
 #invest:has(#investL i) em{padding-right:70px}
 .act .fill{position:absolute;left:0;bottom:0;height:3px;background:var(--gold);width:0}
+#fog.ready{border-color:#3f6b4d}#fog strong .num{color:#9df0b4;font-size:10.5px;letter-spacing:.08em}#fog .key{border-color:#4d8a60;color:#9df0b4}#fog .fill{background:#7dffa0}
+#fog.rolling{border-color:#9df0b4;box-shadow:0 0 0 1px #000,0 0 18px #5dff9a88;background:linear-gradient(#1c3326,#101a15)}
+#hud.fogged::before{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 130px 24px #4dff8a2e}
 #storm.raging{border-color:#b9c6ff;box-shadow:0 0 0 1px #000,0 0 18px #8fa2ffaa;animation:storm .5s steps(2) infinite}#storm .fill{background:#aab8ff}
 @keyframes storm{50%{background:linear-gradient(#34364e,#1a1b2a)}}
 #hud.stormed::after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 120px 20px #7f8cff38}

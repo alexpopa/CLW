@@ -41,6 +41,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   let mouseX = -1, mouseY = -1, mouseInside = false;
 
   const me = () => game.players[ME]!;
+  const fogLane = () => laneAt(view.camZ, view.lanes).lane; // the Deadly Fog rolls down the lane in the middle of the view
   const home = () => (me().team === 0 ? 0 : LANE);
   const send = (cmd: Command) => { if (!running || ended) return; if (online) net?.command(cmd); else pending.push(cmd); };
   const begin = (state: GameState, slot: number) => {
@@ -134,6 +135,11 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
       else if (block === "resting") deny(`The sky is still resting: ${Math.ceil((me().stormReady - game.tick) / TICK_RATE)}s`);
       else if (block === "gold") deny(`The storm costs ${RULES.stormCost} gold`);
       else send({ type: "storm" });
+    },
+    fog() {
+      if (!running) return;
+      if (me().fogUsed) deny("The fog comes but once in a war");
+      else send({ type: "fog", lane: fogLane() });
     },
     teleport() { // arm the Sexton's teleport: he is chosen, and the next click on friendly ground (or on the map's ground) sends him
       if (!running) return;
@@ -281,6 +287,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     else if (k === "3") { if (e.shiftKey) hud.actions.setInvestLane((investLane + 1) % game.laneCount); else hud.actions.invest(); }
     else if (k === "4") hud.actions.research();
     else if (k === "5") hud.actions.storm();
+    else if (k === "6") hud.actions.fog();
     else if (k === "delete" || k === "backspace") hud.actions.sell();
     else if (k === "t") hud.actions.teleport();
     else if (k === "escape") hud.actions.cancel();
@@ -308,6 +315,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
         sound.play("capture");
       }
       else if (e.t === "storm") hud.toast(e.player === ME ? "The storm answers you" : e.team === me().team ? `${names[e.player] ?? "An ally"} calls the Storm of Wrath` : "The enemy calls the Storm of Wrath on your host");
+      else if (e.t === "fog") hud.toast(e.player === ME ? "The fog rolls out of your cathedral" : e.team === me().team ? `${names[e.player] ?? "An ally"} calls the Deadly Fog` : "The enemy calls the Deadly Fog: nothing that enters it lives");
       else if (e.t === "capture") hud.toast(e.team === me().team ? "Shrine claimed" : "Shrine lost");
     }
   };
@@ -354,7 +362,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     }
     if (selectedBuilding !== null && !game.buildings.some(b => b.id === selectedBuilding)) selectedBuilding = null;
     view.draw(game, { selectedKeeper, selectedUnit, hoverCell, selectedBuilding, me: ME }, paused || ended ? 1 : Math.min(1, acc / TICK_MS), now, dt);
-    if ((hudTurn = !hudTurn) || !touching) hud.update(game, { me: ME, keeper: selectedKeeper, tier: tierTab, selectedUnit, selectedBuilding, speed, paused, investLane, teleport: teleporting, camRect: view.viewRect(), names: online ? names : [] });
+    if ((hudTurn = !hudTurn) || !touching) hud.update(game, { me: ME, keeper: selectedKeeper, tier: tierTab, selectedUnit, selectedBuilding, speed, paused, investLane, fogLane: fogLane(), teleport: teleporting, camRect: view.viewRect(), names: online ? names : [] });
   };
   requestAnimationFrame(frame);
 

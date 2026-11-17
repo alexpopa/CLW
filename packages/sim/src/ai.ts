@@ -1,5 +1,5 @@
 import { AI, INVEST_TIERS, KEEPERS, MAP, MERC_ORDER, RULES, UNITS, UNIT_ORDER } from "./data";
-import { beaconsHeld, canPlan, hqX, isUnlocked, researchOffer, stormBlock } from "./sim";
+import { beaconsHeld, canPlan, hqMax, hqX, isUnlocked, researchOffer, stormBlock } from "./sim";
 import type { Command, GameState, PlayerId } from "./types";
 
 const F = MAP.footprint;
@@ -74,6 +74,11 @@ export function simpleAI(s: GameState, me: PlayerId): Command[] {
   if (threatened && s.tick >= p.mercReady) { // buy time: the dearest band it can pay for and still add a chantry
     const band = [...MERC_ORDER].reverse().find(id => p.credits >= UNITS[id]!.cost + AI.mercReserve);
     if (band) return [{ type: "hire", unit: band }];
+  }
+  // The fog: its one last resort, kept for a host at the gates or a cathedral in danger.
+  if (!p.fogUsed) {
+    const near = s.units.filter(u => u.team !== p.team && u.lane === p.lane && !UNITS[u.type]!.structure && Math.abs(u.x - myHq) < RULES.fogReach - MAP.hqOffset).length;
+    if (near >= AI.fogMinFoes || (near > 0 && s.teams[p.team].hqHp * 100 < hqMax(s) * AI.fogHqPct)) return [{ type: "fog" }];
   }
   // The storm: worth its price once the enemy has a host on the field.
   if (!stormBlock(s, p) && p.credits >= RULES.stormCost + AI.stormReserve && s.units.filter(u => u.team !== p.team && !UNITS[u.type]!.structure).length >= AI.stormMinFoes)
