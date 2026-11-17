@@ -6,7 +6,7 @@ import "@fontsource/im-fell-english/400.css";
 import "@fontsource/im-fell-english/400-italic.css";
 import "@fontsource/unifrakturcook/700.css";
 import "./hud.css";
-import { INVEST_TIERS, KEEPERS, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, hqMax, hqX, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, fogFront, stormBlock, unitsOfTier } from "@lw/sim";
+import { INVEST, KEEPERS, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, hqMax, hqX, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, fogFront, stormBlock, unitsOfTier } from "@lw/sim";
 import type { GameState, PlayerState } from "@lw/sim";
 import { TEAM } from "./models";
 import { LANE_GAP, LANE_PITCH, LANE_W, fieldZ } from "./layout";
@@ -16,8 +16,7 @@ export interface HudActions {
   selectKeeper(slot: 0 | 1): void;            // choose which gravekeeper takes the orders
   selectUnit(id: string): void;               // pick it for building, study it if it is not yet known, or hire it if it is a mercenary band
   setTier(tier: number): void;                // show that tier's cards
-  invest(): void;
-  setInvestLane(lane: number): void;          // which lane's shrines the next tithe is raised on (mine or an ally's)
+  invest(lane?: number): void;                // raise the tithe on that lane (my own if not given)
   research(): void;
   storm(): void;                              // call the Storm of Wrath
   fog(): void;                                // call the Deadly Fog down the lane in view
@@ -36,7 +35,6 @@ export interface HudActions {
   menu(): void;                               // leave any lobby and return to the title screen
 }
 export interface HudView { me: number; keeper: 0 | 1 | null; tier: number; selectedUnit: string | null; selectedBuilding: number | null; speed: number; paused: boolean;
-  investLane: number;                         // the lane the tithe button acts on
   fogLane: number;                            // the lane the Deadly Fog would roll down: the one in view
   teleport: boolean;                          // the Sexton's teleport is armed: the next click on friendly ground sends him there
   camRect: [number, number, number, number];  // the part of the field on screen, as fractions [x0, x1, z0, z1]
@@ -102,14 +100,14 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
     </div>
     <div class="rule"></div>
     <div id="acts">
-      <button class="act" id="invest"><span class="key"><b>3</b></span><strong><span>Raise the tithe</span><span class="num" id="investC"></span></strong><em id="investT"></em><span id="investL"></span></button>
+      <button class="act" id="invest"><span class="key"><b>3</b></span><strong><span>Raise the tithe</span><span class="num" id="investC"></span></strong><em id="investT"></em></button>
       <button class="act" id="research"><span class="key"><b>4</b></span><strong><span id="researchH">The Second Rite</span><span class="num" id="researchC"></span></strong><em id="researchT"></em><i class="fill" id="researchBar"></i></button>
       <button class="act" id="storm"><span class="key"><b>5</b></span><strong><span>Storm of Wrath</span><span class="num" id="stormC"></span></strong><em id="stormT"></em><i class="fill" id="stormBar"></i></button>
       <button class="act" id="fog"><span class="key"><b>6</b></span><strong><span>Deadly Fog</span><span class="num">Once</span></strong><em id="fogT"></em><i class="fill" id="fogBar"></i></button>
     </div>
   </div>
   </div>
-  <div id="mapbox"><canvas id="minimap" title="Click or drag to look there"></canvas></div>
+  <div id="mapbox"><div id="titheL"></div><canvas id="minimap" title="Click or drag to look there"></canvas></div>
   <div id="toast"></div>
   <div id="overlay"></div>`;
 
@@ -139,6 +137,9 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   });
   for (const id of ["invest", "research", "storm", "fog"]) hovers($(id), id);
   root.querySelectorAll<HTMLButtonElement>(".tier").forEach(b => { b.onclick = () => { peek = null; act.setTier(Number(b.dataset.tier)); }; });
+  $("titheL").onclick = e => { const b = (e.target as HTMLElement).closest<HTMLElement>("[data-lane]"); if (b) act.invest(Number(b.dataset.lane)); };
+  $("titheL").addEventListener("pointerover", e => { const b = (e.target as HTMLElement).closest<HTMLElement>("[data-lane]"); if (b && e.pointerType === "mouse") hover = `tithe${b.dataset.lane}`; });
+  $("titheL").addEventListener("pointerout", () => { if (hover?.startsWith("tithe")) hover = null; });
   $("tbTele").onclick = () => { peek = null; act.teleport(); };
   $("tbHome").onclick = () => act.home();
   $("tbCancel").onclick = () => { if (peek) peek = null; else act.cancel(); };
@@ -146,7 +147,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   $("pause").onclick = () => act.togglePause();
   $("mute").onclick = () => { $("mute").classList.toggle("on", !act.toggleMute()); };
   $("mute").classList.add("on");
-  $("invest").onclick = e => { const chip = (e.target as HTMLElement).closest<HTMLElement>("[data-lane]"); if (chip) act.setInvestLane(Number(chip.dataset.lane)); else act.invest(); };
+  $("invest").onclick = () => act.invest();
   $("research").onclick = () => act.research();
   $("storm").onclick = () => act.storm();
   $("fog").onclick = () => act.fog();
@@ -239,7 +240,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
           <dt>Counters</dt><dd>Every unit has its own gift and its own bane: flyers shrug off swords, fire clears swarms, lanterns unmask shades. Hover a card to read it.</dd>
           <dt>Storm</dt><dd>Once The Third Rite is done you may call the Storm of Wrath (5): for a price, lightning strikes every enemy soldier on the field for ten seconds. Then the sky must rest.</dd>
           <dt>Fog</dt><dd>Once in the whole war you may call the Deadly Fog (6). It costs nothing: it rolls slowly out of your cathedral, halfway to the middle shrine, and every enemy soldier it touches dies. In team games it rolls down the lane you are looking at.</dd>
-          <dt>Tithe</dt><dd>Raise the tithe (3) to earn more from every shrine your side holds in a lane. In team games you may raise it on an ally's lane too (Shift+3 changes lane); it only ever raises your own income.</dd>
+          <dt>Tithe</dt><dd>Raise the tithe (3) to earn more from every shrine your side holds in a lane. Every level costs the same and you may raise it as often as you can pay. The plus beside each lane of the map raises it on that lane, your own or an ally's; it only ever raises your own income.</dd>
           <dt>Team games</dt><dd>In 2v2 and 3v3 every player has a lane, and all share one cathedral. Your keepers may build in any lane of your side: the Undertaker walks there, the Sexton steps through the grave (T, then click the ground or the map).</dd>
           <dt>Survey</dt><dd>Drag, scroll, use the arrow keys, or click the map in the corner. Space returns to your cathedral.</dd>
           <dt>Touch</dt><dd>Drag to look around and pinch to zoom. Tap a keeper, a card, then your ground. A card that costs gold at once shows its notes first: tap again to pay. Teleport, Cathedral and Cancel sit above the bar.</dd>
@@ -409,17 +410,24 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
         if (seal.textContent !== sealText) seal.textContent = sealText;
       });
 
-      const iLane = v.investLane, lanePick = $("investL"), laneOwner = (l: number) => s.players.find(q => q.team === p.team && q.lane === l);
+      // The tithe: the bar's button raises it on my own lane; the plus beside each lane of the map raises it there.
+      const iLane = hover?.startsWith("tithe") ? Number(hover.slice(5)) : p.lane, plus = $("titheL"), laneOwner = (l: number) => s.players.find(q => q.team === p.team && q.lane === l);
       const laneName = (l: number) => l === p.lane ? "your lane" : `${v.names[laneOwner(l)?.id ?? -1] ?? "your ally"}'s lane`;
-      if (lanePick.childElementCount !== (s.laneCount > 1 ? s.laneCount : 0))
-        lanePick.innerHTML = s.laneCount > 1 ? Array.from({ length: s.laneCount }, (_, l) => `<i data-lane="${l}" title="Raise the tithe on lane ${ROMAN[l + 1]}">${ROMAN[l + 1]}</i>`).join("") : "";
-      lanePick.querySelectorAll<HTMLElement>("i").forEach(el => { const l = Number(el.dataset.lane); el.classList.toggle("on", l === iLane); el.classList.toggle("own", l === p.lane); });
-      const level = p.invest[iLane] ?? 0, tier = INVEST_TIERS[level], held = beaconsHeld(s, p.team, iLane);
-      const gain = tier ? tier.bonus * held : 0;
-      const payback = tier && gain > 0 ? `repays itself in ${Math.ceil((tier.cost / gain) * (RULES.incomeIntervalTicks / TICK_RATE))}s` : "pays nothing until you hold a shrine";
-      set("investC", tier ? String(tier.cost) : "—");
-      set("investT", tier ? `+${gain} gold now (${held}/3 shrines)` : `Highest tithe · +${investBonus(level)} per shrine`);
-      $("invest").classList.toggle("poor", !!tier && p.credits < tier.cost); $("invest").classList.toggle("done", !tier);
+      if (plus.childElementCount !== s.laneCount) {
+        const [f0, f1] = fieldZ(s.laneCount);
+        plus.innerHTML = Array.from({ length: s.laneCount }, (_, l) => `<button data-lane="${l}" style="top:${(((l * LANE_PITCH + LANE_W / 2 - f0) / (f1 - f0)) * 100).toFixed(1)}%" aria-label="Raise the tithe on lane ${ROMAN[l + 1]}"><b>+</b><i></i></button>`).join("");
+      }
+      plus.querySelectorAll<HTMLElement>("button").forEach(el => {
+        const l = Number(el.dataset.lane), lv = p.invest[l] ?? 0;
+        el.classList.toggle("poor", p.credits < INVEST.cost);
+        if (el.dataset.lv !== String(lv)) { el.dataset.lv = String(lv); el.querySelector("i")!.textContent = lv ? String(lv) : ""; }
+      });
+      const level = p.invest[iLane] ?? 0, tier = INVEST, held = beaconsHeld(s, p.team, iLane);
+      const gain = tier.bonus * held;
+      const payback = gain > 0 ? `repays itself in ${Math.ceil((tier.cost / gain) * (RULES.incomeIntervalTicks / TICK_RATE))}s` : "pays nothing until you hold a shrine";
+      set("investC", String(tier.cost));
+      set("investT", `+${gain} gold now (${held}/3 shrines)`);
+      $("invest").classList.toggle("poor", p.credits < tier.cost);
 
       const next = researchOffer(p), rite = p.research && !p.research.unit;
       set("researchH", rite ? RITE[p.research!.tier]! : next ? RITE[next.tier]! : "The Rites");
@@ -448,10 +456,10 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       const unit = hover && UNITS[hover] ? hover : !hover ? peek ?? v.selectedUnit : null;
       const go = (label: string) => (touch && peek === unit ? `<button id="confirm">${label}</button>` : "");
       if (v.teleport && !hover) tip(`<h3>Through the grave<span class="num">T</span></h3><p>Click any ground your side holds, in any lane, here or on the map: the Sexton is there at once.</p><p class="hint">Esc or right-click to cancel. He may step again as often as you like; his queued chantries are refunded each time.</p>`);
-      else if (hover === "invest") tip(`<h3>Raise the tithe${tier ? `<span class="num">${tier.cost}</span>` : ""}</h3>
-        <p>${tier ? `Every shrine your side holds in ${laneName(iLane)} pays you <b>+${tier.bonus}</b> more gold each collection. It holds ${held} of 3, so this ${payback}.` : "Your tithe is as high as it can go."}</p>
-        <p class="stats">Tithe level ${level} of ${INVEST_TIERS.length} on ${laneName(iLane)} · currently +${investBonus(level)} per shrine</p>
-        ${s.laneCount > 1 ? `<p class="hint">Pick a lane with the numerals (or Shift+3): your own or an ally's. The tithe is yours alone: it raises only your income from that lane's shrines, never your ally's.</p>` : ""}`);
+      else if (hover === "invest" || hover?.startsWith("tithe")) tip(`<h3>Raise the tithe${tier ? `<span class="num">${tier.cost}</span>` : ""}</h3>
+        <p>Every shrine your side holds in ${laneName(iLane)} pays you <b>+${tier.bonus}</b> more gold each collection. It holds ${held} of 3, so this ${payback}.</p>
+        <p class="stats">Tithe level ${level} on ${laneName(iLane)} · currently +${investBonus(level)} per shrine</p>
+        <p class="hint">Every level costs the same, and there is no highest level. ${s.laneCount > 1 ? "The plus beside each lane of the map raises it there, your own lane or an ally's; 3 raises it on your own. The tithe is yours alone: it raises only your income from that lane's shrines, never your ally's." : "Press 3, or the plus beside the map."}</p>`);
       else if (hover === "research") tip(`<h3>${next ? RITE[next.tier] : "The Rites"}${next ? `<span class="num">${next.cost}</span>` : ""}</h3>
         <p>${next ? `A ${secs(next.ticks)}-second rite that opens tier ${ROMAN[next.tier]}. Its units still have to be studied one by one: ${unitsOfTier(next.tier).map(u => UNITS[u]!.name).join(", ")}.` : "Every rite is complete. Any unit may be studied."}</p>
         <p class="hint">Your scholars work on one rite or study at a time.</p>`);

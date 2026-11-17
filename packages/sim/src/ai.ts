@@ -1,4 +1,4 @@
-import { AI, INVEST_TIERS, KEEPERS, MAP, MERC_ORDER, RULES, UNITS, UNIT_ORDER } from "./data";
+import { AI, INVEST, KEEPERS, MAP, MERC_ORDER, RULES, UNITS, UNIT_ORDER } from "./data";
 import { beaconsHeld, canPlan, hqMax, hqX, isUnlocked, researchOffer, stormBlock } from "./sim";
 import type { Command, GameState, PlayerId } from "./types";
 
@@ -91,9 +91,8 @@ export function simpleAI(s: GameState, me: PlayerId): Command[] {
     if (offer && !p.research && mine.length >= AI.researchAtBuildings + Math.floor((AI.buildingsPer2Research * done) / 2))
       return p.credits >= offer.cost ? [{ type: "research", ...(offer.unit ? { unit: offer.unit } : {}) }] : []; // save up
     const level = p.invest[p.lane] ?? 0;
-    const tier = INVEST_TIERS[level];
-    if (tier && beaconsHeld(s, p.team, p.lane) >= AI.investMinBeacons && mine.length >= AI.investBuildingsPerLevel * (level + 1))
-      return p.credits >= tier.cost ? [{ type: "invest" }] : [];
+    if (beaconsHeld(s, p.team, p.lane) >= AI.investMinBeacons && mine.length >= AI.investBuildingsPerLevel * (level + 1))
+      return p.credits >= INVEST.cost ? [{ type: "invest" }] : [];
   }
   return want ? build(want) : [];
 }

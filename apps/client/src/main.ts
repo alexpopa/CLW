@@ -1,4 +1,4 @@
-import { canPlan, createGame, isUnlocked, researchOffer, simpleAI, step, stormBlock, INVEST_TIERS, KEEPERS, MAP, RULES, TICK_RATE, UNITS } from "@lw/sim";
+import { canPlan, createGame, isUnlocked, researchOffer, simpleAI, step, stormBlock, INVEST, KEEPERS, MAP, RULES, TICK_RATE, UNITS } from "@lw/sim";
 import type { Command, GameState, TimedCommand } from "@lw/sim";
 import { Renderer } from "./scene";
 import { fieldZ, laneAt } from "./layout";
@@ -31,7 +31,6 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   let pending: Command[] = [];
   let acc = 0, last = performance.now();
   let selectedUnit: string | null = null, selectedBuilding: number | null = null;
-  let investLane = 0;                      // the lane my tithe button acts on: mine by default, an ally's if I choose
   let tierTab = 1;                         // which tier's cards the bar shows (the mercenaries share the last tier's page)
   let selectedKeeper: 0 | 1 | null = null; // the gravekeeper taking orders; the build menu shows only while one is chosen
   /** Tabs the chosen keeper offers: the Sexton tiers I-III, the Undertaker those plus tier IV and the mercenaries. */
@@ -46,7 +45,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   const send = (cmd: Command) => { if (!running || ended) return; if (online) net?.command(cmd); else pending.push(cmd); };
   const begin = (state: GameState, slot: number) => {
     game = state; ME = slot; pending = []; inbox = []; acc = 0; ended = false; running = true; paused = false; speed = online ? 1 : speed;
-    selectedUnit = null; selectedBuilding = null; tierTab = 1; selectedKeeper = null; teleporting = false; investLane = me().lane;
+    selectedUnit = null; selectedBuilding = null; tierTab = 1; selectedKeeper = null; teleporting = false;
     view.reset(); view.layout(state.laneCount); view.lookAt(me().lane, home()); hud.hideOverlay(); sound.play("bell");
     const team = me().team;
     hud.setSide(team, (pics[team] ??= view.portraits(team)));
@@ -115,13 +114,11 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
       else { send({ type: "research", unit: id }); sound.play("study"); hud.toast(`Studying the ${d.name}`); }
     },
     setTier(tier) { if (tabs().includes(tier)) { tierTab = tier; selectedUnit = null; sound.play("click"); } },
-    invest() {
-      const tier = INVEST_TIERS[me().invest[investLane] ?? 0];
-      if (!tier) deny("The tithe cannot be raised further");
-      else if (me().credits < tier.cost) deny("Not enough gold");
-      else { send({ type: "invest", lane: investLane }); sound.play("coin"); }
+    invest(lane = me().lane) {
+      if (!running) return;
+      if (me().credits < INVEST.cost) deny("Not enough gold");
+      else { send({ type: "invest", lane }); sound.play("coin"); }
     },
-    setInvestLane(lane) { if (lane >= 0 && lane < game.laneCount) { investLane = lane; sound.play("click"); } },
     research() {
       const next = researchOffer(me());
       if (!next) deny("Every rite is complete");
@@ -284,7 +281,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
       if (open[tab]) hud.actions.setTier(open[tab]!);
     }
     else if (k === "tab") { e.preventDefault(); if (open.length) hud.actions.setTier(open[(open.indexOf(tierTab) + (e.shiftKey ? open.length - 1 : 1)) % open.length]!); }
-    else if (k === "3") { if (e.shiftKey) hud.actions.setInvestLane((investLane + 1) % game.laneCount); else hud.actions.invest(); }
+    else if (k === "3") hud.actions.invest();
     else if (k === "4") hud.actions.research();
     else if (k === "5") hud.actions.storm();
     else if (k === "6") hud.actions.fog();
@@ -362,7 +359,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     }
     if (selectedBuilding !== null && !game.buildings.some(b => b.id === selectedBuilding)) selectedBuilding = null;
     view.draw(game, { selectedKeeper, selectedUnit, hoverCell, selectedBuilding, me: ME }, paused || ended ? 1 : Math.min(1, acc / TICK_MS), now, dt);
-    if ((hudTurn = !hudTurn) || !touching) hud.update(game, { me: ME, keeper: selectedKeeper, tier: tierTab, selectedUnit, selectedBuilding, speed, paused, investLane, fogLane: fogLane(), teleport: teleporting, camRect: view.viewRect(), names: online ? names : [] });
+    if ((hudTurn = !hudTurn) || !touching) hud.update(game, { me: ME, keeper: selectedKeeper, tier: tierTab, selectedUnit, selectedBuilding, speed, paused, fogLane: fogLane(), teleport: teleporting, camRect: view.viewRect(), names: online ? names : [] });
   };
   requestAnimationFrame(frame);
 

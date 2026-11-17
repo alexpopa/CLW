@@ -1,5 +1,5 @@
 import { Rng } from "./rng";
-import { INVEST_TIERS, KEEPERS, LANE_WIDTH, MAP, RESEARCH, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH } from "./data";
+import { INVEST, KEEPERS, LANE_WIDTH, MAP, RESEARCH, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH } from "./data";
 import type { UnitDef } from "./data";
 import type { Command, FogState, GameConfig, GameState, KeeperState, PlayerId, PlayerState, TeamId, TimedCommand, UnitState } from "./types";
 
@@ -42,11 +42,7 @@ export function towersOf(s: GameState, team: TeamId, lane = 0): number {
 }
 
 // ---- economy helpers ----
-export function investBonus(level: number): number {
-  let b = 0;
-  for (let i = 0; i < level; i++) b += INVEST_TIERS[i]!.bonus;
-  return b;
-}
+export const investBonus = (level: number): number => level * INVEST.bonus;
 export function beaconsHeld(s: GameState, team: TeamId, lane: number): number {
   let n = 0;
   for (const b of s.beacons) if (b.lane === lane && b.owner === team) n++;
@@ -216,9 +212,8 @@ function applyCommand(s: GameState, player: PlayerId, c: Command): void {
     if (!Number.isInteger(lane) || lane < 0 || lane >= s.laneCount) return;
     const level = me.invest[lane];
     if (level === undefined) return;
-    const tier = INVEST_TIERS[level];
-    if (!tier || me.credits < tier.cost) return;
-    me.credits -= tier.cost;
+    if (me.credits < INVEST.cost) return;
+    me.credits -= INVEST.cost;
     me.invest[lane] = level + 1;
   } else if (c.type === "research") {
     const offer = researchOffer(me, c.unit);

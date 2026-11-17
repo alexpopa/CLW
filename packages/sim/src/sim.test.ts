@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addUnit, createGame as newGame, parseCommand, UNIT_RESEARCH, step, towersOf, simpleAI, incomeOf, cellCenter, hqX, INVEST_TIERS, MAP, RESEARCH, RULES, TICK_RATE, UNITS } from "./index";
+import { addUnit, createGame as newGame, parseCommand, UNIT_RESEARCH, step, towersOf, simpleAI, incomeOf, cellCenter, hqX, INVEST, MAP, RESEARCH, RULES, TICK_RATE, UNITS } from "./index";
 import type { GameConfig, GameState, TimedCommand } from "./index";
 
 /** Most tests want an empty lane: no guard towers. */
@@ -80,9 +80,13 @@ describe("sim", () => {
     expect(s.beacons[0]!.owner).toBe(0);
     expect(incomeOf(s, 0)).toBe(RULES.baseIncome + RULES.beaconIncome);
     step(s, [{ player: 0, cmd: { type: "invest" } }]);
-    expect(s.players[0]!.credits).toBe(RULES.startCredits - INVEST_TIERS[0]!.cost);
-    expect(incomeOf(s, 0)).toBe(RULES.baseIncome + RULES.beaconIncome + INVEST_TIERS[0]!.bonus);
+    expect(s.players[0]!.credits).toBe(RULES.startCredits - INVEST.cost);
+    expect(incomeOf(s, 0)).toBe(RULES.baseIncome + RULES.beaconIncome + INVEST.bonus);
     expect(incomeOf(s, 1)).toBe(RULES.baseIncome + RULES.beaconIncome); // its home shrine
+    s.players[0]!.credits = 12 * INVEST.cost;                // no highest level, and the price never climbs
+    for (let i = 0; i < 12; i++) step(s, [{ player: 0, cmd: { type: "invest" } }]);
+    expect([s.players[0]!.invest[0], s.players[0]!.credits]).toEqual([13, 0]);
+    expect(incomeOf(s, 0)).toBe(RULES.baseIncome + RULES.beaconIncome + 13 * INVEST.bonus);
     const before = s.players[0]!.credits;
     ticks(s, RULES.incomeIntervalTicks);
     expect(s.players[0]!.credits).toBe(before + incomeOf(s, 0));
@@ -380,8 +384,8 @@ describe("sim", () => {
     s.players[0]!.credits = 1000;
     step(s, [{ player: 0, cmd: { type: "invest", lane: 1 } }, { player: 0, cmd: { type: "invest", lane: 2 } }]); // lane 1 is his ally's; there is no lane 2
     expect(s.players[0]!.invest).toEqual([0, 1]);
-    expect(s.players[0]!.credits).toBe(1000 - INVEST_TIERS[0]!.cost);
-    expect([0, 1, 2].map(p => incomeOf(s, p))).toEqual([before[0]! + INVEST_TIERS[0]!.bonus, before[1], before[2]]); // one home shrine held in lane 1
+    expect(s.players[0]!.credits).toBe(1000 - INVEST.cost);
+    expect([0, 1, 2].map(p => incomeOf(s, p))).toEqual([before[0]! + INVEST.bonus, before[1], before[2]]); // one home shrine held in lane 1
   });
 
   it("a soldier a hair out of reach closes the gap instead of standing there", () => {

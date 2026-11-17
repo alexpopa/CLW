@@ -232,13 +232,11 @@ export const MAP = {
 };
 export const LANE_WIDTH = MAP.zoneRows * MAP.cell;
 
-/** Incremental lane-investment tiers: pay `cost`, gain `bonus` income per controlled beacon in that lane. */
-export const INVEST_TIERS = [
-  { cost: 180, bonus: 5 },
-  { cost: 300, bonus: 8 },
-  { cost: 480, bonus: 12 },
-  { cost: 700, bonus: 16 },
-];
+/**
+ * Lane investment (the tithe): each level costs `cost` and adds `bonus` income per controlled beacon in that lane.
+ * Owner decisions: every level costs the same, and there is no highest level.
+ */
+export const INVEST = { cost: 300, bonus: 8 };
 
 /** Rites: research that opens a unit tier, keyed by the tier it opens. Sequential. */
 export const RESEARCH: Record<number, { cost: number; ticks: number }> = {
