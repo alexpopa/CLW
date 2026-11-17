@@ -115,7 +115,7 @@ export interface GameState {
 export type Command =
   | { type: "build"; keeper: 0 | 1; unit: string; col: number; row: number; lane?: number } // queue a chantry for that keeper to raise
   | { type: "move"; keeper: 0 | 1; x: number; y: number; lane?: number }                    // walk there (drops its queue, refunded)
-  | { type: "teleport"; keeper: 0 | 1; x: number; y: number; lane?: number }                // the Sexton steps through the grave to any of his team's ground (drops his queue, refunded)
+  | { type: "teleport"; keeper: 0 | 1; x: number; y: number; lane?: number }                // a gravekeeper steps through the grave to any of his team's ground (drops his queue, refunded)
   | { type: "storm" }                                                                      // call the Storm of Wrath (tier III, costly, long cooldown)
   | { type: "fog" }                                                                        // call the Deadly Fog down the Sexton's lane (free, once a match)
   | { type: "vultures" }                                                                   // send the Ossuary Vultures down the lane the Sexton stands in (tier II, free, long rest)

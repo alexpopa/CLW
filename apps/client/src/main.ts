@@ -146,7 +146,9 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     },
     teleport() { // arm the Sexton's teleport: he is chosen, and the next click on friendly ground (or on the map's ground) sends him
       if (!running) return;
-      hud.actions.selectKeeper(KEEPERS.findIndex(q => q.teleport) as 0 | 1); selectedUnit = null; teleporting = true;
+      const slot = selectedKeeper !== null && KEEPERS[selectedKeeper]!.teleport ? selectedKeeper : KEEPERS.findIndex(q => q.teleport) as 0 | 1;
+      if (selectedKeeper !== slot) hud.actions.selectKeeper(slot);
+      selectedUnit = null; teleporting = true;
     },
     home() { view.lookAt(me().lane, home()); },
     cancel() { if (teleporting) teleporting = false; else if (selectedUnit || selectedBuilding !== null) { selectedUnit = null; selectedBuilding = null; } else selectedKeeper = null; },
@@ -220,7 +222,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   const walkTo = (w: Spot) => { if (selectedKeeper === null) return; send({ type: "move", keeper: selectedKeeper, x: Math.round(w.x), y: Math.round(w.y), lane: w.lane }); selectedUnit = null; sound.play("click"); };
   /** The Sexton steps through the grave to that spot (any lane of my side's ground). */
   const teleportTo = (w: Spot) => {
-    const slot = KEEPERS.findIndex(k => k.teleport) as 0 | 1;
+    const slot = selectedKeeper ?? KEEPERS.findIndex(k => k.teleport) as 0 | 1;
     teleporting = false;
     send({ type: "teleport", keeper: slot, x: Math.round(w.x), y: Math.round(w.y), lane: w.lane }); sound.play("raise");
   };

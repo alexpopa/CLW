@@ -459,7 +459,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       const b = s.buildings.find(q => q.id === v.selectedBuilding);
       const unit = hover && UNITS[hover] ? hover : !hover ? peek ?? v.selectedUnit : null;
       const go = (label: string) => (touch && peek === unit ? `<button id="confirm">${label}</button>` : "");
-      if (v.teleport && !hover) tip(`<h3>Through the grave<span class="num">T</span></h3><p>Click any ground your side holds, in any lane, here or on the map: the Sexton is there at once.</p><p class="hint">Esc or right-click to cancel. He may step again as often as you like; his queued chantries are refunded each time.</p>`);
+      if (v.teleport && !hover) tip(`<h3>Through the grave<span class="num">T</span></h3><p>Click any ground your side holds, in any lane, here or on the map: the ${v.keeper !== null ? KEEPERS[v.keeper]!.name : "keeper"} is there at once.</p><p class="hint">Esc or right-click to cancel. He may step again as often as you like; his queued chantries are refunded each time.</p>`);
       else if (hover === "invest" || hover?.startsWith("tithe")) tip(`<h3>Raise the tithe${tier ? `<span class="num">${tier.cost}</span>` : ""}</h3>
         <p>Every shrine your side holds in ${laneName(iLane)} pays you <b>+${tier.bonus}</b> more gold each collection. It holds ${held} of 3, so this ${payback}.</p>
         <p class="stats">Tithe level ${level} on ${laneName(iLane)} · currently +${investBonus(level)} per shrine</p>

@@ -38,7 +38,7 @@ Chantries are raised by the player's two gravekeepers, who walk the building gro
 
 Select a keeper (1 or 2, or click him), pick a card, click the ground. Gold is paid on the order; he walks there (9 lane units a second) and the chantry stands at once. Up to eight orders queue per keeper. A move order (right-click, or left-click with no unit chosen) cancels his queue and refunds it. The build menu is only shown while a keeper is selected, and each keeper shows only his own tabs: tiers I to III for the Sexton, tier IV and the mercenaries for the Undertaker. Cards sit in two staggered rows like their keys: Q W E R above, A S D F below. Z X C switch tab.
 
-Keepers work across lanes: every order carries a lane, and a keeper may stand on any lane of his own team's ground. In 2v2 and 3v3 a player can therefore build in an ally's lane (the chantry is his, and musters into that lane). The Undertaker walks there through the gates between building grounds; the Sexton teleports. Mercenaries appear in whichever lane the Undertaker is standing in.
+Keepers work across lanes: every order carries a lane, and a keeper may stand on any lane of his own team's ground. In 2v2 and 3v3 a player can therefore build in an ally's lane (the chantry is his, and musters into that lane). Either keeper can walk there through the gates between building grounds or teleport. Mercenaries appear in whichever lane the Undertaker is standing in.
 
 ## The roster
 

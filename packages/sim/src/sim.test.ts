@@ -272,7 +272,9 @@ describe("sim", () => {
     // build in an ally's lane: without his teleport the Sexton has to walk across the middle lane to get there
     step(s, [{ player: 0, cmd: { type: "build", keeper: 0, unit: "arbalester", col: 10, row: 10, lane: 2 } },
       { player: 0, cmd: { type: "build", keeper: 1, unit: "arbalester", col: 14, row: 10, lane: 2 } }, // the Undertaker raises tier IV only
-      { player: 0, cmd: { type: "teleport", keeper: 1, x: 30000, y: 12000, lane: 2 } }]); // only the Sexton can
+      { player: 0, cmd: { type: "teleport", keeper: 1, x: 30000, y: 12000, lane: 1 } }]); // either keeper may step through the grave
+    expect(undertaker.lane).toBe(1);
+    step(s, [{ player: 0, cmd: { type: "teleport", keeper: 1, x: 30000, y: 12000, lane: 0 } }]);
     expect(undertaker.lane).toBe(0);
     let walked = 0;
     while (!s.buildings.some(b => b.owner === 0)) { step(s); walked++; }
