@@ -6,7 +6,7 @@ import "@fontsource/im-fell-english/400.css";
 import "@fontsource/im-fell-english/400-italic.css";
 import "@fontsource/unifrakturcook/700.css";
 import "./hud.css";
-import { INVEST, KEEPERS, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, hqMax, hqX, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, chantryHp, fogFront, stormBlock, unitsOfTier } from "@lw/sim";
+import { INVEST, KEEPERS, RESEARCH, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, hqMax, hqX, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, chantryHp, fogFront, stormBlock, unitsOfTier } from "@lw/sim";
 import type { GameState, PlayerState } from "@lw/sim";
 import { TEAM } from "./models";
 import { LANE_GAP, LANE_PITCH, LANE_W, fieldZ } from "./layout";
@@ -73,6 +73,12 @@ const abilityLines = (id: string): string => UNITS[id]!.ability.split(/(?<=\.) (
   const i = a.indexOf(":"); return `<p class="ability"><b>${a.slice(0, i)}.</b>${a.slice(i + 1)}</p>`;
 }).join("");
 
+/** Hand-drawn sigils for the Sexton's powers (inline SVG, gold line on the dark plate). */
+const SIGIL = {
+  storm: `<svg class="sigil" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 13c0-4 3-6.5 6.5-6.5 2.4 0 4.3 1.2 5.3 3 3.6-.4 6.2 2 6.2 5 0 2.8-2.2 4.5-5 4.5H10.5C8.5 19 7 16.5 7 13z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M16.5 17.5l-3.5 6h4l-2.5 6 6.5-8h-4l2.5-4z" fill="currentColor"/></svg>`,
+  fog: `<svg class="sigil" viewBox="0 0 32 32" aria-hidden="true"><path d="M11 13.5a5 5 0 0 1 10 0v2.5l-1.6 1.5h-6.8L11 16z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="14" cy="13.6" r="1.3" fill="currentColor"/><circle cx="18" cy="13.6" r="1.3" fill="currentColor"/><path d="M4 21.5c3-1.8 5-1.8 8 0s5 1.8 8 0 5-1.8 8 0M6 26c3-1.8 5-1.8 8 0s5 1.8 8 0 4-1.6 6-.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+};
+
 export function createHud(root: HTMLElement, portraits: Record<string, string>, act: HudActions, hostedAccounts = false) {
   root.innerHTML = `
   <div id="top">
@@ -92,18 +98,21 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   <div id="bar">
     <div id="keepers">${KEEPERS.map((k, i) => `<button class="keeper" data-keeper="${i}" aria-label="${k.name}"><img src="${portraits[k.id] ?? ""}" alt=""><span class="key">${i + 1}</span><b>${k.name}</b></button>`).join("")}</div>
     <div id="build">
+      <div id="side">
       <div id="tiers">${TABS.map(t => `<button class="tier" data-tier="${t}" title="Tier ${ROMAN[t]} units"><b>${ROMAN[t]}</b><small></small></button>`).join("")}</div>
+        <div id="powers">
+        <button class="power" id="storm"><span class="key"><b>5</b></span>${SIGIL.storm}<span class="ptext"><strong><span>Storm</span><span class="num" id="stormC"></span></strong><em id="stormT"></em></span><i class="fill" id="stormBar"></i></button>
+        <button class="power" id="fog"><span class="key"><b>6</b></span>${SIGIL.fog}<span class="ptext"><strong><span>Fog</span><span class="num">Once</span></strong><em id="fogT"></em></span><i class="fill" id="fogBar"></i></button>
+        </div>
+      </div>
+      <div id="page">
       <div id="cards" data-tier="1">${[...UNIT_ORDER, ...MERC_ORDER].map(id => ({ id, at: cardSlot(tabOf(id), tabUnits(tabOf(id)).indexOf(id)) })).map(({ id, at }) => `
         <button class="card${at.row ? " low" : ""}" style="grid-row:${at.row + 1};grid-column:${at.col + 1}" data-unit="${id}" data-tier="${tabOf(id)}" aria-label="${UNITS[id]!.name}"><span class="frame"></span><span class="glassp"></span><img src="${portraits[id] ?? ""}" alt="">
           <i class="prog"></i><span class="seal"></span>
           <span class="plaque"><span class="key">${at.key.toUpperCase()}</span><span class="cost num"></span></span></button>`).join("")}</div>
-    </div>
-    <div class="rule"></div>
-    <div id="acts">
-      <button class="act" id="invest"><span class="key"><b>3</b></span><strong><span>Raise the tithe</span><span class="num" id="investC"></span></strong><em id="investT"></em></button>
-      <button class="act" id="research"><span class="key"><b>4</b></span><strong><span id="researchH">The Second Rite</span><span class="num" id="researchC"></span></strong><em id="researchT"></em><i class="fill" id="researchBar"></i></button>
-      <button class="act" id="storm"><span class="key"><b>5</b></span><strong><span>Storm of Wrath</span><span class="num" id="stormC"></span></strong><em id="stormT"></em><i class="fill" id="stormBar"></i></button>
-      <button class="act" id="fog"><span class="key"><b>6</b></span><strong><span>Deadly Fog</span><span class="num">Once</span></strong><em id="fogT"></em><i class="fill" id="fogBar"></i></button>
+      <button id="research"><span class="orn l"></span><span class="orn r"></span><span class="key"><b>4</b></span>
+        <span class="rtext"><strong><span id="researchH"></span><span class="num" id="researchC"></span></strong><em id="researchT"></em></span><i class="fill" id="researchBar"></i></button>
+      </div>
     </div>
   </div>
   </div>
@@ -135,7 +144,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
     };
     hovers(b, id);
   });
-  for (const id of ["invest", "research", "storm", "fog"]) hovers($(id), id);
+  for (const id of ["research", "storm", "fog"]) hovers($(id), id);
   root.querySelectorAll<HTMLButtonElement>(".tier").forEach(b => { b.onclick = () => { peek = null; act.setTier(Number(b.dataset.tier)); }; });
   $("tbVult").onclick = () => act.vultures();
   $("titheL").onclick = e => { const b = (e.target as HTMLElement).closest<HTMLElement>("[data-lane]"); if (b) act.invest(Number(b.dataset.lane)); };
@@ -148,7 +157,6 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   $("pause").onclick = () => act.togglePause();
   $("mute").onclick = () => { $("mute").classList.toggle("on", !act.toggleMute()); };
   $("mute").classList.add("on");
-  $("invest").onclick = () => act.invest();
   $("research").onclick = () => act.research();
   $("storm").onclick = () => act.storm();
   $("fog").onclick = () => act.fog();
@@ -406,7 +414,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
           b.classList.toggle("poor", known ? p.credits < d.cost : open && studying !== d.id && p.credits < study.cost);
           b.classList.toggle("sel", v.selectedUnit === d.id);
           costText = known ? String(d.cost) : open ? `✦ ${study.cost}` : "—";
-          sealText = known ? "" : !open ? ROMAN[d.tier]! : studying === d.id ? `${secs(p.research!.doneTick - s.tick)}s` : "Study";
+          sealText = known || !open ? "" : studying === d.id ? `${secs(p.research!.doneTick - s.tick)}s` : "Study";
           prog.style.height = studying === d.id ? `${busy * 100}%` : "0";
         }
         if (cost.textContent !== costText) cost.textContent = costText;
@@ -428,30 +436,39 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       const level = p.invest[iLane] ?? 0, tier = INVEST, held = beaconsHeld(s, p.team, iLane);
       const gain = tier.bonus * held;
       const payback = gain > 0 ? `repays itself in ${Math.ceil((tier.cost / gain) * (RULES.incomeIntervalTicks / TICK_RATE))}s` : "pays nothing until you hold a shrine";
-      set("investC", String(tier.cost));
-      set("investT", `+${gain} gold now (${held}/3 shrines)`);
-      $("invest").classList.toggle("poor", p.credits < tier.cost);
 
+      // The rite that opens a tier lives on that tier's page: a seal laid over its greyed cards (on the Undertaker's page, over the great chantries only).
       const next = researchOffer(p), rite = p.research && !p.research.unit;
-      set("researchH", rite ? RITE[p.research!.tier]! : next ? RITE[next.tier]! : "The Rites");
-      set("researchC", next && !p.research ? String(next.cost) : "");
-      set("researchT", rite ? `Under way · ${secs(p.research!.doneTick - s.tick)}s remain` : p.research ? `Studying the ${UNITS[p.research.unit!]!.name} · ${secs(p.research.doneTick - s.tick)}s`
-        : next ? `Opens tier ${ROMAN[next.tier]}: ${unitsOfTier(next.tier).length} units to study` : "Complete · every tier is open");
-      $("researchBar").style.width = rite ? `${busy * 100}%` : "0%";
-      $("research").classList.toggle("poor", !!next && (!!p.research || p.credits < next.cost)); $("research").classList.toggle("done", !next);
+      const sealT = v.keeper !== null && v.tier > p.tier ? v.tier : 0, sealRite = RESEARCH[sealT];
+      const riteHere = !!rite && p.research!.tier === sealT, nowHere = !!next && next.tier === sealT;
+      $("page").classList.toggle("sealed", !!sealT); $("page").classList.toggle("half", sealT === MERC_TAB);
+      if (sealT && sealRite) {
+        set("researchH", RITE[sealT]!);
+        set("researchC", riteHere ? "" : String(sealRite.cost));
+        set("researchT", riteHere ? `Under way · ${secs(p.research!.doneTick - s.tick)}s remain`
+          : !nowHere ? `First, ${RITE[p.tier + 1]}`
+          : p.research ? `Scholars busy · ${secs(p.research.doneTick - s.tick)}s`
+          : sealT === MERC_TAB ? "Opens the great chantries" : `Opens tier ${ROMAN[sealT]} · ${unitsOfTier(sealT).length} units to study`);
+        $("researchBar").style.width = riteHere ? `${busy * 100}%` : "0%";
+        const r = $("research");
+        r.classList.toggle("far", !nowHere && !riteHere); r.classList.toggle("going", riteHere);
+        r.classList.toggle("poor", nowHere && !riteHere && (!!p.research || p.credits < sealRite.cost));
+        r.classList.toggle("ready", nowHere && !p.research && p.credits >= sealRite.cost);
+      }
 
       const block = stormBlock(s, p), rest = p.stormReady - s.tick, strikes = RULES.stormTicks / RULES.stormInterval;
       const mine = s.storms.filter(q => q.team === p.team).length, theirs = s.storms.length - mine;
       const sexton = s.keepers.find(q => q.owner === v.me && KEEPERS[q.slot].powers), fogLane = sexton?.lane ?? p.lane;
-      set("stormC", String(RULES.stormCost));
-      set("stormT", mine ? `Raging · ${mine > 1 ? `${mine} storms` : "the enemy burns"}` : block === "tier" ? "Sealed until The Third Rite" : rest > 0 ? `The sky rests · ${secs(rest)}s` : "Lightning on every enemy");
+      $("powers").style.display = v.keeper !== null && KEEPERS[v.keeper].powers ? "" : "none";
+      set("stormC", rest > 0 && !mine ? `${secs(rest)}s` : String(RULES.stormCost));
+      set("stormT", mine ? "Raging" : rest > 0 ? "The sky rests" : "Every foe");
       $("stormBar").style.width = rest > 0 ? `${100 - (rest / RULES.stormCooldownTicks) * 100}%` : "0%";
       $("storm").classList.toggle("poor", block === "gold"); $("storm").classList.toggle("done", block === "tier" || block === "resting");
-      $("storm").classList.toggle("raging", mine > 0); root.classList.toggle("stormed", theirs > 0);
+      $("storm").classList.toggle("raging", mine > 0); $("storm").style.display = block === "tier" ? "none" : ""; root.classList.toggle("stormed", theirs > 0);
 
       const myFog = s.fogs.find(q => q.owner === v.me), fogLeft = myFog ? RULES.fogRollTicks + RULES.fogHoldTicks - (s.tick - myFog.from) : 0;
       const theirFog = s.fogs.some(q => q.team !== p.team), fogSecs = secs(RULES.fogRollTicks);
-      set("fogT", myFog ? (fogFront(s, myFog) < RULES.fogReach ? "Rolling out · nothing lives in it" : `Standing · ${secs(fogLeft)}s`) : p.fogUsed ? "Spent · it comes but once" : s.laneCount > 1 ? `Death down ${laneName(fogLane)}` : "Death rolls from your cathedral");
+      set("fogT", myFog ? (fogFront(s, myFog) < RULES.fogReach ? "Rolling out" : `Standing · ${secs(fogLeft)}s`) : p.fogUsed ? "Spent" : s.laneCount > 1 ? laneName(fogLane).replace(/^./, c => c.toUpperCase()) : "Down the lane");
       $("fogBar").style.width = myFog ? `${Math.max(0, (fogLeft / (RULES.fogRollTicks + RULES.fogHoldTicks)) * 100)}%` : "0%";
       $("fog").classList.toggle("done", p.fogUsed && !myFog); $("fog").classList.toggle("rolling", !!myFog); $("fog").classList.toggle("ready", !p.fogUsed);
       root.classList.toggle("fogged", theirFog);
@@ -464,9 +481,9 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
         <p>Every shrine your side holds in ${laneName(iLane)} pays you <b>+${tier.bonus}</b> more gold each collection. It holds ${held} of 3, so this ${payback}.</p>
         <p class="stats">Tithe level ${level} on ${laneName(iLane)} · currently +${investBonus(level)} per shrine</p>
         <p class="hint">Every level costs the same, and there is no highest level. ${s.laneCount > 1 ? "The plus beside each lane of the map raises it there, your own lane or an ally's; 3 raises it on your own. The tithe is yours alone: it raises only your income from that lane's shrines, never your ally's." : "Press 3, or the plus beside the map."}</p>`);
-      else if (hover === "research") tip(`<h3>${next ? RITE[next.tier] : "The Rites"}${next ? `<span class="num">${next.cost}</span>` : ""}</h3>
-        <p>${next ? `A ${secs(next.ticks)}-second rite that opens tier ${ROMAN[next.tier]}. Its units still have to be studied one by one: ${unitsOfTier(next.tier).map(u => UNITS[u]!.name).join(", ")}.` : "Every rite is complete. Any unit may be studied."}</p>
-        <p class="hint">Your scholars work on one rite or study at a time.</p>`);
+      else if (hover === "research" && sealT && sealRite) tip(`<h3>${RITE[sealT]}<span class="num">${sealRite.cost}</span></h3>
+        <p>A ${secs(sealRite.ticks)}-second rite that opens tier ${ROMAN[sealT]}. Its units still have to be studied one by one: ${unitsOfTier(sealT).map(u => UNITS[u]!.name).join(", ")}.</p>
+        <p class="hint">${nowHere || riteHere ? "Click or press 4. Your scholars work on one rite or study at a time." : `${RITE[p.tier + 1]} must be done first.`}</p>`);
       else if (hover === "storm") tip(`<h3>Storm of Wrath<span class="num">${RULES.stormCost}</span></h3>
         <p>For ${secs(RULES.stormTicks)} seconds lightning falls on <b>every enemy soldier on the whole field</b>, in every lane, on the ground and in the air: ${RULES.stormDamage} damage a second to each, ${strikes * RULES.stormDamage} in all, through any armor. Towers and cathedrals are spared.</p>
         <p class="stats">It thins a swarm and softens the great; it will not win a battle alone. Storms called together strike together.</p>
