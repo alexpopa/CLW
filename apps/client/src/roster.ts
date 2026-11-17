@@ -561,6 +561,31 @@ export const ROSTER: Record<string, (t: Pal) => ModelDef> = {
 
   // ---------- gravekeepers: the player's builders ----------
   // Sexton: a stooped old gravedigger with a spade, a lantern and the parish keys.
+  // Ossuary Vulture: a carrion bird wired together from bone and draped in funeral cloth, a skull urn in its claws and
+  // ghost-fire in its ribs. Not a unit: a pair of them flies the lane and is gone (see RULES.vulture* in the sim).
+  vulture: t => ({
+    height: 2.6, gait: "fly", hover: 7.5,
+    body: merge([
+      box(1.7, 0.15, 0.15, PAL.bone, -0.05, 1.52, 0, { rz: 0.1 }), box(1.0, 0.1, 0.1, PAL.bone, 0.05, 0.96, 0, { rz: 0.16 }),
+      ...[-0.45, -0.15, 0.15, 0.45].flatMap(x => [1, -1].map(z => box(0.07, 0.62, 0.07, PAL.bone, x, 1.24, z * 0.26, { rx: z * -0.5 }))),
+      box(1.2, 0.05, 0.78, PAL.shadow, -0.15, 1.64, 0, { rz: 0.1 }), box(0.42, 0.05, 0.82, t.main, -0.36, 1.67, 0, { rz: 0.1 }), box(0.08, 0.06, 0.84, PAL.gold, -0.12, 1.69, 0, { rz: 0.1 }),
+      ...[1, -1].flatMap(z => [box(0.5, 0.5, 0.04, PAL.shadow, -0.3, 1.38, z * 0.4, { rx: z * 0.2 }), box(0.2, 0.34, 0.04, PAL.shadow, -0.62, 1.2, z * 0.42, { rz: 0.3 })]),
+      box(0.62, 0.13, 0.13, PAL.bone, 1.02, 1.74, 0, { rz: 0.55 }), box(0.46, 0.12, 0.12, PAL.bone, 1.42, 1.86, 0, { rz: -0.42 }),
+      ...Array.from({ length: 7 }, (_, i) => { const a = (i / 7) * Math.PI * 2; return box(0.34, 0.05, 0.16, PAL.habit, 0.76, 1.58 + Math.sin(a) * 0.2, Math.cos(a) * 0.2, { rz: -0.9 }); }),
+      ...skull(0.23, 1.7, 1.74, 0), cyl(0, 0.1, 0.44, 4, PAL.bronze, 2.06, 1.6, 0, { rz: -HALF - 0.6 }), box(0.3, 0.07, 0.1, PAL.bronze, 1.94, 1.72, 0, { rz: -0.2 }),
+      ...[-0.36, 0, 0.36].map(a => box(1.0, 0.05, 0.2, a ? PAL.bone : PAL.habit, -1.3 * Math.cos(a) + 0.1, 1.4, -1.3 * Math.sin(a), { ry: a })),
+      ...[0.2, -0.2].flatMap(z => [box(0.08, 0.62, 0.08, PAL.bone, 0.12, 0.7, z, { rz: 0.25 }), box(0.3, 0.06, 0.06, PAL.bronze, 0.1, 0.4, z, { rz: 0.4 }), box(0.3, 0.06, 0.06, PAL.bronze, 0.3, 0.4, z, { rz: -0.4 })]),
+    ]),
+    glow: merge([ball(0.06, t.glow, 1.92, 1.76, 0.1, 0), ball(0.06, t.glow, 1.92, 1.76, -0.1, 0), ball(0.2, PAL.ghost, 0, 1.24, 0, 1), ball(0.12, PAL.ghost, -0.3, 1.2, 0, 0)]),
+    parts: [
+      ...wings([0.15, 1.58, 0.3], 3.6, 1.9, PAL.bone, PAL.hex, 5, 1.2),
+      { motion: "cape", pivot: [-0.7, 1.6, 0], amp: 0.9, geo: merge([box(0.05, 1.3, 0.5, PAL.shadow, -0.03, -0.65, 0, { rz: -0.1 }), box(0.05, 0.9, 0.2, t.lo, -0.05, -0.45, 0.3, { rz: -0.2 }), box(0.05, 1.0, 0.2, PAL.habit, -0.05, -0.5, -0.3, { rz: -0.15 })]) },
+    ],
+    // the urn it carries: black iron bound in bronze, a skull for a stopper
+    weapon: { pivot: [0.2, 0.36, 0], anim: "recoil",
+      geo: merge([cyl(0.3, 0.2, 0.5, 7, PAL.iron, 0, -0.3, 0), cyl(0.2, 0.3, 0.14, 7, PAL.iron, 0, 0.02, 0), cyl(0.32, 0.32, 0.06, 7, PAL.bronze, 0, -0.14, 0), ...skull(0.15, 0, 0.2, 0)]),
+      glow: merge([box(0.5, 0.05, 0.05, PAL.ghost, 0, -0.34, 0), box(0.05, 0.05, 0.5, PAL.ghost, 0, -0.34, 0)]) },
+  }),
   sexton: t => ({
     height: 2.7,
     body: merge([

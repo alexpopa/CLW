@@ -3,9 +3,9 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { KEEPERS, MAP, MERC_ORDER, RULES, UNITS, UNIT_ORDER, canPlan, cellCenter, hqMax, hqX } from "@lw/sim";
+import { KEEPERS, MAP, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, canPlan, cellCenter, hqMax, hqX } from "@lw/sim";
 import type { GameState, SimEvent, TeamId } from "@lw/sim";
-import { PAL, TEAM, box, cathedralModel, chantryModel, chapelModel, cloisterModel, curtainModel, fenceModel, graveyardModel, merge, precinctModel, shrineModel, unitModel, wholeModel } from "./models";
+import { PAL, TEAM, ball, box, cyl, cathedralModel, chantryModel, chapelModel, cloisterModel, curtainModel, fenceModel, graveyardModel, merge, precinctModel, shrineModel, unitModel, wholeModel } from "./models";
 import type { Gait, ModelDef, Part } from "./models";
 import { LANE_GAP, LANE_LEN, LANE_PITCH, LANE_W, fieldZ, laneAt, laneZ, midZ } from "./layout";
 import { courtyardTile, glowTexture, groundTile, runeTexture } from "./textures";
@@ -18,13 +18,15 @@ const NEUTRAL = 0x8a90a6, UNIT_SCALE = 0.8, BUILDING_SCALE = 0.6;
 const SHRINE_Z = [-1.8, LANE_W + 1.8]; // shrines flank the lane instead of standing in it
 const FOOT = W(MAP.footprint * MAP.cell); // side of a building's footprint
 /** Soldiers are drawn at UNIT_SCALE; structures are modelled at world size. */
-const scaleOf = (type: string): number => (UNITS[type]?.structure ? 1 : UNITS[type] ? UNIT_SCALE : KEEPER_SCALE);
+const scaleOf = (type: string): number => (type === "vulture" ? VULTURE_SCALE : UNITS[type]?.structure ? 1 : UNITS[type] ? UNIT_SCALE : KEEPER_SCALE);
 
 /** Every model the HUD shows a portrait of. */
 export const PORTRAITS = [...UNIT_ORDER, ...MERC_ORDER, ...KEEPERS.map(k => k.id)];
 /** Gravekeepers are drawn through the same rig as units; this is the id their view is kept under. */
 export const keeperKey = (owner: number, slot: number): number => -(owner * 2 + slot + 1);
-const KEEPER_SCALE = 0.95;
+const KEEPER_SCALE = 0.95, VULTURE_SCALE = 1.5;
+/** Key of one bird of a player's flight of Ossuary Vultures in the unit views: they are posed like soldiers but are not units. */
+const vultureKey = (owner: number, bird: number): number => -(1000 + owner * 2 + bird);
 export interface ViewState {
   selectedKeeper: 0 | 1 | null;
   selectedUnit: string | null;
@@ -90,6 +92,9 @@ void main(){
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
+/** The skull urn an Ossuary Vulture lets fall. */
+const URN = { lit: merge([cyl(0.3, 0.2, 0.5, 7, PAL.iron, 0, 0, 0), cyl(0.2, 0.3, 0.14, 7, PAL.iron, 0, 0.32, 0), cyl(0.32, 0.32, 0.06, 7, PAL.bronze, 0, 0.16, 0), ball(0.16, PAL.bone, 0, 0.5, 0, 1)]),
+  glow: merge([box(0.54, 0.06, 0.06, PAL.ghost, 0, -0.04, 0), box(0.06, 0.06, 0.54, PAL.ghost, 0, -0.04, 0), ball(0.1, PAL.ghost, 0, -0.3, 0, 0)]) };
 type FogView = { g: THREE.Group; front: { value: number }; time: { value: number }; fade: { value: number }; mote: number };
 
 export class Renderer {
@@ -391,6 +396,7 @@ export class Renderer {
     this.prev.clear();
     for (const u of s.units) this.prev.set(u.id, { x: u.x, y: u.y });
     for (const k of s.keepers) this.prev.set(keeperKey(k.owner, k.slot), { x: k.x, y: k.y });
+    for (const f of s.flights) for (const bird of [0, 1]) this.prev.set(vultureKey(f.owner, bird), { x: f.x, y: RULES.vultureY[bird]! });
   }
   reset(): void {
     for (const v of this.units.values()) this.scene.remove(v.root);
@@ -526,6 +532,25 @@ export class Renderer {
           this.spark(to.x, to.y, to.z, 0xffffff, 260, 2.6, 0.4, 0, 0, 0, 0, now);
           for (let k = 0; k < 5; k++) this.spark(to.x, 0.3, to.z, tint, 380 + Math.random() * 200, 0.6, 0.1, rnd(7), 2 + Math.random() * 3, rnd(7), -9, now);
         }
+      } else if (e.t === "vultures") {
+        // they rise out of the home shrine in a swirl of ghost-fire and grave dust
+        const x = W(e.team === 0 ? MAP.beaconX[0]! : MAP.laneLength - MAP.beaconX[0]!);
+        for (const y of RULES.vultureY) for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; this.spark(x + Math.cos(a) * 1.4, 0.4 + i * 0.5, Zy(y) + Math.sin(a) * 1.4, i % 3 ? PAL.ghost : 0xe2d7bc, 700 + i * 60, 0.7, 0.1, Math.cos(a + 1.6) * 2, 3 + Math.random() * 2, Math.sin(a + 1.6) * 2, 0, now); }
+      } else if (e.t === "urn") {
+        // the bird opens its claws: the urn tumbles down trailing ghost-fire
+        const bird = this.units.get(vultureKey(e.owner, e.bird)); if (bird) bird.lastAttack = now;
+        const from = new THREE.Vector3(W(e.x1), bird ? bird.alt + 0.4 : 7.5, Zy(e.y1)), to = new THREE.Vector3(W(e.x2), 0.2, Zy(e.y2));
+        const urn = new THREE.Group(), pot = this.mesh(URN.lit, this.lit), fire = this.mesh(URN.glow, this.glow);
+        urn.add(pot, fire); urn.scale.setScalar(1.3);
+        this.shoot(urn, from, to, now, RULES.vultureFallTicks * (1000 / TICK_RATE), -1.2);
+        for (let i = 0; i < 6; i++) this.spark(from.x + rnd(0.4), from.y - i * 0.5, from.z + rnd(0.4), PAL.ghost, 500 + i * 70, 0.5, 0.05, 0, -1.5, 0, 0, now);
+      } else if (e.t === "burst") {
+        // the urn shatters: a white heart, a ring of ghost-fire racing out to the edge of the blast, bone shards and a pall of ash
+        const x = W(e.x), z = Zy(e.y), r = W(RULES.vultureRadius);
+        this.spark(x, 0.8, z, 0xffffff, 240, 2, 9, 0, 0, 0, 0, now); this.spark(x, 0.6, z, PAL.ghost, 520, 3, r * 2.2, 0, 0, 0, 0, now);
+        for (let i = 0; i < 22; i++) { const a = (i / 22) * Math.PI * 2 + rnd(0.2), v = r / 0.5; this.spark(x, 0.35, z, i % 4 ? PAL.ghost : 0xd9ccff, 500, 1.3, 0.3, Math.cos(a) * v, 0.4, Math.sin(a) * v, 0, now); }
+        for (let i = 0; i < 12; i++) { const a = Math.random() * Math.PI * 2, v = 3 + Math.random() * 6; this.spark(x, 0.5, z, 0xe2d7bc, 700 + Math.random() * 400, 0.45, 0.2, Math.cos(a) * v, 5 + Math.random() * 6, Math.sin(a) * v, -16, now); }
+        for (let i = 0; i < 7; i++) this.spark(x + rnd(r), 0.5, z + rnd(r), 0x4a4658, 1300 + Math.random() * 600, 1.5, 4.5, rnd(1), 1 + Math.random(), rnd(1), 0, now);
       } else if (e.t === "leave") {
         for (let i = 0; i < 8; i++) this.spark(W(e.x) + rnd(0.8), 0.4 + Math.random() * 1.6, Zy(e.y) + rnd(0.8), i % 2 ? 0xe9c56b : 0x8d8a92, 600 + Math.random() * 300, 0.5, 1.6, rnd(1), 1.2, rnd(1), 0, now);
       } else if (e.t === "heal") {
@@ -608,7 +633,8 @@ export class Renderer {
     for (const u of s.units) byId.set(u.id, u);
     const ease = Math.min(1, dt * 0.012);
     // Gravekeepers are posed by the same code as soldiers: they walk, turn and swing a spade, but are not units.
-    const walkers = s.keepers.map(k => ({ id: keeperKey(k.owner, k.slot), type: KEEPERS[k.slot].id, team: k.team, lane: k.lane, x: k.x, y: k.y, target: 0, dotUntil: 0, slowUntil: 0 }));
+    const walkers = s.keepers.map(k => ({ id: keeperKey(k.owner, k.slot), type: KEEPERS[k.slot].id as string, team: k.team, lane: k.lane, x: k.x, y: k.y, target: 0, dotUntil: 0, slowUntil: 0 }));
+    for (const f of s.flights) for (const bird of [0, 1]) walkers.push({ id: vultureKey(f.owner, bird), type: "vulture", team: f.team, lane: f.lane, x: f.x, y: RULES.vultureY[bird]!, target: 0, dotUntil: 0, slowUntil: 0 });
     for (const u of [...s.units, ...walkers]) {
       seen.add(u.id);
       let view = this.units.get(u.id);
@@ -678,6 +704,11 @@ export class Renderer {
       // Afflictions show: burning units shed embers, cursed or frozen ones a cold mist.
       if (s.tick < u.dotUntil && Math.random() < dt * 0.012) this.spark(view.root.position.x + (Math.random() - 0.5) * 0.5, view.alt + 0.6 + Math.random() * 1.2, view.root.position.z + (Math.random() - 0.5) * 0.5, 0xff7a1a, 420, 0.5, 0.1, 0, 1.6, 0, 0, now);
       if (s.tick < u.slowUntil && Math.random() < dt * 0.009) this.spark(view.root.position.x + (Math.random() - 0.5) * 0.7, view.alt + 0.2 + Math.random() * 0.5, view.root.position.z + (Math.random() - 0.5) * 0.7, PAL.frost, 520, 0.5, 0.9, 0, 0.3, 0, 0, now);
+    }
+    for (const [id, view] of this.units) if (!seen.has(id) && view.type === "vulture") { // its errand done, it comes apart into ash and ghost-light
+      this.units.delete(id); this.scene.remove(view.root);
+      const at = view.root.position;
+      for (let i = 0; i < 16; i++) this.spark(at.x + (Math.random() - 0.5) * 3, view.alt + Math.random() * 2.5, at.z + (Math.random() - 0.5) * 3, i % 3 ? PAL.ghost : 0xe2d7bc, 700 + Math.random() * 600, 0.8, 0.1, (Math.random() - 0.5) * 3, 1 + Math.random() * 3, (Math.random() - 0.5) * 3, 0, now);
     }
     for (const [id, view] of this.units) if (!seen.has(id)) { this.units.delete(id); this.dying.push({ root: view.root, rig: view.rig, born: now, structure: scaleOf(view.type) === 1, alt: view.rig.position.y }); }
     this.dying = this.dying.filter(d => {

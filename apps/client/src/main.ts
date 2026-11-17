@@ -1,4 +1,4 @@
-import { canPlan, createGame, isUnlocked, researchOffer, simpleAI, step, stormBlock, INVEST, KEEPERS, MAP, RULES, TICK_RATE, UNITS } from "@lw/sim";
+import { canPlan, createGame, isUnlocked, researchOffer, simpleAI, step, stormBlock, vultureBlock, INVEST, KEEPERS, MAP, RULES, TICK_RATE, UNITS } from "@lw/sim";
 import type { Command, GameState, TimedCommand } from "@lw/sim";
 import { Renderer } from "./scene";
 import { fieldZ, laneAt } from "./layout";
@@ -132,6 +132,13 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
       else if (block === "resting") deny(`The sky is still resting: ${Math.ceil((me().stormReady - game.tick) / TICK_RATE)}s`);
       else if (block === "gold") deny(`The storm costs ${RULES.stormCost} gold`);
       else send({ type: "storm" });
+    },
+    vultures() { // no button and no timer for these (owner decision): the key answers or it does not
+      if (!running) return;
+      const block = vultureBlock(game, me());
+      if (block === "tier") deny("The vultures answer only after The Second Rite");
+      else if (block === "resting") deny("The vultures have not yet returned");
+      else send({ type: "vultures" });
     },
     fog() {
       if (!running) return;
@@ -285,6 +292,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     else if (k === "4") hud.actions.research();
     else if (k === "5") hud.actions.storm();
     else if (k === "6") hud.actions.fog();
+    else if (k === "0") hud.actions.vultures();
     else if (k === "delete" || k === "backspace") hud.actions.sell();
     else if (k === "t") hud.actions.teleport();
     else if (k === "escape") hud.actions.cancel();

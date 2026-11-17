@@ -1,5 +1,5 @@
 import { AI, INVEST, KEEPERS, MAP, MERC_ORDER, RULES, UNITS, UNIT_ORDER } from "./data";
-import { beaconsHeld, canPlan, hqMax, hqX, isUnlocked, researchOffer, stormBlock } from "./sim";
+import { beaconsHeld, canPlan, hqMax, hqX, isUnlocked, researchOffer, stormBlock, vultureBlock } from "./sim";
 import type { Command, GameState, PlayerId } from "./types";
 
 const F = MAP.footprint;
@@ -79,6 +79,11 @@ export function simpleAI(s: GameState, me: PlayerId): Command[] {
   if (!p.fogUsed) {
     const near = s.units.filter(u => u.team !== p.team && u.lane === p.lane && !UNITS[u.type]!.structure && Math.abs(u.x - myHq) < RULES.fogReach - MAP.hqOffset).length;
     if (near >= AI.fogMinFoes || (near > 0 && s.teams[p.team].hqHp * 100 < hqMax(s) * AI.fogHqPct)) return [{ type: "fog" }];
+  }
+  // The vultures: free, so they fly whenever a few foes walk the lane its Sexton stands in.
+  if (!vultureBlock(s, p)) {
+    const lane = s.keepers.find(k => k.owner === me && KEEPERS[k.slot].teleport)?.lane;
+    if (s.units.filter(u => u.team !== p.team && u.lane === lane && !UNITS[u.type]!.structure && !UNITS[u.type]!.flying).length >= AI.vultureMinFoes) return [{ type: "vultures" }];
   }
   // The storm: worth its price once the enemy has a host on the field.
   if (!stormBlock(s, p) && p.credits >= RULES.stormCost + AI.stormReserve && s.units.filter(u => u.team !== p.team && !UNITS[u.type]!.structure).length >= AI.stormMinFoes)

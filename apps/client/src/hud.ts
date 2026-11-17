@@ -19,6 +19,7 @@ export interface HudActions {
   invest(lane?: number): void;                // raise the tithe on that lane (my own if not given)
   research(): void;
   storm(): void;                              // call the Storm of Wrath
+  vultures(): void;                           // send the Ossuary Vultures down the Sexton's lane (no button on a desktop: 0)
   fog(): void;                                // call the Deadly Fog down the lane in view
   teleport(): void;                           // arm the Sexton's teleport
   home(): void;                               // look at my own cathedral
@@ -88,7 +89,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   </div>
   <div id="dock">
   <div id="tip"></div>
-  <div id="touchbar"><button id="tbTele">Teleport</button><button id="tbHome">Cathedral</button><button id="tbCancel">Cancel</button></div>
+  <div id="touchbar"><button id="tbVult">Vultures</button><button id="tbTele">Teleport</button><button id="tbHome">Cathedral</button><button id="tbCancel">Cancel</button></div>
   <div id="bar">
     <div id="keepers">${KEEPERS.map((k, i) => `<button class="keeper" data-keeper="${i}" aria-label="${k.name}"><img src="${portraits[k.id] ?? ""}" alt=""><span class="key">${i + 1}</span><b>${k.name}</b></button>`).join("")}</div>
     <div id="build">
@@ -137,6 +138,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   });
   for (const id of ["invest", "research", "storm", "fog"]) hovers($(id), id);
   root.querySelectorAll<HTMLButtonElement>(".tier").forEach(b => { b.onclick = () => { peek = null; act.setTier(Number(b.dataset.tier)); }; });
+  $("tbVult").onclick = () => act.vultures();
   $("titheL").onclick = e => { const b = (e.target as HTMLElement).closest<HTMLElement>("[data-lane]"); if (b) act.invest(Number(b.dataset.lane)); };
   $("titheL").addEventListener("pointerover", e => { const b = (e.target as HTMLElement).closest<HTMLElement>("[data-lane]"); if (b && e.pointerType === "mouse") hover = `tithe${b.dataset.lane}`; });
   $("titheL").addEventListener("pointerout", () => { if (hover?.startsWith("tithe")) hover = null; });
@@ -239,6 +241,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
           <dt>Study</dt><dd>You begin knowing three units. Click any other card of an open tier to study it; your scholars learn one thing at a time. The Rites (4) open the higher tiers (Z X C or Tab to browse them), whose units must each be studied in turn.</dd>
           <dt>Counters</dt><dd>Every unit has its own gift and its own bane: flyers shrug off swords, fire clears swarms, lanterns unmask shades. Hover a card to read it.</dd>
           <dt>Storm</dt><dd>Once The Third Rite is done you may call the Storm of Wrath (5): for a price, lightning strikes every enemy soldier on the field for ten seconds. Then the sky must rest.</dd>
+          <dt>Vultures</dt><dd>Once The Second Rite is done, 0 sends the Ossuary Vultures: two carrion birds fly the lane your Sexton stands in, from your home shrine to the enemy's, dropping skull urns that burst over a wide ground. They cost nothing, cannot be harmed, and need a long rest between flights.</dd>
           <dt>Fog</dt><dd>Once in the whole war you may call the Deadly Fog (6). It costs nothing: it rolls slowly out of your cathedral, halfway to the middle shrine, and every enemy soldier it touches dies. In team games it rolls down the lane you are looking at.</dd>
           <dt>Tithe</dt><dd>Raise the tithe (3) to earn more from every shrine your side holds in a lane. Every level costs the same and you may raise it as often as you can pay. The plus beside each lane of the map raises it on that lane, your own or an ally's; it only ever raises your own income.</dd>
           <dt>Team games</dt><dd>In 2v2 and 3v3 every player has a lane, and all share one cathedral. Your keepers may build in any lane of your side: the Undertaker walks there, the Sexton steps through the grave (T, then click the ground or the map).</dd>

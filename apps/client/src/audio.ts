@@ -3,8 +3,8 @@ import { MAP } from "@lw/sim";
 import { shotKind } from "./scene";
 
 /** All sound is synthesized with WebAudio: no audio files. Presentation only. */
-type Name = "click" | "deny" | "coin" | "build" | "rite" | "bell" | "bolt" | "clang" | "flame" | "heal" | "thud" | "boom" | "smite" | "gun" | "curse" | "zap" | "frost" | "raise" | "study" | "death" | "capture" | "lost" | "victory" | "defeat" | "thunder" | "fog";
-const GAP: Partial<Record<Name, number>> = { bolt: 70, clang: 80, flame: 110, heal: 160, death: 90, thud: 200, boom: 200, smite: 120, gun: 90, curse: 120, zap: 110, frost: 150, raise: 200, thunder: 350 };
+type Name = "click" | "deny" | "coin" | "build" | "rite" | "bell" | "bolt" | "clang" | "flame" | "heal" | "thud" | "boom" | "smite" | "gun" | "curse" | "zap" | "frost" | "raise" | "study" | "death" | "capture" | "lost" | "victory" | "defeat" | "thunder" | "fog" | "screech" | "whistle" | "burst";
+const GAP: Partial<Record<Name, number>> = { bolt: 70, clang: 80, flame: 110, heal: 160, death: 90, thud: 200, boom: 200, smite: 120, gun: 90, curse: 120, zap: 110, frost: 150, raise: 200, thunder: 350, whistle: 120, burst: 120 };
 
 export class Sound {
   private ctx?: AudioContext;
@@ -99,6 +99,11 @@ export class Sound {
         this.noise(5.5, 0.34 * v, "bandpass", 900, { to: 260, wet: 0.85 }); this.noise(4, 0.16 * v, "highpass", 5200, { wet: 0.6, at: 0.4 });
         this.tone(110, 5, 0.22 * v, "sawtooth", { to: 49, wet: 0.8, lp: 320, attack: 0.8 }); this.tone(116.5, 5, 0.16 * v, "sawtooth", { to: 52, wet: 0.8, lp: 320, attack: 0.8 });
         this.bell(77.8, 0.8 * v, 0.2); this.bell(73.4, 0.6 * v, 2.2); break;
+      case "screech": // two carrion cries, one answering the other
+        for (const [at, f] of [[0, 1480], [0.34, 1240]] as const) { this.tone(f, 0.5, 0.1 * v, "sawtooth", { to: f * 0.55, at, pan, wet: 0.7, lp: 2600 }); this.noise(0.4, 0.12 * v, "bandpass", f * 1.6, { at, pan, wet: 0.6, q: 6, to: f }); }
+        break;
+      case "whistle": this.tone(1900, 0.7, 0.05 * v, "sine", { to: 420, pan, wet: 0.4 }); break;
+      case "burst": this.noise(0.9, 0.5 * v, "lowpass", 900, { to: 70, pan, wet: 0.7 }); this.tone(92, 0.7, 0.32 * v, "sine", { to: 34, pan, wet: 0.5 }); this.noise(0.25, 0.14 * v, "highpass", 3600, { pan, at: 0.05, wet: 0.5 }); this.bell(233, 0.25 * v, 0.02, pan); break;
       case "death": this.noise(0.14, 0.14 * v, "lowpass", 600, { pan }); this.tone(170, 0.16, 0.08 * v, "triangle", { to: 70, pan }); break;
       case "capture": this.bell(392, 0.7 * v, 0, pan); this.organ([196, 293.7, 392], 1.4, 0.025 * v, 0.05); break;
       case "lost": this.bell(155.6, 0.6 * v, 0, pan); break;
@@ -134,6 +139,9 @@ export class Sound {
       else if (e.t === "wave") this.play("bell");
       else if (e.t === "storm") this.play("thunder", 1);
       else if (e.t === "fog") this.play("fog", 1);
+      else if (e.t === "vultures") this.play("screech", 1);
+      else if (e.t === "urn") this.play("whistle", ...at(e.x1));
+      else if (e.t === "burst") this.play("burst", ...at(e.x));
       else if (e.t === "bolt" && e.struck > 0) this.play("thunder", 0.45 + Math.random() * 0.2);
     }
   }

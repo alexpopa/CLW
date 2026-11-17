@@ -272,6 +272,14 @@ export const RULES = {
   // lane, reaching `fogReach` from the lane end (halfway between the home shrine and the middle one) after `fogRollTicks`,
   // stands for `fogHoldTicks` and lifts. Every enemy soldier it covers dies, whatever it is; towers and cathedrals do not.
   fogReach: 180 * UNIT, fogRollTicks: sec(18), fogHoldTicks: sec(5),
+  // The Ossuary Vultures: any player who has opened `vultureTier` may send them, free, then waits `vultureCooldownTicks`.
+  // Two birds fly abreast (at `vultureY` across the lane) down the lane his Sexton stands in, from his side's home shrine
+  // to the enemy's, at `vultureSpeed`, and are gone. They never stop and cannot be struck. Each lets a skull urn fall on
+  // the nearest enemy ground soldier within `vultureSight`, at most one per `vultureUrnTicks`; the urn lands
+  // `vultureFallTicks` later where he stood and deals `vultureDamage`, through armor, to every enemy ground soldier
+  // within `vultureRadius`. Flyers, towers and cathedrals are spared.
+  vultureTier: 2, vultureCooldownTicks: sec(120), vultureSpeed: 500, vultureY: [7 * UNIT, 17 * UNIT], vultureSight: 10 * UNIT,
+  vultureUrnTicks: sec(2), vultureFallTicks: sec(0.7), vultureDamage: 110, vultureRadius: 6 * UNIT,
   sellRefundFreshPct: 75,         // before the building's first wave
   sellRefundUsedPct: 25,          // after it has produced
   acquireRange: 9 * UNIT,         // units notice enemies at max(this, weapon range + acquirePad)
@@ -314,6 +322,7 @@ export const AI = {
   mercReserve: 200,               // when threatened it hires mercenaries only with this much gold to spare
   stormMinFoes: 16,               // calls the storm once this many enemy soldiers are on the board...
   stormReserve: 250,              // ...and it has this much gold to spare
+  vultureMinFoes: 5,              // sends the vultures once this many enemy ground soldiers are in its Sexton's lane
   fogMinFoes: 10,                 // calls the fog down its lane once this many enemy soldiers stand where it will roll...
   fogHqPct: 50,                   // ...or any at all once the cathedral is below this share of its health
   investBuildingsPerLevel: 3,     // needs this many buildings per investment level before investing again

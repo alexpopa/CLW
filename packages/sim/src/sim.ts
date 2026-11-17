@@ -76,6 +76,10 @@ export function stormBlock(s: GameState, p: PlayerState): "tier" | "resting" | "
   return p.tier < RULES.stormTier ? "tier" : s.tick < p.stormReady ? "resting" : p.credits < RULES.stormCost ? "gold" : null;
 }
 
+/** Why this player may not send the Ossuary Vultures right now, or null if he may. */
+export function vultureBlock(s: GameState, p: PlayerState): "tier" | "resting" | null {
+  return p.tier < RULES.vultureTier ? "tier" : s.tick < p.vultureReady ? "resting" : null;
+}
 /** How far a fog has rolled from its team's lane end at this tick, or -1 once it has lifted. */
 export function fogFront(s: GameState, f: FogState): number {
   const age = s.tick - f.from;
@@ -102,12 +106,12 @@ export function createGame(cfg: GameConfig): GameState {
     tick: 0, rngState: cfg.seed >>> 0, nextId: 1, teamSize: n, laneCount,
     players: Array.from({ length: n * 2 }, (_, i) => ({
       id: i, team: (i < n ? 0 : 1) as TeamId, lane: (i % n) % laneCount,
-      credits: RULES.startCredits, tier: 1, unlocked: UNIT_ORDER.filter(id => UNITS[id]!.free), research: null, mercReady: 0, stormReady: 0, fogUsed: false,
+      credits: RULES.startCredits, tier: 1, unlocked: UNIT_ORDER.filter(id => UNITS[id]!.free), research: null, mercReady: 0, stormReady: 0, vultureReady: 0, fogUsed: false,
       invest: Array.from({ length: laneCount }, () => 0),
       isAI: cfg.aiSlots?.includes(i) ?? false,
     })),
     teams: [{ hqHp: RULES.hqHp * laneCount, hqCooldown: 0 }, { hqHp: RULES.hqHp * laneCount, hqCooldown: 0 }],
-    beacons: [], buildings: [], keepers: [], storms: [], fogs: [], units: [], events: [], winner: null,
+    beacons: [], buildings: [], keepers: [], storms: [], fogs: [], flights: [], urns: [], units: [], events: [], winner: null,
   };
   // Two gravekeepers per player wait near the rear of their own building ground.
   for (const p of s.players) for (const slot of [0, 1] as const) {
@@ -143,6 +147,7 @@ export function parseCommand(raw: unknown): Command | null {
   if (r.type === "teleport") return keeper !== null && int(r.x) && int(r.y) ? { type: "teleport", keeper, x: r.x, y: r.y, ...lane } : null;
   if (r.type === "hire") return typeof r.unit === "string" && Object.hasOwn(UNITS, r.unit) ? { type: "hire", unit: r.unit } : null;
   if (r.type === "storm") return { type: "storm" };
+  if (r.type === "vultures") return { type: "vultures" };
   if (r.type === "fog") return { type: "fog", ...lane };
   if (r.type === "sell") return int(r.buildingId) ? { type: "sell", buildingId: r.buildingId } : null;
   if (r.type === "invest") return { type: "invest", ...lane };
@@ -195,6 +200,12 @@ function applyCommand(s: GameState, player: PlayerId, c: Command): void {
     me.credits -= RULES.stormCost; me.stormReady = s.tick + RULES.stormCooldownTicks;
     s.storms.push({ owner: player, team: me.team, from: s.tick, until: s.tick + RULES.stormTicks });
     s.events.push({ t: "storm", player, team: me.team });
+  } else if (c.type === "vultures") {
+    const k = s.keepers.find(q => q.owner === player && KEEPERS[q.slot].teleport); // the Sexton: they fly where he stands
+    if (!k || vultureBlock(s, me)) return;
+    me.vultureReady = s.tick + RULES.vultureCooldownTicks;
+    s.flights.push({ owner: player, team: me.team, lane: k.lane, x: me.team === 0 ? MAP.beaconX[0]! : MAP.laneLength - MAP.beaconX[0]!, cd: [0, RULES.vultureUrnTicks / 2] });
+    s.events.push({ t: "vultures", player, team: me.team, lane: k.lane });
   } else if (c.type === "fog") {
     const lane = c.lane ?? me.lane;
     if (me.fogUsed || !Number.isInteger(lane) || lane < 0 || lane >= s.laneCount) return;
@@ -339,6 +350,34 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
     for (const u of s.units) if (u.team !== st.team && !isStructure(u)) { change(u, -RULES.stormDamage); struck++; }
     s.events.push({ t: "bolt", team: st.team, struck });
   }
+
+  // Ossuary Vultures: they fly on whatever happens below, and each lets an urn fall on the nearest foe on the ground it passes.
+  const grounded = (u: UnitState): boolean => !isStructure(u) && !UNITS[u.type]!.flying;
+  for (const f of s.flights) {
+    f.x += f.team === 0 ? RULES.vultureSpeed : -RULES.vultureSpeed;
+    for (const bird of [0, 1] as const) {
+      if (f.cd[bird] > 0) { f.cd[bird]--; continue; }
+      const y = RULES.vultureY[bird]!;
+      let prey: UnitState | undefined, preyD = RULES.vultureSight + 1;
+      for (const u of s.units) {
+        if (u.team === f.team || u.lane !== f.lane || !grounded(u)) continue;
+        const d = dist(u.x, u.y, f.x, y);
+        if (d < preyD) { prey = u; preyD = d; }
+      }
+      if (!prey) continue;
+      f.cd[bird] = RULES.vultureUrnTicks;
+      s.urns.push({ team: f.team, lane: f.lane, x: prey.x, y: prey.y, at: s.tick + RULES.vultureFallTicks });
+      s.events.push({ t: "urn", owner: f.owner, bird, team: f.team, lane: f.lane, x1: f.x, y1: y, x2: prey.x, y2: prey.y });
+    }
+  }
+  s.flights = s.flights.filter(f => (f.team === 0 ? f.x < MAP.laneLength - MAP.beaconX[0]! : f.x > MAP.beaconX[0]!));
+  for (const urn of s.urns) {
+    if (s.tick < urn.at) continue;
+    for (const u of s.units)
+      if (u.team !== urn.team && u.lane === urn.lane && grounded(u) && dist(u.x, u.y, urn.x, urn.y) <= RULES.vultureRadius) change(u, -RULES.vultureDamage);
+    s.events.push({ t: "burst", team: urn.team, lane: urn.lane, x: urn.x, y: urn.y });
+  }
+  s.urns = s.urns.filter(urn => s.tick < urn.at);
 
   // Deadly Fogs: every enemy soldier inside one dies.
   s.fogs = s.fogs.filter(f => fogFront(s, f) >= 0);

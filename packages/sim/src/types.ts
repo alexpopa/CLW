@@ -12,6 +12,7 @@ export interface PlayerState {
   research: ResearchState | null; // one research at a time
   mercReady: number;          // tick from which the next mercenary band may be hired
   stormReady: number;         // tick from which the next Storm of Wrath may be called
+  vultureReady: number;       // tick from which the Ossuary Vultures may be sent again
   fogUsed: boolean;           // the Deadly Fog has been called: once a match, never again
   invest: number[];           // personal investment level per lane
   isAI: boolean;
@@ -57,6 +58,13 @@ export interface StormState { owner: PlayerId; team: TeamId; from: number; until
  * stands a while and lifts. Every enemy soldier it covers dies.
  */
 export interface FogState { owner: PlayerId; team: TeamId; lane: number; from: number }
+/**
+ * A flight of Ossuary Vultures of `team` over `lane`: two birds abreast at `x`, flying from their own home shrine to the
+ * enemy's and gone when they reach it. They are not units: nothing can strike them. `cd` is each bird's wait before its next urn.
+ */
+export interface FlightState { owner: PlayerId; team: TeamId; lane: number; x: number; cd: [number, number] }
+/** A skull urn in the air: it bursts at (`x`, `y`) of `lane` at tick `at`, on the enemies of `team`. */
+export interface UrnState { team: TeamId; lane: number; x: number; y: number; at: number }
 export interface BeaconState { id: number; lane: number; x: number; owner: TeamId | null }
 export interface TeamState { hqHp: number; hqCooldown: number }
 
@@ -74,6 +82,9 @@ export type SimEvent =
   | { t: "hired"; player: PlayerId; unit: string }
   | { t: "storm"; player: PlayerId; team: TeamId }   // a storm is called by `team`
   | { t: "fog"; player: PlayerId; team: TeamId; lane: number }   // a Deadly Fog is called by `team` in `lane`
+  | { t: "vultures"; player: PlayerId; team: TeamId; lane: number }   // a flight of Ossuary Vultures sets out
+  | { t: "urn"; owner: PlayerId; bird: 0 | 1; team: TeamId; lane: number; x1: number; y1: number; x2: number; y2: number } // a bird lets an urn fall from (x1, y1) on (x2, y2)
+  | { t: "burst"; team: TeamId; lane: number; x: number; y: number }  // an urn bursts
   | { t: "bolt"; team: TeamId; struck: number }      // one volley of a storm of `team`: `struck` enemy soldiers were hit
   | { t: "leave"; unit: string; team: TeamId; lane: number; x: number; y: number }   // a mercenary's contract ends
   | { t: "researched"; player: PlayerId; tier: number; unit: string | null };
@@ -91,6 +102,8 @@ export interface GameState {
   keepers: KeeperState[];
   storms: StormState[];
   fogs: FogState[];
+  flights: FlightState[];
+  urns: UrnState[];
   units: UnitState[];
   events: SimEvent[];
   winner: TeamId | null;
@@ -103,6 +116,7 @@ export type Command =
   | { type: "teleport"; keeper: 0 | 1; x: number; y: number; lane?: number }                // the Sexton steps through the grave to any of his team's ground (drops his queue, refunded)
   | { type: "storm" }                                                                      // call the Storm of Wrath (tier III, costly, long cooldown)
   | { type: "fog"; lane?: number }                                                         // call the Deadly Fog down that lane (free, once a match)
+  | { type: "vultures" }                                                                   // send the Ossuary Vultures down the lane the Sexton stands in (tier II, free, long rest)
   | { type: "hire"; unit: string }                                                          // a mercenary band, through the Undertaker
   | { type: "sell"; buildingId: number }
   | { type: "invest"; lane?: number }
