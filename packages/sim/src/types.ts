@@ -22,6 +22,7 @@ export interface BuildingState {
   id: number; owner: PlayerId; team: TeamId; lane: number;
   col: number; row: number;   // cell in the team's production zone (col 0 = rear, nearest own HQ)
   unit: string;
+  hp: number;                 // a chantry can be razed: see CHANTRY_HP in data.ts
   readyTick: number;          // tick it was raised (it musters from the next wave on)
   produced: boolean;          // has spawned at least once (affects sell refund)
 }
@@ -70,11 +71,12 @@ export interface TeamState { hqHp: number; hqCooldown: number }
 
 /** Transient per-tick events for presentation (effects, sounds). Replaced on every step(). Positions are within `lane`. */
 export type SimEvent =
-  | { t: "shot"; id: number; unit: string; team: TeamId; to: number; lane: number; x1: number; y1: number; x2: number; y2: number } // unit "hq" (id 0) = headquarters; to = struck unit id, 0 = cathedral
+  | { t: "shot"; id: number; unit: string; team: TeamId; to: number; chantry?: number; lane: number; x1: number; y1: number; x2: number; y2: number } // unit "hq" (id 0) = headquarters; to = struck unit id, 0 = cathedral, or the chantry whose building id is `chantry`
   | { t: "arc"; team: TeamId; from: number; to: number; lane: number; x1: number; y1: number; x2: number; y2: number }   // one leap of chain lightning
   | { t: "raise"; team: TeamId; lane: number; x: number; y: number }
   | { t: "heal"; id: number; team: TeamId; lane: number; x1: number; y1: number; x2: number; y2: number }
   | { t: "death"; unit: string; team: TeamId; lane: number; x: number; y: number }
+  | { t: "razed"; building: number; unit: string; owner: PlayerId; team: TeamId; lane: number; x: number; y: number } // a chantry is destroyed
   | { t: "capture"; beacon: number; team: TeamId }
   | { t: "wave" }
   | { t: "built"; player: PlayerId; slot: 0 | 1; unit: string; lane: number; x: number; y: number }

@@ -1,7 +1,7 @@
 import { Rng } from "./rng";
-import { INVEST, KEEPERS, LANE_WIDTH, MAP, RESEARCH, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH } from "./data";
+import { CHANTRY_HP, INVEST, KEEPERS, LANE_WIDTH, MAP, RESEARCH, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH } from "./data";
 import type { UnitDef } from "./data";
-import type { Command, FogState, GameConfig, GameState, KeeperState, PlayerId, PlayerState, TeamId, TimedCommand, UnitState } from "./types";
+import type { BuildingState, Command, FogState, GameConfig, GameState, KeeperState, PlayerId, PlayerState, TeamId, TimedCommand, UnitState } from "./types";
 
 // ---- geometry helpers (shared with the client) ----
 export const hqX = (team: TeamId): number => (team === 0 ? MAP.hqOffset : MAP.laneLength - MAP.hqOffset);
@@ -95,8 +95,11 @@ export function addUnit(s: GameState, type: string, owner: PlayerId, team: TeamI
   return u;
 }
 
-export function sellRefund(unit: string, produced: boolean): number {
-  return Math.floor((UNITS[unit]!.cost * (produced ? RULES.sellRefundUsedPct : RULES.sellRefundFreshPct)) / 100);
+/** Full health of the chantry that sends `unit`. */
+export const chantryHp = (unit: string): number => CHANTRY_HP[UNITS[unit]!.tier] ?? CHANTRY_HP[1]!;
+/** What tearing a chantry down hands back: less once it has mustered, and only the share of it still standing. */
+export function sellRefund(unit: string, produced: boolean, hp = chantryHp(unit)): number {
+  return Math.floor((UNITS[unit]!.cost * (produced ? RULES.sellRefundUsedPct : RULES.sellRefundFreshPct) * hp) / (100 * chantryHp(unit)));
 }
 
 export function createGame(cfg: GameConfig): GameState {
@@ -216,7 +219,7 @@ function applyCommand(s: GameState, player: PlayerId, c: Command): void {
     const i = s.buildings.findIndex(b => b.id === c.buildingId && b.owner === player);
     if (i < 0) return;
     const b = s.buildings[i]!;
-    me.credits += sellRefund(b.unit, b.produced);
+    me.credits += sellRefund(b.unit, b.produced, b.hp);
     s.buildings.splice(i, 1);
   } else if (c.type === "invest") {
     const lane = c.lane ?? me.lane;
@@ -276,6 +279,8 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
   const afflict: (() => void)[] = [];
   const moves: [UnitState, number, number][] = []; // everyone decides from where all stood at the start of the tick, then all move
   const hqDamage: [number, number] = [0, 0];
+  const razing = new Map<BuildingState, number>(); // damage done to chantries this tick
+  const footHalf = (MAP.footprint * MAP.cell) / 2;
   const change = (u: UnitState, amount: number) => delta.set(u, (delta.get(u) ?? 0) + amount);
   /** One unit's attack landing on one victim, with every on-hit ability. */
   const hit = (u: UnitState, def: UnitDef, v: UnitState, base: number): void => {
@@ -469,9 +474,23 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
     } else if (tooClose) {
       // A war engine with the enemy under its nose can only wait for help.
     } else {
+      // Nobody left to fight here: tear down the nearest enemy chantry within sight before marching on.
+      let chantry: BuildingState | undefined, chantryD = acquire + 1, cx = 0, cy = 0;
+      for (const b of s.buildings) {
+        if (b.team === u.team || b.lane !== u.lane) continue;
+        const c = cellCenter(b.team, b.col, b.row), d = Math.max(0, dist(u.x, u.y, c.x, c.y) - footHalf);
+        if (d < chantryD) { chantry = b; chantryD = d; cx = c.x; cy = c.y; }
+      }
       // The HQ spans the lane width, so only distance along the lane matters.
       const hx = hqX(enemyTeam);
-      if (Math.abs(u.x - hx) - MAP.hqRadius <= def.range) {
+      if (chantry) {
+        if (chantryD > def.range) moveToward(cx, cy, chantryD + footHalf, chantryD - def.range);
+        else if (u.cooldown === 0) {
+          rearm();
+          razing.set(chantry, (razing.get(chantry) ?? 0) + def.damage + Math.trunc((def.damage * (def.bonus?.structure ?? 0)) / 100));
+          s.events.push({ t: "shot", id: u.id, unit: u.type, team: u.team, to: 0, chantry: chantry.id, lane: u.lane, x1: u.x, y1: u.y, x2: cx, y2: cy });
+        }
+      } else if (Math.abs(u.x - hx) - MAP.hqRadius <= def.range) {
         if (u.cooldown === 0) {
           rearm();
           const dmg = def.damage + Math.trunc((def.damage * (def.bonus?.structure ?? 0)) / 100);
@@ -483,6 +502,16 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
   }
   for (const apply of afflict) apply();
   for (const [u, dx, dy] of moves) { u.x += dx; u.y = Math.max(500, Math.min(LANE_WIDTH - 500, u.y + dy)); }
+
+  // Chantries take what was dealt to them; one brought to nothing is razed, and its owner gets nothing back.
+  if (razing.size > 0) {
+    for (const [b, dmg] of razing) b.hp -= dmg;
+    s.buildings = s.buildings.filter(b => {
+      if (b.hp > 0) return true;
+      s.events.push({ t: "razed", building: b.id, unit: b.unit, owner: b.owner, team: b.team, lane: b.lane, ...cellCenter(b.team, b.col, b.row) });
+      return false;
+    });
+  }
 
   // Mercenaries are paid as far as the middle of the lane: there the contract ends and they walk off.
   const half = MAP.laneLength / 2;
@@ -512,7 +541,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
     if (!job) continue;
     k.jobs.shift(); k.tlane = k.lane; k.tx = k.x; k.ty = k.y;
     if (canBuild(s, k.team, job.lane, job.col, job.row)) {
-      s.buildings.push({ id: s.nextId++, owner: k.owner, team: k.team, lane: job.lane, col: job.col, row: job.row, unit: job.unit, readyTick: s.tick, produced: false });
+      s.buildings.push({ id: s.nextId++, owner: k.owner, team: k.team, lane: job.lane, col: job.col, row: job.row, unit: job.unit, hp: chantryHp(job.unit), readyTick: s.tick, produced: false });
       s.events.push({ t: "built", player: k.owner, slot: k.slot, unit: job.unit, lane: job.lane, x: goal.x, y: goal.y });
     } else s.players[k.owner]!.credits += UNITS[job.unit]!.cost;
   }

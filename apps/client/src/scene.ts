@@ -3,7 +3,7 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { KEEPERS, MAP, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, canPlan, cellCenter, hqMax, hqX } from "@lw/sim";
+import { KEEPERS, MAP, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, canPlan, cellCenter, chantryHp, hqMax, hqX } from "@lw/sim";
 import type { GameState, SimEvent, TeamId } from "@lw/sim";
 import { PAL, TEAM, ball, box, cyl, cathedralModel, chantryModel, chapelModel, cloisterModel, curtainModel, fenceModel, graveyardModel, merge, precinctModel, shrineModel, unitModel, wholeModel } from "./models";
 import type { Gait, ModelDef, Part } from "./models";
@@ -114,6 +114,9 @@ export class Renderer {
   private units = new Map<number, UnitView>();
   private dying: { root: THREE.Group; rig: THREE.Group; born: number; structure: boolean; alt: number }[] = [];
   private buildings = new Map<number, THREE.Group>();
+  private struck = new Map<number, number>();   // chantry id -> when it was last hit (it shudders)
+  private razed = new Set<number>();            // chantries destroyed this frame: they collapse instead of vanishing
+  private ruins: { g: THREE.Group; born: number }[] = [];
   private shrines: { flames: THREE.Mesh[]; lights: THREE.PointLight[]; runes: THREE.Mesh[]; owner: TeamId | null | undefined }[] = [];
   private hqGlow: THREE.Mesh[] = [];
   private particles: Particle[] = [];
@@ -402,6 +405,8 @@ export class Renderer {
     for (const v of this.units.values()) this.scene.remove(v.root);
     for (const d of this.dying) this.scene.remove(d.root);
     for (const b of this.buildings.values()) this.scene.remove(b);
+    for (const r of this.ruins) this.scene.remove(r.g);
+    this.ruins = []; this.struck.clear(); this.razed.clear();
     for (const p of this.particles) this.scene.remove(p.sprite);
     for (const sh of this.shots) this.scene.remove(sh.mesh);
     for (const f of this.fogs.values()) this.dropFog(f);
@@ -461,7 +466,11 @@ export class Renderer {
       lane = "lane" in e ? e.lane : 0;
       if (e.t === "shot") {
         const v = this.units.get(e.id); if (v) v.lastAttack = now;
-        const from = muzzle(e.id, e.x1, e.y1), to = e.to ? chest(e.to, e.x2, e.y2) : new THREE.Vector3(W(e.x2), 3, Zy(e.y2));
+        const from = muzzle(e.id, e.x1, e.y1), to = e.to ? chest(e.to, e.x2, e.y2) : e.chantry ? new THREE.Vector3(W(e.x2) + rnd(0.8), 1 + Math.random() * 1.2, Zy(e.y2) + rnd(0.8)) : new THREE.Vector3(W(e.x2), 3, Zy(e.y2));
+        if (e.chantry) { // masonry flies from the wall that was struck
+          this.struck.set(e.chantry, now);
+          for (let i = 0; i < 3; i++) this.spark(to.x, to.y, to.z, i ? 0x8a8474 : 0xcfc6ad, 420 + Math.random() * 260, 0.35, 0.1, rnd(3), 1.5 + Math.random() * 2.5, rnd(3), -12, now);
+        }
         const style = SHOTS[e.unit], kind = style?.kind ?? "melee", color = style?.color ?? MELEE[e.unit] ?? 0xffe2a8;
         if (kind === "bolt") this.shoot(new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.05, 0.05), basic(color)), from, to, now, 170);
         else if (kind === "gun") {
@@ -551,6 +560,13 @@ export class Renderer {
         for (let i = 0; i < 22; i++) { const a = (i / 22) * Math.PI * 2 + rnd(0.2), v = r / 0.5; this.spark(x, 0.35, z, i % 4 ? PAL.ghost : 0xd9ccff, 500, 1.3, 0.3, Math.cos(a) * v, 0.4, Math.sin(a) * v, 0, now); }
         for (let i = 0; i < 12; i++) { const a = Math.random() * Math.PI * 2, v = 3 + Math.random() * 6; this.spark(x, 0.5, z, 0xe2d7bc, 700 + Math.random() * 400, 0.45, 0.2, Math.cos(a) * v, 5 + Math.random() * 6, Math.sin(a) * v, -16, now); }
         for (let i = 0; i < 7; i++) this.spark(x + rnd(r), 0.5, z + rnd(r), 0x4a4658, 1300 + Math.random() * 600, 1.5, 4.5, rnd(1), 1 + Math.random(), rnd(1), 0, now);
+      } else if (e.t === "razed") {
+        // the chantry gives way: a burst of dust and flying stone, embers from whatever burned inside
+        this.razed.add(e.building);
+        const x = W(e.x), z = Zy(e.y);
+        this.spark(x, 1, z, 0x6d6050, 900, 2, 8, 0, 0.6, 0, 0, now);
+        for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2; this.spark(x, 0.4, z, i % 2 ? 0x6d6050 : 0x4a4658, 900 + Math.random() * 500, 1.2, 3.6, Math.cos(a) * 3.2, 0.6 + Math.random(), Math.sin(a) * 3.2, 0, now); }
+        for (let i = 0; i < 14; i++) this.spark(x + rnd(1.4), 0.6 + Math.random() * 1.6, z + rnd(1.4), i % 3 ? 0xcfc6ad : 0xff9a3a, 700 + Math.random() * 500, 0.4, 0.1, rnd(6), 3 + Math.random() * 5, rnd(6), -14, now);
       } else if (e.t === "leave") {
         for (let i = 0; i < 8; i++) this.spark(W(e.x) + rnd(0.8), 0.4 + Math.random() * 1.6, Zy(e.y) + rnd(0.8), i % 2 ? 0xe9c56b : 0x8d8a92, 600 + Math.random() * 300, 0.5, 1.6, rnd(1), 1.2, rnd(1), 0, now);
       } else if (e.t === "heal") {
@@ -728,8 +744,23 @@ export class Renderer {
       let g = this.buildings.get(b.id);
       if (!g) { g = this.makeBuilding(b.unit, b.team); const p = cellCenter(b.team, b.col, b.row); g.position.set(W(p.x), 0, LZ(b.lane) + W(p.y)); this.buildings.set(b.id, g); }
       g.scale.y = BUILDING_SCALE * Math.min(1, 0.15 + (s.tick - b.readyTick + alpha) / 7); // it springs up the moment the keeper arrives
+      // a chantry under attack shudders at each blow, smokes once it is badly hurt and burns when it is close to falling
+      const hurt = 1 - b.hp / chantryHp(b.unit), jolt = Math.max(0, 1 - (now - (this.struck.get(b.id) ?? -1e9)) / 220);
+      g.rotation.z = jolt * 0.05 * Math.sin(now / 18) + hurt * 0.04; g.rotation.x = jolt * 0.04 * Math.cos(now / 23);
+      if (hurt > 0.33 && Math.random() < dt * 0.006 * hurt) this.spark(g.position.x + (Math.random() - 0.5) * 0.8, 2 + Math.random(), g.position.z + (Math.random() - 0.5) * 0.8, 0x3a3844, 1400 + Math.random() * 600, 0.7, 2.6, 0.4, 1.6 + Math.random(), 0, 0, now);
+      if (hurt > 0.66 && Math.random() < dt * 0.012) this.spark(g.position.x + (Math.random() - 0.5) * 1.2, 0.8 + Math.random() * 1.4, g.position.z + (Math.random() - 0.5) * 1.2, Math.random() < 0.5 ? 0xff7a1f : 0xffc04a, 420 + Math.random() * 300, 0.7, 0.1, 0, 2 + Math.random() * 2, 0, 0, now);
     }
-    for (const [id, g] of this.buildings) if (!live.has(id)) { this.scene.remove(g); this.buildings.delete(id); }
+    for (const [id, g] of this.buildings) if (!live.has(id)) {
+      this.buildings.delete(id); this.struck.delete(id);
+      if (this.razed.has(id)) this.ruins.push({ g, born: now }); else this.scene.remove(g); // torn down by its owner: it is simply gone
+    }
+    this.razed.clear();
+    this.ruins = this.ruins.filter(r => { // the walls fold inward and sink into their own dust
+      const t = (now - r.born) / 1300;
+      if (t >= 1) { this.scene.remove(r.g); return false; }
+      r.g.position.y = -t * t * 5; r.g.rotation.z = 0.04 + t * 0.5; r.g.rotation.x = Math.sin(t * 9) * 0.06 * (1 - t); r.g.scale.y = BUILDING_SCALE * (1 - t * 0.5);
+      return true;
+    });
 
     // shrines
     s.beacons.forEach((b, i) => {
@@ -832,6 +863,15 @@ export class Renderer {
       if (x < -20 || x > cw + 20) continue;
       c.fillStyle = "rgba(8,7,11,0.85)"; c.fillRect(x - w / 2 - 1, y - 1, w + 2, 5);
       c.fillStyle = u.team === myTeam ? "#8fd18a" : "#e2685c"; c.fillRect(x - w / 2, y, (w * u.hp) / max, 3);
+    }
+    for (const b of s.buildings) { // a hurt chantry shows what it has left
+      const max = chantryHp(b.unit), g = this.buildings.get(b.id);
+      if (b.hp >= max || !g) continue;
+      p.set(g.position.x, 4.4, g.position.z).project(this.camera);
+      const x = (p.x * 0.5 + 0.5) * cw, y = (-p.y * 0.5 + 0.5) * ch, w = 30;
+      if (x < -20 || x > cw + 20) continue;
+      c.fillStyle = "rgba(8,7,11,0.85)"; c.fillRect(x - w / 2 - 1, y - 1, w + 2, 6);
+      c.fillStyle = b.team === myTeam ? "#8fd18a" : "#e2685c"; c.fillRect(x - w / 2, y, (w * b.hp) / max, 4);
     }
     // the cathedral's health, always shown: over the cathedral itself and over each chapel of its close (they are one building, with one life)
     const full = RULES.hqHp * s.laneCount, mid = midZ(this.lanes), nave = 9.4 * this.hqScale;

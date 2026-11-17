@@ -139,6 +139,7 @@ export class Sound {
       else if (e.t === "wave") this.play("bell");
       else if (e.t === "storm") this.play("thunder", 1);
       else if (e.t === "fog") this.play("fog", 1);
+      else if (e.t === "razed") this.play("boom", ...at(e.x));
       else if (e.t === "vultures") this.play("screech", 1);
       else if (e.t === "urn") this.play("whistle", ...at(e.x1));
       else if (e.t === "burst") this.play("burst", ...at(e.x));

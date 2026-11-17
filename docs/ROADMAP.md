@@ -11,7 +11,7 @@ Implement [Phase 1 of the recreation specification](COLONIAL_LINE_WARS.md#38-pha
 
 ## M1.5 — Full battlefield (F)
 [Phase 2](COLONIAL_LINE_WARS.md#39-phase-2--full-battlefield): three lanes, nine shrines, 2v2 and 3v3 with AI fill, per-lane tithes, factions, tiers 3–4, abilities.
-**Done:** 2v2 and 3v3 with one lane per player (so two or three lanes and six or nine shrines), autopilots for every empty seat in solo and online play, building in allies' lanes, the Sexton's teleport, the Storm of Wrath (a board-wide tier III power), the Deadly Fog (a once-a-match lane wipe near your own cathedral), the Ossuary Vultures (a free tier II bombing run down the Sexton's lane), a two-dimensional camera and a corner minimap, tiers 3–4 and abilities.
+**Done:** 2v2 and 3v3 with one lane per player (so two or three lanes and six or nine shrines), autopilots for every empty seat in solo and online play, building in allies' lanes, the Sexton's teleport, the Storm of Wrath (a board-wide tier III power), the Deadly Fog (a once-a-match lane wipe near your own cathedral), the Ossuary Vultures (a free tier II bombing run down the Sexton's lane), destroyable chantries with health, a two-dimensional camera and a corner minimap, tiers 3–4 and abilities.
 **Still to do:** factions, per-lane tithes that teammates share, lanes that interact, seat and team choice in the online lobby.
 
 ## M2 — Auth + accounts (when needed)

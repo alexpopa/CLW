@@ -1,6 +1,6 @@
 import { LANE_WIDTH, MAP, RULES, TICK_RATE, UNITS } from "./data";
 import { pickCell } from "./ai";
-import { addUnit, createGame, step } from "./sim";
+import { addUnit, chantryHp, createGame, step } from "./sim";
 import type { GameState, TeamId } from "./types";
 
 /**
@@ -85,7 +85,7 @@ export function stream(a: Army, b: Army, maxMinutes = 10): StreamResult {
     const ids = Object.keys(armies[team]!).sort((x, y) => UNITS[x]!.range - UNITS[y]!.range || (x < y ? -1 : 1));
     for (const id of ids) for (let i = 0; i < armies[team]![id]!; i++) {
       const cell = pickCell(s, team, id);
-      if (cell) s.buildings.push({ id: s.nextId++, owner: team, team, lane: 0, ...cell, unit: id, readyTick: 0, produced: false });
+      if (cell) s.buildings.push({ id: s.nextId++, owner: team, team, lane: 0, ...cell, unit: id, hp: chantryHp(id), readyTick: 0, produced: false });
     }
   }
   const stone = 2 * (UNITS[MAP.shrineTower]!.hp + UNITS[MAP.baseTower]!.hp) + RULES.hqHp;

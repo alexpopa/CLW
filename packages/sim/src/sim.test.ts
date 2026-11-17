@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addUnit, createGame as newGame, parseCommand, UNIT_RESEARCH, step, towersOf, simpleAI, incomeOf, cellCenter, hqX, INVEST, MAP, RESEARCH, RULES, TICK_RATE, UNITS } from "./index";
+import { addUnit, createGame as newGame, parseCommand, UNIT_RESEARCH, step, towersOf, simpleAI, incomeOf, cellCenter, hqX, INVEST, CHANTRY_HP, chantryHp, sellRefund, MAP, RESEARCH, RULES, TICK_RATE, UNITS } from "./index";
 import type { GameConfig, GameState, TimedCommand } from "./index";
 
 /** Most tests want an empty lane: no guard towers. */
@@ -412,6 +412,37 @@ describe("sim", () => {
     expect([wings.hp, other.hp]).toEqual([UNITS.wyrm!.hp, full]);   // wings and the other lane are spared
     expect(s.urns.length).toBe(0);
     expect(parseCommand({ type: "vultures", junk: 1 })).toEqual({ type: "vultures" });
+  });
+  it("soldiers with nobody left to fight raze the chantries they pass, siege engines faster; a razed chantry is gone and a hurt one sells for less", () => {
+    const s = createGame({ teamSize: 1, seed: 1 });
+    s.units = [];                                          // no towers: the way to the building ground is open
+    const raise = (unit: string, col: number, row: number) => { s.buildings.push({ id: s.nextId++, owner: 1, team: 1, lane: 0, col, row, unit, hp: chantryHp(unit), readyTick: 0, produced: false }); return s.buildings.at(-1)!; };
+    const front = raise("arbalester", 30, 11), hit = UNITS.oathguard!.damage;
+    expect([front.hp, chantryHp("titan")]).toEqual([CHANTRY_HP[1], CHANTRY_HP[4]]);
+    front.hp = 3 * hit;                                    // nearly down already, so it falls before the next muster
+    const at = cellCenter(1, 30, 11), guard = addUnit(s, "oathguard", 0, 0, 0, at.x - 6000, at.y);
+    let shots = 0, razed = 0;
+    for (let i = 0; i < 4000 && s.buildings.includes(front); i++) {
+      step(s);
+      shots += s.events.filter(e => e.t === "shot" && e.chantry === front.id).length; razed += s.events.filter(e => e.t === "razed").length;
+      if (shots === 1 && s.buildings.includes(front)) { // struck once: no armor, and it sells for the share still standing
+        expect(front.hp).toBe(2 * hit);
+        expect(sellRefund("arbalester", false, front.hp)).toBeLessThan(sellRefund("arbalester", false));
+      }
+    }
+    expect([s.buildings.includes(front), razed, s.players[1]!.credits]).toEqual([false, 1, RULES.startCredits]); // gone, and nothing handed back
+    expect(shots).toBe(3);
+    expect(Math.abs(guard.x - at.x)).toBeLessThan(6000);   // he stopped at it to tear it down
+    // a foe in sight comes first: he leaves the next chantry alone to fight
+    const next = raise("arbalester", 26, 11), foe = addUnit(s, "oathguard", 1, 1, 0, guard.x + 3000, guard.y);
+    ticks(s, 40);
+    expect([next.hp, foe.hp < UNITS.oathguard!.hp]).toEqual([CHANTRY_HP[1], true]);
+    // an engine's bonus against structures counts against chantries too
+    s.units = [];
+    const engine = Object.values(UNITS).find(d => d.bonus?.structure && !d.structure)!;
+    const c2 = cellCenter(1, 26, 11); addUnit(s, engine.id, 0, 0, 0, c2.x - 3000, c2.y);
+    for (let i = 0; i < 400 && next.hp === CHANTRY_HP[1]; i++) step(s);
+    expect(CHANTRY_HP[1]! - next.hp).toBe(engine.damage + Math.trunc((engine.damage * engine.bonus!.structure!) / 100));
   });
   it("a player may raise the tithe on an ally's lane: it lifts his own income from that lane's shrines and nobody else's", () => {
     const s = createGame({ teamSize: 2, seed: 1 });

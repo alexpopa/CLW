@@ -6,7 +6,7 @@ import "@fontsource/im-fell-english/400.css";
 import "@fontsource/im-fell-english/400-italic.css";
 import "@fontsource/unifrakturcook/700.css";
 import "./hud.css";
-import { INVEST, KEEPERS, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, hqMax, hqX, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, fogFront, stormBlock, unitsOfTier } from "@lw/sim";
+import { INVEST, KEEPERS, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, hqMax, hqX, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, chantryHp, fogFront, stormBlock, unitsOfTier } from "@lw/sim";
 import type { GameState, PlayerState } from "@lw/sim";
 import { TEAM } from "./models";
 import { LANE_GAP, LANE_PITCH, LANE_W, fieldZ } from "./layout";
@@ -237,6 +237,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
         <details class="rules"><summary>How to play</summary><dl>
           <dt>Gravekeepers</dt><dd>Your two gravekeepers do the building. Press 1 for the Sexton or 2 for the Undertaker (or click them), choose a unit with its letter (the cards sit like the keys: Q W E R above, A S D F below; Z X C switch the Sexton's tier), then click your ground: he walks there and the chantry stands at once. Keep clicking to queue more. Right-click sends him walking. The Sexton raises tiers I to III; the Undertaker raises tier IV and hires mercenaries, with a short wait between bands.</dd>
           <dt>Muster</dt><dd>Every chantry sends its soldier at each toll of the bell, for the rest of the war. Mercenaries are hired once: they fight as far as the middle shrine and leave.</dd>
+          <dt>Ruin</dt><dd>Chantries can be destroyed. Enemy soldiers who get past your towers and find nobody to fight tear down the chantries in their path before they march on your cathedral; a razed chantry is gone for good, and a damaged one sells for less.</dd>
           <dt>Shrines</dt><dd>You begin with the shrine nearest your cathedral, guarded by two towers. Claim the others by marching over them; the enemy home shrine falls only after both its towers, and two more towers guard each base. Each shrine you hold pays gold.</dd>
           <dt>Study</dt><dd>You begin knowing three units. Click any other card of an open tier to study it; your scholars learn one thing at a time. The Rites (4) open the higher tiers (Z X C or Tab to browse them), whose units must each be studied in turn.</dd>
           <dt>Counters</dt><dd>Every unit has its own gift and its own bane: flyers shrug off swords, fire clears swarms, lanterns unmask shades. Hover a card to read it.</dd>
@@ -490,8 +491,8 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
             : !known ? `Click to study it: ${study.cost} gold, ${secs(study.ticks)} seconds.${p.research ? " Your scholars are busy until the current work is done." : ""}`
             : d.tier > top ? "Only the Undertaker can raise it."
             : v.selectedUnit === unit ? "Click anywhere free on your ground: your keeper walks there and raises it. Keep clicking to queue more. Esc to cancel." : `Its chantry musters ${d.count ? ["", "one", "two", "three"][d.count] : "one"} each wave.`}</p>${open && !known && studying !== unit ? go(`Study · ${study.cost}`) : ""}`);
-      } else if (b) tip(`<h3>${UNITS[b.unit]!.name} chantry</h3><p>Musters at every toll of the bell.</p>${abilityLines(b.unit)}<p class="stats">${statLine(b.unit)}</p>
-          <button id="sell">Tear down · refund ${sellRefund(b.unit, b.produced)} (Del)</button>`);
+      } else if (b) tip(`<h3>${UNITS[b.unit]!.name} chantry</h3><p>Musters at every toll of the bell. Health <b>${b.hp}</b> of ${chantryHp(b.unit)}: enemy soldiers who reach it with nobody left to fight will tear it down.</p>${abilityLines(b.unit)}<p class="stats">${statLine(b.unit)}</p>
+          <button id="sell">Tear down · refund ${sellRefund(b.unit, b.produced, b.hp)} (Del)</button>`);
       else tip(null);
 
       drawMinimap(s, v);

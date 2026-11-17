@@ -260,6 +260,12 @@ export const UNIT_RESEARCH: Record<number, { cost: number; ticks: number }> = {
   4: { cost: 450, ticks: sec(35) },
 };
 
+/**
+ * Health of a chantry (a production building), by the tier of the unit it sends. Enemy soldiers with nobody left to fight
+ * tear down the chantries they pass on their way to the cathedral; a razed chantry is gone, with no refund.
+ */
+export const CHANTRY_HP: Record<number, number> = { 1: 320, 2: 460, 3: 640, 4: 900 };
+
 export const RULES = {
   startCredits: 350,
   baseIncome: 32,                 // per income tick, per player

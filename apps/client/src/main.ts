@@ -321,6 +321,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
       }
       else if (e.t === "storm") hud.toast(e.player === ME ? "The storm answers you" : e.team === me().team ? `${names[e.player] ?? "An ally"} calls the Storm of Wrath` : "The enemy calls the Storm of Wrath on your host");
       else if (e.t === "fog") hud.toast(e.player === ME ? "The fog rolls out of your cathedral" : e.team === me().team ? `${names[e.player] ?? "An ally"} calls the Deadly Fog` : "The enemy calls the Deadly Fog: nothing that enters it lives");
+      else if (e.t === "razed" && e.owner === ME) hud.toast(`Your ${UNITS[e.unit]!.name} chantry has been razed`);
       else if (e.t === "capture") hud.toast(e.team === me().team ? "Shrine claimed" : "Shrine lost");
     }
   };
