@@ -18,9 +18,10 @@ const MAX_LOBBIES = 200;
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ"; // no I, L or O: codes are read aloud
 const AUTOPILOT = "Autopilot";
 
-interface Client { conn: Conn; user: UserIdentity | null; lobby: Lobby | null; slot: PlayerId; busy: Promise<void> }
+interface Client { conn: Conn; user: UserIdentity | null; lobby: Lobby | null; slot: PlayerId; ready: boolean; busy: Promise<void> }
 interface Match { state: GameState; startedAt: number; queued: Command[][]; ai: Set<PlayerId> }
-interface Lobby { id: string; settings: LobbySettings; seats: (Client | null)[]; match: Match | null }
+/** A lobby: the host picks the size, players pick their seats, mark themselves ready and talk; the host begins. */
+interface Lobby { id: string; settings: LobbySettings; seats: (Client | null)[]; host: Client; match: Match | null }
 
 export interface HubOptions { random?: (n: number) => number; now?: () => number }
 
@@ -36,7 +37,7 @@ export class Hub {
 
   /** Register a connection. Feed it parsed JSON messages; call onClose when the socket goes away. */
   connect(conn: Conn): { onMessage(raw: unknown): void; onClose(): void } {
-    const c: Client = { conn, user: null, lobby: null, slot: 0, busy: Promise.resolve() };
+    const c: Client = { conn, user: null, lobby: null, slot: 0, ready: false, busy: Promise.resolve() };
     return {
       // Messages from one client are handled strictly in order, even though sign-in is asynchronous.
       onMessage: raw => { c.busy = c.busy.then(() => this.handle(c, raw)).catch(() => this.fail(c, "internal", "Something went wrong")); },
@@ -68,8 +69,8 @@ export class Hub {
       if (!s || (size !== 1 && size !== 2 && size !== 3)) return this.fail(c, "unsupported", "Team size must be 1, 2 or 3");
       let id = "";
       do { id = Array.from({ length: 4 }, () => CODE_CHARS[this.random(CODE_CHARS.length)]).join(""); } while (this.lobbies.has(id));
-      const lobby: Lobby = { id, settings: { teamSize: size, aiFill: s.aiFill === true }, seats: [c, ...Array.from({ length: size * 2 - 1 }, () => null)], match: null };
-      this.lobbies.set(id, lobby); c.lobby = lobby; c.slot = 0;
+      const lobby: Lobby = { id, settings: { teamSize: size, aiFill: s.aiFill === true }, seats: [c, ...Array.from({ length: size * 2 - 1 }, () => null)], host: c, match: null };
+      this.lobbies.set(id, lobby); c.lobby = lobby; c.slot = 0; c.ready = true;
       if (lobby.settings.aiFill) this.startMatch(lobby); else this.sendLobby(lobby);
     } else if (m.t === "joinLobby") {
       if (c.lobby) return this.fail(c, "busy", "You are already in a match");
@@ -82,11 +83,24 @@ export class Hub {
       const n = lobby.settings.teamSize, order = Array.from({ length: n * 2 }, (_, i) => (i % 2 ? Math.floor(i / 2) + n : i / 2));
       const slot = lobby.match ? -1 : order.find(i => lobby.seats[i] === null) ?? -1;
       if (slot < 0) return this.fail(c, "full", "That match has already begun");
-      lobby.seats[slot] = c; c.lobby = lobby; c.slot = slot;
-      if (lobby.seats.every(Boolean)) this.startMatch(lobby); else this.sendLobby(lobby);
+      lobby.seats[slot] = c; c.lobby = lobby; c.slot = slot; c.ready = false;
+      this.sendLobby(lobby);
+    } else if (m.t === "seat") {
+      const lobby = c.lobby, to = m.slot;
+      if (!lobby || lobby.match || typeof to !== "number" || !Number.isInteger(to) || to < 0 || to >= lobby.seats.length) return;
+      if (lobby.seats[to]) return this.fail(c, "taken", "That seat is taken");
+      lobby.seats[c.slot] = null; lobby.seats[to] = c; c.slot = to;
+      this.sendLobby(lobby);
+    } else if (m.t === "ready") {
+      const lobby = c.lobby;
+      if (!lobby || lobby.match || c === lobby.host) return; // the host is ready by beginning
+      c.ready = m.ready === true;
+      this.sendLobby(lobby);
     } else if (m.t === "start") {
       const lobby = c.lobby;
-      if (lobby && !lobby.match && c.slot === 0) this.startMatch(lobby);
+      if (!lobby || lobby.match || c !== lobby.host) return;
+      if (this.members(lobby).some(p => !p.ready && p !== lobby.host)) return this.fail(c, "notReady", "Wait until every player is ready");
+      this.startMatch(lobby);
     } else if (m.t === "leave") {
       this.leave(c);
     } else if (m.t === "cmd") {
@@ -98,8 +112,8 @@ export class Hub {
   private members(lobby: Lobby): Client[] { return lobby.seats.filter((s): s is Client => s !== null); }
 
   private sendLobby(lobby: Lobby): void {
-    const slots = lobby.seats.map(s => (s ? { user: s.user!, ready: true } : null));
-    for (const m of this.members(lobby)) m.conn.send({ t: "lobby", lobbyId: lobby.id, settings: lobby.settings, yourSlot: m.slot, slots });
+    const slots = lobby.seats.map(s => (s ? { user: s.user!, ready: s === lobby.host || s.ready } : null));
+    for (const m of this.members(lobby)) m.conn.send({ t: "lobby", lobbyId: lobby.id, settings: lobby.settings, yourSlot: m.slot, host: lobby.host.slot, slots });
   }
 
   private startMatch(lobby: Lobby): void {
@@ -123,8 +137,8 @@ export class Hub {
       lobby.match.ai.add(c.slot); lobby.match.queued[c.slot] = [];
       for (const m of rest) m.conn.send({ t: "playerLeft", slot: c.slot });
     } else {
-      // Keep the host seat filled so someone can still start the match.
-      if (!lobby.seats[0]) { const next = rest[0]!; lobby.seats[next.slot] = null; lobby.seats[0] = next; next.slot = 0; }
+      // Someone must still be able to begin: the first remaining player becomes host, in the seat they already hold.
+      if (lobby.host === c) { lobby.host = rest[0]!; }
       this.sendLobby(lobby);
     }
   }

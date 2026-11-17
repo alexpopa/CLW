@@ -262,3 +262,41 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   .panel h1{font-size:50px}.panel dl{grid-template-columns:1fr;gap:2px}.panel dd{margin-bottom:8px}
   .panel input{width:150px}
 }
+
+/* ---- the war council: an online lobby ---- */
+.panel.lobby{width:min(820px,94vw)}
+.panel.lobby h1{font-size:64px}
+.panel.lobby .sub{margin:8px 0 16px}.panel.lobby .orn{margin-bottom:16px}
+.lbcode{display:flex;align-items:center;justify-content:center;gap:14px;margin:0 0 18px}
+.lbcode span{font:600 10px var(--display);letter-spacing:.3em;text-transform:uppercase;color:var(--gold-dim)}
+.lbcode b{font:700 34px/1 var(--display);letter-spacing:.32em;margin-right:-.32em;color:#f0d792;text-shadow:0 0 22px rgba(201,162,75,.35)}
+.lbcode .ghost{height:28px;padding:0 12px;font-size:9.5px}
+.hosts{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:start;text-align:left}
+.hosts .vs{align-self:center;font:700 13px var(--display);letter-spacing:.2em;color:var(--gold-dim);text-transform:uppercase}
+.host h3{margin:0 0 8px;padding-bottom:6px;font:600 12px var(--display);letter-spacing:.22em;text-transform:uppercase;border-bottom:1px solid}
+.host.t0 h3{color:#8fb6f5;border-color:#27477e}.host.t1 h3{color:#ef8f84;border-color:#7a2a24}
+.seats{display:flex;flex-direction:column;gap:6px}
+.seat{position:relative;display:grid;grid-template-columns:62px 1fr auto;align-items:center;gap:10px;min-height:44px;padding:0 12px 0 0;text-align:left;
+  background:linear-gradient(rgba(30,28,36,.92),rgba(14,13,18,.94));border:1px solid var(--edge);box-shadow:0 0 0 1px #000}
+.seat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px}
+.host.t0 .seat::before{background:#4f8ff0}.host.t1 .seat::before{background:#e0483c}
+.seat .lane{padding-left:13px;font:700 10px var(--display);letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+.seat .who{font-size:17px;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.seat .who i{font-size:13px;color:var(--dim)}
+.seat .tag{font:600 9.5px var(--display);letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+.seat .tag.ready{color:var(--good)}.seat .tag.lead{color:#f0d792}.seat .tag.wait{color:#c9a07a}
+.seat.mine{border-color:var(--gold-dim);background:linear-gradient(rgba(48,40,24,.94),rgba(20,17,11,.95))}
+.seat.open{cursor:pointer;background:rgba(12,11,15,.55);border-style:dashed;border-color:#3a3445;box-shadow:none}
+.seat.open::before{opacity:.35}.seat.open .who{color:#6d6577;font-style:italic;font-size:15px}.seat.open .tag{opacity:0;transition:opacity .12s}
+.seat.open:hover{border-color:var(--gold-dim);background:rgba(40,34,22,.6)}.seat.open:hover .tag{opacity:1;color:var(--gold)}.seat.open:hover .who{color:var(--dim)}
+.lobby .note{min-height:20px;margin:10px 0 4px;font-style:italic;color:#d98a7c}
+.lobby .row{gap:12px}
+#lbGo.march{height:46px;padding:0 34px;font:700 13px var(--display);letter-spacing:.22em;text-transform:uppercase;color:#17130a;background:linear-gradient(#ecd08a,#b08a34);
+  box-shadow:0 0 0 1px #000,0 0 0 3px #3a3020,0 6px 24px rgba(0,0,0,.6);clip-path:polygon(12px 0,calc(100% - 12px) 0,100% 50%,calc(100% - 12px) 100%,12px 100%,0 50%)}
+#lbGo.march:hover{background:linear-gradient(#fbe3a4,#c59d42)}
+#lbGo:disabled{cursor:default;filter:grayscale(.8) brightness(.6)}
+#lbGo.ghost{height:46px;padding:0 26px;color:var(--good);border-color:#3f6b4d}
+.lbhint{margin:12px 0 0!important;font-size:14px!important;color:var(--dim)!important}
+@media (max-width:700px),(max-height:520px){
+  .panel.lobby h1{font-size:42px}.lbcode b{font-size:26px}
+  .hosts{grid-template-columns:1fr;gap:10px}.hosts .vs{display:none}
+}

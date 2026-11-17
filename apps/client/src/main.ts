@@ -26,6 +26,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   let ME = 0;                              // my player slot (always 0 in solo play)
   let net: Net | null = null;              // set while connected to the match server
   let online = false;                      // the current match is server-run
+  let inLobby = false;                     // seated in an online lobby, waiting for the host to begin
   let inbox: TimedCommand[][] = [];        // server ticks not yet replayed
   let names: string[] = [];
   let pending: Command[] = [];
@@ -49,14 +50,14 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     const team = me().team;
     hud.setSide(team, (pics[team] ??= view.portraits(team)));
   };
-  const quitOnline = () => { net?.close(); net = null; online = false; };
+  const quitOnline = () => { net?.close(); net = null; online = false; inLobby = false; };
   /** Connect, then host or join. The lobby and the match arrive as callbacks. */
   let connectionAttempt = 0;
   const goOnline = async (name: string, code: string | null, size: 1 | 2 | 3 = 1) => {
     const attempt = ++connectionAttempt;
     sound.start(); quitOnline();
     try { localStorage.setItem("lw.name", name); } catch { /* private window */ }
-    hud.showLobby(null, code ? "Seeking the match…" : "Reaching the match server…");
+    hud.showConnecting(code ? "Seeking the match…" : "Reaching the match server…");
     let credentials;
     try {
       credentials = await matchCredentials(name);
@@ -67,19 +68,19 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     if (attempt !== connectionAttempt) return;
     if (!credentials) { hud.clearAccount(); hud.showStart("Sign in to play online."); return; }
     const mine: Net = net = new Net(credentials, code ? { t: "joinLobby", lobbyId: code } : { t: "createLobby", settings: { teamSize: size, aiFill: false } }, {
-      lobby: (id, seated, seats) => hud.showLobby(id, seats === 2 ? "Awaiting a challenger" : `${seats / 2}v${seats / 2} · ${seated} of ${seats} seats taken`),
+      lobby: view => { inLobby = true; hud.showLobby(view); },
       start: (config, slot, who) => {
-        online = true; names = who; begin(createGame(config), slot);
+        inLobby = false; online = true; names = who; begin(createGame(config), slot);
         const foes = game.players.filter(p => p.team !== me().team).map(p => who[p.id] ?? "a stranger");
         hud.toast(`You face ${foes.join(", ")}`);
       },
       tick: (t, cmds) => { if (online && t === game.tick + inbox.length) inbox.push(cmds); },
       left: slot => hud.toast(`${names[slot] ?? "A player"} has left — the autopilot leads their host`),
-      error: msg => { if (!online) { quitOnline(); hud.showStart(msg); } else hud.toast(msg); },
+      error: msg => { if (inLobby) hud.lobbyNote(msg); else if (!online) { quitOnline(); hud.showStart(msg); } else hud.toast(msg); },
       closed: () => {
         if (net !== mine) return;
         const midMatch = online && running && !ended;
-        net = null; online = false;
+        net = null; online = false; inLobby = false;
         if (midMatch) { running = false; hud.showStart("The connection to the match server was lost."); }
         else if (!running || ended) { if (!ended) hud.showStart("No match server could be reached."); }
       },
@@ -169,6 +170,8 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     hostOnline(name, size) { goOnline(name, null, size); },
     joinOnline(name, code) { goOnline(name, code); },
     startOnlineNow() { net?.startNow(); },
+    takeSeat(slot) { net?.seat(slot); sound.play("click"); },
+    setReady(ready) { net?.ready(ready); sound.play("click"); },
     menu() { connectionAttempt++; quitOnline(); running = false; hud.showStart(); },
   }, hostedAccounts);
   addEventListener("resize", () => view.resize());

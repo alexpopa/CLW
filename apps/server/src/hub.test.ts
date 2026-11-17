@@ -44,6 +44,11 @@ describe("match server", () => {
     const code = a.last("lobby")!.lobbyId;
     expect(code).toMatch(/^[A-Z]{4}$/);
     await b.say({ t: "joinLobby", lobbyId: code.toLowerCase() });
+    expect(a.last("lobby")).toMatchObject({ host: 0, slots: [{ ready: true }, { ready: false }] });
+    await a.say({ t: "start" });                       // the host waits for everyone to be ready
+    expect(a.last("error")!.code).toBe("notReady");
+    await b.say({ t: "ready", ready: true });
+    await a.say({ t: "start" });
     expect(a.last("gameStart")).toMatchObject({ yourSlot: 0, names: ["Ada b", "Brom"] });
     expect(b.last("gameStart")).toMatchObject({ yourSlot: 1 });
     expect(a.last("gameStart")!.config.aiSlots).toEqual([]);
@@ -65,6 +70,7 @@ describe("match server", () => {
     await a.say({ t: "hello", sessionToken: "guest:Ada" }); await b.say({ t: "hello", sessionToken: "guest:Brom" });
     await a.say({ t: "createLobby", settings: { teamSize: 1, aiFill: false } });
     await b.say({ t: "joinLobby", lobbyId: a.last("lobby")!.lobbyId });
+    await a.say({ t: "start" }); await b.say({ t: "ready", ready: true }); await a.say({ t: "start" });
     run(20);
     b.io.onClose(); await b.settle();
     expect(a.last("playerLeft")).toEqual({ t: "playerLeft", slot: 1 });
@@ -96,7 +102,7 @@ describe("match server", () => {
     expect(a.game.tick).toBe(10);
   });
 
-  it("2v2 and 3v3: seats fill side by side, the match starts when all are taken or the host begins with autopilots", async () => {
+  it("2v2 and 3v3: seats fill side by side, players move seats and ready up, and the host begins (with autopilots in any empty seat)", async () => {
     const { hub, run } = setup();
     const [a, b, c, d] = [player(hub), player(hub), player(hub), player(hub)];
     for (const [p, name] of [[a, "Ann"], [b, "Bo"], [c, "Cy"], [d, "Di"]] as const) await p.say({ t: "hello", sessionToken: `guest:${name}` });
@@ -108,10 +114,20 @@ describe("match server", () => {
     expect([b.last("lobby")!.yourSlot, c.last("lobby")!.yourSlot]).toEqual([2, 1]); // an opponent first, then an ally
     expect(a.last("gameStart")).toBeUndefined();
     await d.say({ t: "joinLobby", lobbyId: code });
-    expect(d.last("gameStart")).toMatchObject({ yourSlot: 3, names: ["Ann", "Cy", "Bo", "Di"] });
+    expect(d.last("gameStart")).toBeUndefined();            // a full lobby still waits for the host
+    // Cy and Bo swap sides through an empty seat; a taken seat is refused
+    await b.say({ t: "seat", slot: 0 });
+    expect(b.last("error")!.code).toBe("taken");
+    await d.say({ t: "seat", slot: 9 });                     // no such seat: ignored
+    await d.say({ t: "leave" }); await c.say({ t: "seat", slot: 3 }); await b.say({ t: "seat", slot: 1 });
+    await d.say({ t: "joinLobby", lobbyId: code });
+    expect(a.last("lobby")!.slots.map(q => (q && q !== "ai" ? q.user.displayName : null))).toEqual(["Ann", "Bo", "Di", "Cy"]);
+    for (const p of [b, c, d]) await p.say({ t: "ready", ready: true });
+    await a.say({ t: "start" });
+    expect(d.last("gameStart")).toMatchObject({ yourSlot: 2, names: ["Ann", "Bo", "Di", "Cy"] });
     expect(a.game.laneCount).toBe(2);
     // an ally builds in the host's lane
-    await c.say({ t: "cmd", cmd: { type: "build", keeper: 0, unit: "arbalester", col: 4, row: 4, lane: 0 } });
+    await b.say({ t: "cmd", cmd: { type: "build", keeper: 0, unit: "arbalester", col: 4, row: 4, lane: 0 } });
     run(6 * TICK_RATE);
     expect(a.game.buildings.find(q => q.owner === 1)).toMatchObject({ lane: 0, team: 0 });
     expect(JSON.stringify(a.game)).toBe(JSON.stringify(d.game));
@@ -122,5 +138,18 @@ describe("match server", () => {
     await solo.say({ t: "start" });
     expect(solo.last("gameStart")!.config).toMatchObject({ teamSize: 3, aiSlots: [1, 2, 3, 4, 5] });
     expect(solo.game.laneCount).toBe(3);
+  });
+
+  it("passes the host to a remaining player without changing their seat", async () => {
+    const { hub } = setup();
+    const [a, b] = [player(hub), player(hub)];
+    await a.say({ t: "hello", sessionToken: "guest:Ann" });
+    await b.say({ t: "hello", sessionToken: "guest:Bo" });
+    await a.say({ t: "createLobby", settings: { teamSize: 2, aiFill: false } });
+    await b.say({ t: "joinLobby", lobbyId: a.last("lobby")!.lobbyId });
+    a.io.onClose(); await a.settle();
+    expect(b.last("lobby")).toMatchObject({ host: 2, yourSlot: 2 });
+    await b.say({ t: "start" });
+    expect(b.last("gameStart")!.config.aiSlots).toEqual([0, 1, 3]);
   });
 });

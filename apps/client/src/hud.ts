@@ -1,4 +1,6 @@
+import { seatOf } from "@lw/protocol";
 import type { UserIdentity } from "@lw/protocol";
+import type { LobbyView } from "./net";
 import "@fontsource/cinzel/400.css";
 import "@fontsource/cinzel/600.css";
 import "@fontsource/cinzel/700.css";
@@ -32,7 +34,9 @@ export interface HudActions {
   start(size?: 1 | 2 | 3): void;              // solo match: the autopilot fills every other seat (no size = the same as last time)
   hostOnline(name: string, size: 1 | 2 | 3): void;
   joinOnline(name: string, code: string): void;
-  startOnlineNow(): void;                     // host: stop waiting, play the autopilot on the server
+  startOnlineNow(): void;                     // host: begin the match; the autopilot takes the empty seats
+  takeSeat(slot: number): void;               // lobby: move to that empty seat (a side and a lane)
+  setReady(ready: boolean): void;             // lobby: tell the host you are ready, or not yet
   menu(): void;                               // leave any lobby and return to the title screen
 }
 export interface HudView { me: number; keeper: 0 | 1 | null; tier: number; selectedUnit: string | null; selectedBuilding: number | null; speed: number; paused: boolean;
@@ -40,6 +44,9 @@ export interface HudView { me: number; keeper: 0 | 1 | null; tier: number; selec
   camRect: [number, number, number, number];  // the part of the field on screen, as fractions [x0, x1, z0, z1]
   names: string[] }                           // display name per seat (online), empty in solo play
 
+/** Text from other players goes into markup only through this. */
+const esc = (s: string): string => s.replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
+const HOSTS = ["The Azure Host", "The Crimson Host"];
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 const secs = (ticks: number) => Math.ceil(ticks / TICK_RATE);
 const ROMAN = ["", "I", "II", "III", "IV"];
@@ -119,6 +126,8 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   <div id="mapbox"><div id="titheL"></div><canvas id="minimap" title="Click or drag to look there"></canvas></div>
   <div id="toast"></div>
   <div id="overlay"></div>`;
+
+  let lobby: LobbyView | null = null;
 
   let hover: string | null = null; // unit id, "invest", "research" or "keeper0" / "keeper1" (a mouse only: fingers do not hover)
   let peek: string | null = null;  // touch: the card whose notes are open, waiting for a second tap to study or hire it
@@ -236,6 +245,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
     },
     clearAccount(): void { account = undefined; },
     showStart(notice?: string, user?: UserIdentity): void {
+      lobby = null;
       if (user) account = user;
       user = account;
       const render = ++menuRender;
@@ -333,15 +343,65 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       $("olJoin").onclick = join;
       code.onkeydown = e => { if (e.key === "Enter") join(); };
     },
-    /** Waiting room. `code` is null while still connecting. */
-    showLobby(code: string | null, status: string): void {
+    /** Connecting to the server, before there is a lobby to show. */
+    showConnecting(status: string): void {
+      lobby = null;
       $("overlay").className = "show";
-      $("overlay").innerHTML = `<div class="panel"><h1>Gravemarch</h1><div class="sub">${status}</div><div class="orn"></div>
-        ${code ? `<div class="code">${code}</div><p>Give this code to the other players. The match begins the moment every seat is taken.</p>` : `<p>One moment.</p>`}
-        <div class="row">${code ? `<button id="olNow" class="ghost">Begin now · the autopilot takes the empty seats</button>` : ""}<button id="olCancel" class="ghost">Cancel</button></div></div>`;
+      $("overlay").innerHTML = `<div class="panel"><h1>Gravemarch</h1><div class="sub">${esc(status)}</div><div class="orn"></div>
+        <p>One moment.</p><div class="row"><button id="olCancel" class="ghost">Cancel</button></div></div>`;
       $("olCancel").onclick = () => act.menu();
-      if (code) $("olNow").onclick = () => act.startOnlineNow();
     },
+    /** The war council: both hosts seat by seat, lane by lane, and the host's button to begin. */
+    showLobby(view: LobbyView): void {
+      const before = lobby;
+      lobby = view;
+      if (!before || before.lobbyId !== view.lobbyId || !$("lobby")) {
+        $("overlay").className = "show";
+        $("overlay").innerHTML = `<div class="panel lobby" id="lobby">
+          <h1>Gravemarch</h1><div class="sub" id="lbSub"></div><div class="orn"></div>
+          <div class="lbcode"><span>Match code</span><b id="lbCode"></b><button id="lbCopy" class="ghost" title="Copy the code">Copy</button></div>
+          <div class="hosts">${[0, 1].map(team => `<section class="host t${team}"><h3>${HOSTS[team]}</h3><div class="seats" id="lbTeam${team}"></div></section>`).join(`<div class="vs">vs</div>`)}</div>
+          <div class="note" id="lbNote"></div>
+          <div class="row"><button id="lbGo"></button><button id="olCancel" class="ghost">Leave</button></div>
+          <p class="lbhint">Click an empty seat to take it. Each seat is one lane; empty seats are played by the autopilot.</p>
+        </div>`;
+        $("olCancel").onclick = () => act.menu();
+        $("lbCopy").onclick = () => { void navigator.clipboard?.writeText(view.lobbyId).then(() => { $("lbCopy").textContent = "Copied"; }, () => undefined); };
+        for (const team of [0, 1]) $(`lbTeam${team}`).onclick = e => {
+          const seat = (e.target as HTMLElement).closest<HTMLElement>("[data-seat]");
+          if (seat && seat.classList.contains("open")) act.takeSeat(Number(seat.dataset.seat));
+        };
+        $("lbGo").onclick = () => {
+          const v = lobby!;
+          if (v.host === v.yourSlot) act.startOnlineNow();
+          else { const me = v.slots[v.yourSlot]; act.setReady(!(me && me !== "ai" && me.ready)); }
+        };
+      }
+      const n = view.settings.teamSize, seated = view.slots.filter(Boolean).length, iHost = view.host === view.yourSlot;
+      set("lbSub", `${n}v${n} · ${seated} of ${view.slots.length} seats taken`);
+      set("lbCode", view.lobbyId);
+      for (const team of [0, 1] as const) {
+        $(`lbTeam${team}`).innerHTML = view.slots.map((q, slot) => ({ q, slot })).filter(({ slot }) => seatOf(slot, n).team === team).map(({ q, slot }) => {
+          const lane = `<span class="lane">${n > 1 ? `Lane ${ROMAN[seatOf(slot, n).lane + 1]}` : "The lane"}</span>`;
+          if (!q || q === "ai") return `<button class="seat open" data-seat="${slot}">${lane}<span class="who">Empty seat</span><span class="tag">Take seat</span></button>`;
+          const mine = slot === view.yourSlot, host = slot === view.host;
+          return `<div class="seat${mine ? " mine" : ""}" data-seat="${slot}">${lane}<span class="who">${esc(q.user.displayName)}${mine ? " <i>(you)</i>" : ""}</span>
+            <span class="tag ${host ? "lead" : q.ready ? "ready" : "wait"}">${host ? "Host" : q.ready ? "Ready" : "Not ready"}</span></div>`;
+        }).join("");
+      }
+      const waiting = view.slots.some((q, slot) => q && q !== "ai" && slot !== view.host && !q.ready), me = view.slots[view.yourSlot];
+      const go = $<HTMLButtonElement>("lbGo");
+      if (iHost) {
+        go.className = "march"; go.disabled = waiting;
+        go.textContent = waiting ? "Waiting for the council" : seated < view.slots.length ? "Begin the march · autopilot fills" : "Begin the march";
+      } else {
+        const ready = !!me && me !== "ai" && me.ready;
+        go.className = ready ? "ghost on" : "march"; go.disabled = false;
+        go.textContent = ready ? "Ready · click to wait" : "I am ready";
+      }
+      set("lbNote", "");
+    },
+    lobbyNote(message: string): void { if ($("lbNote")) set("lbNote", message); else this.toast(message); },
     showEnd(won: boolean, s: GameState, online = false): void {
       const t = Math.floor(s.tick / TICK_RATE);
       $("overlay").className = "show";

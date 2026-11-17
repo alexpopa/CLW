@@ -1,4 +1,7 @@
 import type { ClientMsg, ServerMsg } from "@lw/protocol";
+
+/** The lobby as the server last described it. */
+export type LobbyView = Extract<ServerMsg, { t: "lobby" }>;
 import type { Command, GameConfig, TimedCommand } from "@lw/sim";
 
 /**
@@ -6,7 +9,7 @@ import type { Command, GameConfig, TimedCommand } from "@lw/sim";
  * player's Commands and hands back the ticks the server applied, for the local sim to replay.
  */
 export interface NetHandlers {
-  lobby(code: string, seated: number, seats: number): void;                                   // waiting for an opponent
+  lobby(view: LobbyView): void;                                // the lobby changed: seats, readiness, host
   start(config: GameConfig, slot: number, names: string[]): void;
   tick(tick: number, cmds: TimedCommand[]): void;
   left(slot: number): void;
@@ -44,7 +47,7 @@ export class Net {
       let m: ServerMsg;
       try { m = JSON.parse(String(e.data)) as ServerMsg; } catch { return; }
       if (m.t === "welcome") this.send(first);
-      else if (m.t === "lobby") on.lobby(m.lobbyId, m.slots.filter(Boolean).length, m.slots.length);
+      else if (m.t === "lobby") on.lobby(m);
       else if (m.t === "gameStart") on.start(m.config, m.yourSlot, m.names);
       else if (m.t === "tick") on.tick(m.tick, m.cmds);
       else if (m.t === "playerLeft") on.left(m.slot);
@@ -56,6 +59,8 @@ export class Net {
   private send(msg: ClientMsg): void { if (this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg)); }
   command(cmd: Command): void { this.send({ t: "cmd", cmd, clientSeq: ++this.seq }); }
   startNow(): void { this.send({ t: "start" }); }
+  seat(slot: number): void { this.send({ t: "seat", slot }); }
+  ready(ready: boolean): void { this.send({ t: "ready", ready }); }
   /** Leave quietly: no `closed` callback. */
   close(): void { this.done = true; this.ws.close(); }
 }
