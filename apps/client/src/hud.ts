@@ -310,12 +310,12 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
             <button type="submit" class="ghost">Sign in with RGBoner</button>
             <a class="rgb-register" href="https://retrogameboner.com/login?mode=register" target="_blank" rel="noopener noreferrer">Create an RGBoner account</a>
           </form>` : `
-          ${user ? '<div class="row"><span id="rgbPlayer"></span><form method="post" action="/auth/logout"><button class="ghost">Sign out</button></form></div>' : ""}
           <div class="row">${hostedAccounts ? "" : '<input id="olName" maxlength="20" placeholder="Your name" autocomplete="off" spellcheck="false">'}
             <button id="olHost" class="ghost">Host a match</button>
             <input id="olCode" maxlength="4" placeholder="Code" autocomplete="off" spellcheck="false">
             <button id="olJoin" class="ghost">Join</button></div>`}
-          <div id="olMsg" role="status"></div></div></div>`;
+          <div id="olMsg" role="status"></div></div>
+        ${user ? '<div class="account-footer" aria-label="Account"><span class="account-identity">Signed in as <span id="rgbPlayer"></span></span><form method="post" action="/auth/logout"><button type="submit" class="ghost">Sign out</button></form></div>' : ""}</div>`;
       $("startBtn").onclick = () => act.start(size);
       const note = () => { $("fillNote").textContent = size === 1 ? "You against the autopilot" : `You, ${size - 1} allied ${size === 2 ? "autopilot" : "autopilots"} and ${size} against you`; };
       root.querySelectorAll<HTMLButtonElement>(".size").forEach(b => { b.onclick = () => {

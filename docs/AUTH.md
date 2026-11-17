@@ -26,3 +26,7 @@ Local Vite builds use guest names by default. Run `NODE_ENV=development AUTH_PRO
 - Both Sites use the same dedicated secret `RGBONER_SSO_SECRET`. Generate 32 random bytes encoded as 64 lowercase hex characters. CLW uses RGBoner's existing Resend flow for account emails.
 - CLW Site and match process use the same `MATCH_SERVER_URL` and a separate `MATCH_TICKET_SECRET` with the same encoding. Set `AUTH_PROVIDER=rgboner` and `CLIENT_ORIGIN` on the match process.
 - Run `npm run test:accounts` on Node 22.13 or later. For hosted verification, sign in through RGBoner in two separate browser profiles, verify `/me`, start a match using a lobby code, and verify sign-out.
+
+### Title-screen account controls
+
+Signed-in players see their display name and Sign out in a separate footer below multiplayer, divided from the Host/Code/Join controls with spacing and a fine rule. The footer wraps on narrow screens and stays in the scrolling menu flow. Sign out continues to submit the existing POST to `/auth/logout`.

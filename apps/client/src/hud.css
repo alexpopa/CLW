@@ -211,6 +211,11 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .rgb-login label{display:grid;gap:4px;color:var(--bone)}
 .rgb-login input{width:100%;box-sizing:border-box}
 .rgb-login button{justify-self:center}
+.account-footer{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px 24px;margin:20px auto 0;padding-top:20px;border-top:1px solid #3a3020;max-width:440px}
+.account-identity{min-width:0;overflow-wrap:anywhere;color:#9c927f;font-size:15px}
+.account-footer form{margin:0;flex-shrink:0}
+.account-footer .ghost{color:#b9aa88;border-color:#51452e;letter-spacing:.12em}
+.account-footer .ghost:hover{color:#17130a}
 #rgbPlayer{color:var(--bone)}
 #olMsg{margin-top:10px}
 .rgb-register{justify-self:center;color:var(--gold)}
