@@ -315,6 +315,8 @@ export class Renderer {
   private halfWidth(): number { return this.camera.aspect * Math.tan((FOV * Math.PI) / 360) * this.dist; }
   clampCam(): void {
     const hw = this.halfWidth() - 9;
+    if (!Number.isFinite(hw)) return; // the canvas has no size yet (a hidden or just-opened window)
+    if (!Number.isFinite(this.camX)) this.camX = 0;
     this.camX = hw * 2 >= LANE_LEN ? LANE_LEN / 2 : Math.max(hw, Math.min(LANE_LEN - hw, this.camX));
     this.camZ = Math.max(MID_Z, Math.min(LZ(this.lanes - 1) + MID_Z, this.camZ));
   }
