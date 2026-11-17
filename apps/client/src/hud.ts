@@ -249,7 +249,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
           <dt>Touch</dt><dd>Drag to look around and pinch to zoom. Tap a keeper, a card, then your ground. A card that costs gold at once shows its notes first: tap again to pay. Teleport, Cathedral and Cancel sit above the bar.</dd>
           <dt>Victory</dt><dd>Bring down the enemy cathedral at the far end of the lane.</dd>
         </dl></details>
-        <div class="sizes" role="group" aria-label="Team size">${([1, 2, 3] as const).map(n => `<button class="ghost size${n === size ? " on" : ""}" data-size="${n}">${n}v${n}<small>${n === 1 ? "one lane" : `${n} lanes`}</small></button>`).join("")}</div>
+        <div class="sizes" role="group" aria-label="Team size">${([1, 2, 3] as const).map(n => `<button class="ghost size${n === size ? " on" : ""}" data-size="${n}">${n}v${n}<small>${n === 1 ? "1 lane" : `${n} lanes`}</small></button>`).join("")}</div>
         <button id="startBtn">Play singleplayer</button>
         <div class="sub fill" id="fillNote"></div>
         <div class="online"><div class="sub">Multiplayer</div>

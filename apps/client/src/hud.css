@@ -38,11 +38,15 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 #bell small{position:absolute;bottom:-17px;left:50%;transform:translateX(-50%);white-space:nowrap}
 #mapbox{position:absolute;right:calc(12px + var(--sr));bottom:calc(12px + var(--sb));width:min(300px,26vw);padding:5px;background:linear-gradient(#17161d,#0b0a0f);border:1px solid #4d3f1c;box-shadow:0 0 0 1px #000,0 6px 18px #000a;pointer-events:auto}
 #minimap{display:block;width:100%;height:76px;cursor:pointer;touch-action:none}
-.sizes{display:flex;gap:10px;justify-content:center;margin:0 0 14px}
-.sizes .size{display:flex;flex-direction:column;align-items:center;min-width:86px;padding:8px 10px;font:700 17px var(--display);letter-spacing:.06em}
-.sizes .size small{font:400 10px var(--display);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-top:2px}
-.sizes .size.on{border-color:var(--gold);color:#f0d792;background:linear-gradient(#2a2416,#15120b)}
-.sub.fill{margin-top:8px;font-size:12px}
+.sizes{display:flex;gap:14px;justify-content:center;margin:0 0 22px}
+.sizes .size{position:relative;height:auto;width:118px;display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 10px 12px;font:700 22px/1 var(--display);letter-spacing:.08em;color:#b9a57a;
+  background:linear-gradient(rgba(26,24,30,.82),rgba(10,9,14,.88));clip-path:polygon(8px 0,calc(100% - 8px) 0,100% 8px,100% calc(100% - 8px),calc(100% - 8px) 100%,8px 100%,0 calc(100% - 8px),0 8px)}
+.sizes .size small{font:600 9.5px/1 var(--display);letter-spacing:.2em;text-transform:uppercase;color:var(--dim);padding:7px 4px 0;border-top:1px solid #3a3020;white-space:nowrap}
+.sizes .size:hover{color:#f0d792;background:linear-gradient(rgba(42,36,22,.9),rgba(16,14,10,.92))}.sizes .size:hover small{color:#cdbb8e}
+.sizes .size.on{border-color:var(--gold);color:#f6e2a6;background:linear-gradient(rgba(58,48,26,.92),rgba(21,18,11,.94));box-shadow:inset 0 0 0 1px rgba(233,197,107,.25),inset 0 0 22px rgba(233,197,107,.12)}
+.sizes .size.on small{color:#d9c58f;border-top-color:var(--gold-dim)}
+.sizes .size.on::after{content:"";position:absolute;left:50%;bottom:-1px;width:7px;height:7px;margin-left:-3.5px;background:var(--gold);transform:translateY(50%) rotate(45deg)}
+.sub.fill{margin-top:14px;font-size:11px;letter-spacing:.3em}
 .keeper::before{content:attr(data-rest);position:absolute;right:4px;bottom:17px;font:700 9px var(--display);color:#8dffb0;letter-spacing:.04em}
 .keeper.armed{border-color:#fff;box-shadow:0 0 16px #8dffb0aa}
 .midcol{display:flex;flex-direction:column;align-items:center}
@@ -161,12 +165,13 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
 
 /* online play: name, host, join, waiting room */
-.online{margin-top:26px}.online .sub{margin:0 0 12px;color:var(--gold-dim)}
+.online{margin-top:30px}.online .sub{margin:0 0 14px;color:var(--gold-dim)}
 .panel .row{display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap}
-.panel input{height:38px;padding:0 12px;font:400 17px var(--body,inherit);color:var(--bone);background:rgba(8,7,11,.75);border:1px solid #3a3020;outline:none;width:170px}
+.panel input{height:40px;padding:0 12px;font:400 17px var(--body,inherit);color:var(--bone);background:rgba(8,7,11,.75);border:1px solid #3a3020;outline:none;width:170px}
 .panel input:focus{border-color:var(--gold)}
-#olCode{width:86px;text-align:center;text-transform:uppercase;letter-spacing:.3em;font-family:var(--display)}
-.ghost{height:38px;padding:0 18px;font:600 11px var(--display);letter-spacing:.2em;text-transform:uppercase;color:var(--gold);background:rgba(8,7,11,.6);border:1px solid var(--gold-dim);cursor:pointer}
+#olCode{width:116px;text-align:center;text-transform:uppercase;letter-spacing:.24em;font-family:var(--display);font-size:16px}
+#olCode::placeholder{font-size:12px;letter-spacing:.2em;color:#6d6250}
+.ghost{height:40px;padding:0 18px;font:600 11px var(--display);letter-spacing:.2em;text-transform:uppercase;color:var(--gold);background:rgba(8,7,11,.6);border:1px solid var(--gold-dim);cursor:pointer}
 .ghost:hover{color:#17130a;background:var(--gold)}
 #olMsg{min-height:22px;margin-top:12px;font-style:italic;color:#d98a7c}
 .panel .code{font:700 72px/1 var(--display);letter-spacing:.3em;margin:6px 0 18px .3em;color:#f0d792;text-shadow:0 0 30px rgba(201,162,75,.35)}
@@ -216,7 +221,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   #tip h3{font-size:13px}#tip .stats{font-size:10.5px}
   #touchbar button{height:34px;padding:0 12px;font-size:10px}
   .panel h1{font-size:56px}.panel .sub{margin:6px 0 12px}.panel .orn{margin-bottom:12px}.panel dl{font-size:14.5px;gap:6px 12px}
-  .sizes{margin-bottom:10px}#startBtn{padding:12px 34px}.online{margin-top:16px}.panel .code{font-size:52px}
+  .sizes{margin-bottom:12px;gap:10px}.sizes .size{width:96px;padding:10px 8px 9px;font-size:18px}#startBtn{padding:12px 34px}.online{margin-top:16px}.panel .code{font-size:52px}
 }
 /* ---- phones held upright: the bar takes two rows, the cards a row of their own ---- */
 @media (max-width:640px){
