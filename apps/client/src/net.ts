@@ -62,7 +62,7 @@ export class Net {
   private send(msg: ClientMsg): void { if (this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg)); }
   command(cmd: Command): void { this.send({ t: "cmd", cmd, clientSeq: ++this.seq }); }
   startNow(): void { this.send({ t: "start" }); }
-  seat(slot: number): void { this.send({ t: "seat", slot }); }
+  seat(slot: number, from?: number): void { this.send(from === undefined ? { t: "seat", slot } : { t: "seat", slot, from }); }
   ready(ready: boolean): void { this.send({ t: "ready", ready }); }
   chat(text: string): void { this.send({ t: "chat", text }); }
   /** Leave quietly: no `closed` callback. */

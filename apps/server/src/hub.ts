@@ -89,10 +89,18 @@ export class Hub {
       lobby.seats[slot] = c; c.lobby = lobby; c.slot = slot; c.ready = false;
       this.sendLobby(lobby);
     } else if (m.t === "seat") {
-      const lobby = c.lobby, to = m.slot;
-      if (!lobby || lobby.match || typeof to !== "number" || !Number.isInteger(to) || to < 0 || to >= lobby.seats.length) return;
-      if (lobby.seats[to]) return this.fail(c, "taken", "That seat is taken");
-      lobby.seats[c.slot] = null; lobby.seats[to] = c; c.slot = to;
+      const lobby = c.lobby;
+      if (!lobby || lobby.match) return;
+      const seat = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < lobby.seats.length;
+      const to = m.slot, from = m.from === undefined ? c.slot : m.from;
+      if (!seat(to) || !seat(from) || from === to) return;
+      const mover = lobby.seats[from] ?? null, there = lobby.seats[to] ?? null, lead = c === lobby.host;
+      if (!mover) return;
+      if (mover !== c && !lead) return this.fail(c, "host", "Only the host can move other players");
+      if (there && !lead) return this.fail(c, "taken", "That seat is taken");
+      // the host may put anyone anywhere; a taken seat trades places
+      lobby.seats[to] = mover; mover.slot = to;
+      lobby.seats[from] = there; if (there) there.slot = from;
       this.sendLobby(lobby);
     } else if (m.t === "ready") {
       const lobby = c.lobby;

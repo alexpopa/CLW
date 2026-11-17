@@ -171,7 +171,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     hostOnline(name, size) { goOnline(name, null, size); },
     joinOnline(name, code) { goOnline(name, code); },
     startOnlineNow() { net?.startNow(); },
-    takeSeat(slot) { net?.seat(slot); sound.play("click"); },
+    takeSeat(slot, from) { net?.seat(slot, from); sound.play("click"); },
     setReady(ready) { net?.ready(ready); sound.play("click"); },
     say(text) { net?.chat(text); },
     menu() { connectionAttempt++; quitOnline(); running = false; hud.showStart(); },

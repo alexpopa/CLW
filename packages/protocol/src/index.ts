@@ -16,7 +16,8 @@ export type ClientMsg =
   | { t: "createLobby"; settings: LobbySettings }
   | { t: "joinLobby"; lobbyId: string; slot?: PlayerId }
   | { t: "ready"; ready: boolean }
-  | { t: "seat"; slot: PlayerId }        // move to that empty seat before the match (seat = team and lane, see seatOf)
+  | { t: "seat"; slot: PlayerId; from?: PlayerId } // before the match, move a player to a seat (seat = team and lane, see seatOf).
+                                         // Anyone may move themselves to an empty seat; the host may move anyone, and a taken seat swaps.
   | { t: "chat"; text: string }          // lobby chat: relayed to the others in the lobby, never stored
   | { t: "start" }                       // host only, once every seated player is ready; empty seats are filled by the autopilot
   | { t: "leave" }

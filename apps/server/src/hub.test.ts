@@ -123,6 +123,16 @@ describe("match server", () => {
     await d.say({ t: "leave" }); await c.say({ t: "seat", slot: 3 }); await b.say({ t: "seat", slot: 1 });
     await d.say({ t: "joinLobby", lobbyId: code });
     expect(a.last("lobby")!.slots.map(q => (q && q !== "ai" ? q.user.displayName : null))).toEqual(["Ann", "Bo", "Di", "Cy"]);
+    // only the host moves others, and moving into a taken seat swaps the two
+    await b.say({ t: "seat", from: 3, slot: 0 });
+    expect(b.last("error")!.code).toBe("host");
+    await a.say({ t: "seat", from: 3, slot: 1 });            // Cy <-> Bo
+    expect(a.last("lobby")!.slots.map(q => (q && q !== "ai" ? q.user.displayName : null))).toEqual(["Ann", "Cy", "Di", "Bo"]);
+    expect(c.last("lobby")!.yourSlot).toBe(1);
+    await a.say({ t: "seat", slot: 3 });                     // the host swaps themself too, and stays host
+    expect(a.last("lobby")).toMatchObject({ yourSlot: 3, host: 3 });
+    await a.say({ t: "seat", slot: 0 });
+    await a.say({ t: "seat", from: 1, slot: 3 });            // and back: Bo <-> Cy
     for (const p of [b, c, d]) await p.say({ t: "ready", ready: true });
     await a.say({ t: "start" });
     expect(d.last("gameStart")).toMatchObject({ yourSlot: 2, names: ["Ann", "Bo", "Di", "Cy"] });

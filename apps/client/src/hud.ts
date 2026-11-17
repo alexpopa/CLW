@@ -35,7 +35,7 @@ export interface HudActions {
   hostOnline(name: string, size: 1 | 2 | 3): void;
   joinOnline(name: string, code: string): void;
   startOnlineNow(): void;                     // host: begin the match; the autopilot takes the empty seats
-  takeSeat(slot: number): void;               // lobby: move to that empty seat (a side and a lane)
+  takeSeat(slot: number, from?: number): void; // lobby: move to that empty seat; the host may move anyone (`from`), swapping if taken
   setReady(ready: boolean): void;             // lobby: tell the host you are ready, or not yet
   say(text: string): void;                    // lobby: one line of chat
   menu(): void;                               // leave any lobby and return to the title screen
@@ -145,6 +145,22 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
     if (stick) log.scrollTop = log.scrollHeight;
   };
   const note = (text: string) => { chat.push({ team: -1, name: "", text }); drawChat(); };
+  let picked: number | null = null; // the host has picked up this seat's player, to place them elsewhere
+  const drawSeats = () => {
+    const view = lobby;
+    if (!view || !document.getElementById("lbTeam0")) return;
+    const n = view.settings.teamSize, lead = view.host === view.yourSlot;
+    for (const team of [0, 1] as const) {
+      $(`lbTeam${team}`).innerHTML = view.slots.map((q, slot) => ({ q, slot })).filter(({ slot }) => seatOf(slot, n).team === team).map(({ q, slot }) => {
+        const lane = `<span class="lane">${n > 1 ? `Lane ${ROMAN[seatOf(slot, n).lane + 1]}` : "The lane"}</span>`;
+        if (!q || q === "ai") return `<button class="seat open${picked !== null ? " target" : ""}" data-seat="${slot}">${lane}<span class="who">Empty seat</span><span class="tag">${picked !== null ? "Place here" : "Take seat"}</span></button>`;
+        const mine = slot === view.yourSlot, host = slot === view.host, up = picked === slot;
+        const tag = up ? `<span class="tag lead">Moving…</span>` : picked !== null ? `<span class="tag lead">Swap</span>`
+          : `<span class="tag ${host ? "lead" : q.ready ? "ready" : "wait"}">${host ? "Host" : q.ready ? "Ready" : "Not ready"}</span>`;
+        return `<div class="seat${mine ? " mine" : ""}${lead ? " movable" : ""}${up ? " picked" : ""}${picked !== null && !up ? " target" : ""}" data-seat="${slot}"${lead ? ' draggable="true"' : ""}>${lane}<span class="who">${esc(q.user.displayName)}${mine ? " <i>(you)</i>" : ""}</span>${tag}</div>`;
+      }).join("");
+    }
+  };
 
   let hover: string | null = null; // unit id, "invest", "research" or "keeper0" / "keeper1" (a mouse only: fingers do not hover)
   let peek: string | null = null;  // touch: the card whose notes are open, waiting for a second tap to study or hire it
@@ -362,7 +378,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
     },
     /** Connecting to the server, before there is a lobby to show. */
     showConnecting(status: string): void {
-      lobby = null; chat.length = 0;
+      lobby = null; chat.length = 0; picked = null;
       $("overlay").className = "show";
       $("overlay").innerHTML = `<div class="panel"><h1>Gravemarch</h1><div class="sub">${esc(status)}</div><div class="orn"></div>
         <p>One moment.</p><div class="row"><button id="olCancel" class="ghost">Cancel</button></div></div>`;
@@ -385,7 +401,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
           </div>
           <div class="note" id="lbNote"></div>
           <div class="row"><button id="lbGo"></button><button id="olCancel" class="ghost">Leave</button></div>
-          <p class="lbhint">Click an empty seat to take it. Each seat is one lane; empty seats are played by the autopilot.</p>
+          <p class="lbhint" id="lbHint"></p>
         </div>`;
         $("olCancel").onclick = () => act.menu();
         $("lbCopy").onclick = () => { void navigator.clipboard?.writeText(view.lobbyId).then(() => { $("lbCopy").textContent = "Copied"; }, () => undefined); };
@@ -395,10 +411,23 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
           if (text) act.say(text);
           input.value = "";
         };
-        for (const team of [0, 1]) $(`lbTeam${team}`).onclick = e => {
-          const seat = (e.target as HTMLElement).closest<HTMLElement>("[data-seat]");
-          if (seat && seat.classList.contains("open")) act.takeSeat(Number(seat.dataset.seat));
+        // Seats: anyone clicks an empty seat to take it. The host also arranges the council: drag a player onto a seat,
+        // or click a player and then a seat; a taken seat swaps the two.
+        const hosts = root.querySelector<HTMLElement>(".hosts")!, seatAt = (e: Event) => (e.target as HTMLElement).closest<HTMLElement>("[data-seat]");
+        hosts.onclick = e => {
+          const el = seatAt(e), v = lobby;
+          if (!el || !v) return;
+          const slot = Number(el.dataset.seat), filled = !el.classList.contains("open");
+          if (v.host !== v.yourSlot) { if (!filled) act.takeSeat(slot); return; }
+          if (picked === null) { if (filled) { picked = slot; drawSeats(); } else act.takeSeat(slot); return; }
+          const from = picked; picked = null;
+          if (from === slot) drawSeats(); else act.takeSeat(slot, from);
         };
+        hosts.ondragstart = e => { const el = seatAt(e); if (el && e.dataTransfer) { picked = Number(el.dataset.seat); e.dataTransfer.setData("text/plain", el.dataset.seat!); e.dataTransfer.effectAllowed = "move"; } };
+        hosts.ondragover = e => { const el = seatAt(e); if (el && picked !== null) { e.preventDefault(); hosts.querySelectorAll(".over").forEach(q => q.classList.remove("over")); el.classList.add("over"); } };
+        hosts.ondragleave = e => { seatAt(e)?.classList.remove("over"); };
+        hosts.ondrop = e => { e.preventDefault(); const el = seatAt(e), from = picked; picked = null; if (el && from !== null && Number(el.dataset.seat) !== from) act.takeSeat(Number(el.dataset.seat), from); else drawSeats(); };
+        hosts.ondragend = () => { hosts.querySelectorAll(".over").forEach(q => q.classList.remove("over")); if (picked !== null) { picked = null; drawSeats(); } };
         $("lbGo").onclick = () => {
           const v = lobby!;
           if (v.host === v.yourSlot) act.startOnlineNow();
@@ -411,20 +440,18 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
         const was = names(before), now = names(view);
         for (const [id, name] of now) if (!was.has(id)) note(`${name} joins the council`);
         for (const [id, name] of was) if (!now.has(id)) note(`${name} has left`);
-        if (before.host !== view.host && view.slots[view.host] && view.slots[view.host] !== "ai") note(`${(view.slots[view.host] as { user: UserIdentity }).user.displayName} now leads the council`);
+        const leader = (v: LobbyView) => { const q = v.slots[v.host]; return q && q !== "ai" ? q.user : null; };
+        const was0 = leader(before), now0 = leader(view); // by who, not by seat: the host moving is not news
+        if (now0 && was0?.userId !== now0.userId) note(`${now0.displayName} now leads the council`);
       }
       const n = view.settings.teamSize, seated = view.slots.filter(Boolean).length, iHost = view.host === view.yourSlot;
       set("lbSub", `${n}v${n} · ${seated} of ${view.slots.length} seats taken`);
       set("lbCode", view.lobbyId);
-      for (const team of [0, 1] as const) {
-        $(`lbTeam${team}`).innerHTML = view.slots.map((q, slot) => ({ q, slot })).filter(({ slot }) => seatOf(slot, n).team === team).map(({ q, slot }) => {
-          const lane = `<span class="lane">${n > 1 ? `Lane ${ROMAN[seatOf(slot, n).lane + 1]}` : "The lane"}</span>`;
-          if (!q || q === "ai") return `<button class="seat open" data-seat="${slot}">${lane}<span class="who">Empty seat</span><span class="tag">Take seat</span></button>`;
-          const mine = slot === view.yourSlot, host = slot === view.host;
-          return `<div class="seat${mine ? " mine" : ""}" data-seat="${slot}">${lane}<span class="who">${esc(q.user.displayName)}${mine ? " <i>(you)</i>" : ""}</span>
-            <span class="tag ${host ? "lead" : q.ready ? "ready" : "wait"}">${host ? "Host" : q.ready ? "Ready" : "Not ready"}</span></div>`;
-        }).join("");
-      }
+      if (picked !== null && !view.slots[picked]) picked = null;
+      if (view.host !== view.yourSlot) picked = null;
+      drawSeats();
+      set("lbHint", iHost ? "Drag a player to a seat, or click a player and then a seat: a taken seat swaps them. Empty seats are played by the autopilot."
+        : "Click an empty seat to move there. Each seat is one lane; empty seats are played by the autopilot.");
       const waiting = view.slots.some((q, slot) => q && q !== "ai" && slot !== view.host && !q.ready), me = view.slots[view.yourSlot];
       const go = $<HTMLButtonElement>("lbGo");
       if (iHost) {
