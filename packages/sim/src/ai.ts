@@ -1,5 +1,5 @@
-import { AI, INVEST_TIERS, KEEPERS, MAP, MERC_ORDER, UNITS, UNIT_ORDER } from "./data";
-import { beaconsHeld, canPlan, hqX, isUnlocked, researchOffer } from "./sim";
+import { AI, INVEST_TIERS, KEEPERS, MAP, MERC_ORDER, RULES, UNITS, UNIT_ORDER } from "./data";
+import { beaconsHeld, canPlan, hqX, isUnlocked, researchOffer, stormBlock } from "./sim";
 import type { Command, GameState, PlayerId } from "./types";
 
 const F = MAP.footprint;
@@ -46,7 +46,7 @@ export function simpleAI(s: GameState, me: PlayerId): Command[] {
   const mine = [...s.buildings.filter(b => b.owner === me), ...queued];
   const profile = AI.profiles[aiProfile(s, me)]!;
   const build = (unit: string): Command[] => {
-    const keeper = keepers.filter(k => UNITS[unit]!.tier <= KEEPERS[k.slot].maxTier).sort((a, b) => a.jobs.length - b.jobs.length || a.slot - b.slot)[0];
+    const keeper = keepers.filter(k => UNITS[unit]!.tier >= KEEPERS[k.slot].minTier && UNITS[unit]!.tier <= KEEPERS[k.slot].maxTier).sort((a, b) => a.jobs.length - b.jobs.length || a.slot - b.slot)[0];
     if (!keeper || keeper.jobs.length > 0) return []; // one order at a time each
     const cell = pickCell(s, me, unit);
     return cell && p.credits >= UNITS[unit]!.cost ? [{ type: "build", keeper: keeper.slot, unit, ...cell }] : [];
@@ -75,6 +75,9 @@ export function simpleAI(s: GameState, me: PlayerId): Command[] {
     const band = [...MERC_ORDER].reverse().find(id => p.credits >= UNITS[id]!.cost + AI.mercReserve);
     if (band) return [{ type: "hire", unit: band }];
   }
+  // The storm: worth its price once the enemy has a host on the field.
+  if (!stormBlock(s, p) && p.credits >= RULES.stormCost + AI.stormReserve && s.units.filter(u => u.team !== p.team && !UNITS[u.type]!.structure).length >= AI.stormMinFoes)
+    return [{ type: "storm" }];
   if (!threatened) {
     // Research: the first step of the profile's order that is still to do.
     const done = p.unlocked.length - UNIT_ORDER.filter(id => UNITS[id]!.free).length + (p.tier - 1);

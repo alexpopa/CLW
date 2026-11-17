@@ -6,8 +6,8 @@ import "@fontsource/im-fell-english/400.css";
 import "@fontsource/im-fell-english/400-italic.css";
 import "@fontsource/unifrakturcook/700.css";
 import "./hud.css";
-import { INVEST_TIERS, KEEPERS, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, hqMax, hqX, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, unitsOfTier } from "@lw/sim";
-import type { GameState } from "@lw/sim";
+import { INVEST_TIERS, KEEPERS, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, hqMax, hqX, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, stormBlock, unitsOfTier } from "@lw/sim";
+import type { GameState, PlayerState } from "@lw/sim";
 import { TEAM } from "./models";
 import { LANE_GAP, LANE_PITCH, LANE_W, fieldZ } from "./layout";
 
@@ -15,9 +15,14 @@ import { LANE_GAP, LANE_PITCH, LANE_W, fieldZ } from "./layout";
 export interface HudActions {
   selectKeeper(slot: 0 | 1): void;            // choose which gravekeeper takes the orders
   selectUnit(id: string): void;               // pick it for building, study it if it is not yet known, or hire it if it is a mercenary band
-  setTier(tier: number): void;                // show that tier's cards (MERC_TAB = the mercenaries)
+  setTier(tier: number): void;                // show that tier's cards
   invest(): void;
+  setInvestLane(lane: number): void;          // which lane's shrines the next tithe is raised on (mine or an ally's)
   research(): void;
+  storm(): void;                              // call the Storm of Wrath
+  teleport(): void;                           // arm the Sexton's teleport
+  home(): void;                               // look at my own cathedral
+  cancel(): void;                             // back out one step (what Esc does)
   sell(): void;
   setSpeed(n: number): void;
   togglePause(): void;
@@ -30,6 +35,7 @@ export interface HudActions {
   menu(): void;                               // leave any lobby and return to the title screen
 }
 export interface HudView { me: number; keeper: 0 | 1 | null; tier: number; selectedUnit: string | null; selectedBuilding: number | null; speed: number; paused: boolean;
+  investLane: number;                         // the lane the tithe button acts on
   teleport: boolean;                          // the Sexton's teleport is armed: the next click on friendly ground sends him there
   camRect: [number, number, number, number];  // the part of the field on screen, as fractions [x0, x1, z0, z1]
   names: string[] }                           // display name per seat (online), empty in solo play
@@ -39,11 +45,20 @@ const secs = (ticks: number) => Math.ceil(ticks / TICK_RATE);
 const ROMAN = ["", "I", "II", "III", "IV"];
 export const RITE = ["", "", "The Second Rite", "The Third Rite", "The Fourth Rite"];
 /** The tab after the last tier holds the mercenaries. */
-export const MERC_TAB = MAX_TIER + 1;
-const TABS = Array.from({ length: MERC_TAB }, (_, i) => i + 1);
-/** The cards of one tab, in hotkey order (keys 3 4 5 6 7 8 9 0; 1 and 2 choose the keeper). */
-export const tabUnits = (tab: number): string[] => (tab === MERC_TAB ? [...MERC_ORDER] : unitsOfTier(tab));
-export const CARD_KEYS = ["3", "4", "5", "6", "7", "8", "9", "0"];
+/** The mercenaries share the page of the last tier: the Undertaker's one page, great chantries above and bands for hire below. */
+export const MERC_TAB = MAX_TIER;
+const TABS = Array.from({ length: MAX_TIER }, (_, i) => i + 1);
+/** The cards of one tab, in menu order. */
+export const tabUnits = (tab: number): string[] => (tab === MERC_TAB ? [...unitsOfTier(tab), ...MERC_ORDER] : unitsOfTier(tab));
+/** Cards sit in two staggered rows that mirror the keyboard: the first on Q W E R T, the second under it on A S D F G. */
+const ROW_KEYS = ["qwert", "asdfg"];
+export const cardSlot = (tab: number, i: number): { row: number; col: number; key: string } => {
+  const n = tabUnits(tab).length, per = n > 5 ? Math.ceil(n / 2) : n, row = i < per ? 0 : 1, col = row ? i - per : i;
+  return { row, col, key: ROW_KEYS[row]![col] ?? "" };
+};
+export const cardByKey = (tab: number, key: string): string | undefined => tabUnits(tab).find((_, i) => cardSlot(tab, i).key === key);
+/** The bottom letter row picks the chosen keeper's tabs, in order. */
+export const TAB_KEYS = ["z", "x", "c"];
 const tabOf = (id: string): number => (UNITS[id]!.merc ? MERC_TAB : UNITS[id]!.tier);
 
 function statLine(id: string): string {
@@ -71,46 +86,71 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
     </div>
     <div class="tools"><span id="clock" class="num">0:00</span><button id="pause" title="Pause (P)">❚❚</button>${[1, 2, 4].map(n => `<button data-speed="${n}" title="Game speed ×${n}">${ROMAN[n]}</button>`).join("")}<button id="mute" title="Sound">♪</button></div>
   </div>
+  <div id="dock">
   <div id="tip"></div>
+  <div id="touchbar"><button id="tbTele">Teleport</button><button id="tbHome">Cathedral</button><button id="tbCancel">Cancel</button></div>
   <div id="bar">
     <div id="keepers">${KEEPERS.map((k, i) => `<button class="keeper" data-keeper="${i}" aria-label="${k.name}"><img src="${portraits[k.id] ?? ""}" alt=""><span class="key">${i + 1}</span><b>${k.name}</b></button>`).join("")}</div>
     <div id="build">
-      <div id="tiers">${TABS.map(t => `<button class="tier" data-tier="${t}" title="${t === MERC_TAB ? "Mercenaries" : `Tier ${ROMAN[t]} units`} (Tab)"><b>${t === MERC_TAB ? "⚔" : ROMAN[t]}</b><small></small></button>`).join("")}</div>
-      <div id="cards" data-tier="1">${[...UNIT_ORDER, ...MERC_ORDER].map(id => `
-        <button class="card" data-unit="${id}" data-tier="${tabOf(id)}" aria-label="${UNITS[id]!.name}"><span class="frame"></span><span class="glassp"></span><img src="${portraits[id] ?? ""}" alt="">
+      <div id="tiers">${TABS.map(t => `<button class="tier" data-tier="${t}" title="Tier ${ROMAN[t]} units"><b>${ROMAN[t]}</b><small></small></button>`).join("")}</div>
+      <div id="cards" data-tier="1">${[...UNIT_ORDER, ...MERC_ORDER].map(id => ({ id, at: cardSlot(tabOf(id), tabUnits(tabOf(id)).indexOf(id)) })).map(({ id, at }) => `
+        <button class="card${at.row ? " low" : ""}" style="grid-row:${at.row + 1};grid-column:${at.col + 1}" data-unit="${id}" data-tier="${tabOf(id)}" aria-label="${UNITS[id]!.name}"><span class="frame"></span><span class="glassp"></span><img src="${portraits[id] ?? ""}" alt="">
           <i class="prog"></i><span class="seal"></span>
-          <span class="plaque"><span class="key">${CARD_KEYS[tabUnits(tabOf(id)).indexOf(id)]}</span><span class="cost num"></span></span></button>`).join("")}</div>
+          <span class="plaque"><span class="key">${at.key.toUpperCase()}</span><span class="cost num"></span></span></button>`).join("")}</div>
     </div>
     <div class="rule"></div>
     <div id="acts">
-      <button class="act" id="invest"><span class="key"><b>E</b></span><strong><span>Raise the tithe</span><span class="num" id="investC"></span></strong><em id="investT"></em></button>
-      <button class="act" id="research"><span class="key"><b>R</b></span><strong><span id="researchH">The Second Rite</span><span class="num" id="researchC"></span></strong><em id="researchT"></em><i class="fill" id="researchBar"></i></button>
+      <button class="act" id="invest"><span class="key"><b>3</b></span><strong><span>Raise the tithe</span><span class="num" id="investC"></span></strong><em id="investT"></em><span id="investL"></span></button>
+      <button class="act" id="research"><span class="key"><b>4</b></span><strong><span id="researchH">The Second Rite</span><span class="num" id="researchC"></span></strong><em id="researchT"></em><i class="fill" id="researchBar"></i></button>
+      <button class="act" id="storm"><span class="key"><b>5</b></span><strong><span>Storm of Wrath</span><span class="num" id="stormC"></span></strong><em id="stormT"></em><i class="fill" id="stormBar"></i></button>
     </div>
+  </div>
   </div>
   <div id="mapbox"><canvas id="minimap" title="Click or drag to look there"></canvas></div>
   <div id="toast"></div>
   <div id="overlay"></div>`;
 
-  let hover: string | null = null; // unit id, "invest", "research" or "keeper0" / "keeper1"
+  let hover: string | null = null; // unit id, "invest", "research" or "keeper0" / "keeper1" (a mouse only: fingers do not hover)
+  let peek: string | null = null;  // touch: the card whose notes are open, waiting for a second tap to study or hire it
+  let me: PlayerState | null = null;
+  // Fingers or a mouse: whichever was used last. Touch gets its own buttons, no hovering, and a look before it spends gold.
+  let touch = matchMedia("(pointer:coarse)").matches;
+  root.classList.toggle("touch", touch);
+  addEventListener("pointerdown", e => { touch = e.pointerType !== "mouse"; root.classList.toggle("touch", touch); if (touch) hover = null; }, true);
+  const hovers = (el: HTMLElement, what: string) => {
+    el.onpointerenter = e => { if (e.pointerType === "mouse") hover = what; };
+    el.onpointerleave = () => { hover = null; };
+  };
   root.querySelectorAll<HTMLButtonElement>(".keeper").forEach(b => {
-    b.onclick = () => act.selectKeeper(Number(b.dataset.keeper) as 0 | 1);
-    b.onmouseenter = () => { hover = `keeper${b.dataset.keeper}`; };
-    b.onmouseleave = () => { hover = null; };
+    b.onclick = () => { peek = null; act.selectKeeper(Number(b.dataset.keeper) as 0 | 1); };
+    hovers(b, `keeper${b.dataset.keeper}`);
   });
   root.querySelectorAll<HTMLButtonElement>(".card").forEach(b => {
-    b.onclick = () => act.selectUnit(b.dataset.unit!);
-    b.onmouseenter = () => { hover = b.dataset.unit!; };
-    b.onmouseleave = () => { hover = null; };
+    const id = b.dataset.unit!;
+    b.onclick = () => {
+      // a card that costs gold the moment it is pressed (a study, a hiring) first shows what it is
+      if (touch && me && (UNITS[id]!.merc || !isUnlocked(me, id)) && peek !== id) { peek = id; return; }
+      peek = null; act.selectUnit(id);
+    };
+    hovers(b, id);
   });
-  for (const id of ["invest", "research"]) { $(id).onmouseenter = () => { hover = id; }; $(id).onmouseleave = () => { hover = null; }; }
-  root.querySelectorAll<HTMLButtonElement>(".tier").forEach(b => { b.onclick = () => act.setTier(Number(b.dataset.tier)); });
+  for (const id of ["invest", "research", "storm"]) hovers($(id), id);
+  root.querySelectorAll<HTMLButtonElement>(".tier").forEach(b => { b.onclick = () => { peek = null; act.setTier(Number(b.dataset.tier)); }; });
+  $("tbTele").onclick = () => { peek = null; act.teleport(); };
+  $("tbHome").onclick = () => act.home();
+  $("tbCancel").onclick = () => { if (peek) peek = null; else act.cancel(); };
   root.querySelectorAll<HTMLButtonElement>("[data-speed]").forEach(b => { b.onclick = () => act.setSpeed(Number(b.dataset.speed)); });
   $("pause").onclick = () => act.togglePause();
   $("mute").onclick = () => { $("mute").classList.toggle("on", !act.toggleMute()); };
   $("mute").classList.add("on");
-  $("invest").onclick = () => act.invest();
+  $("invest").onclick = e => { const chip = (e.target as HTMLElement).closest<HTMLElement>("[data-lane]"); if (chip) act.setInvestLane(Number(chip.dataset.lane)); else act.invest(); };
   $("research").onclick = () => act.research();
-  $("tip").onclick = e => { if ((e.target as HTMLElement).id === "sell") act.sell(); };
+  $("storm").onclick = () => act.storm();
+  $("tip").onclick = e => {
+    const id = (e.target as HTMLElement).id;
+    if (id === "sell") act.sell();
+    else if (peek) { const unit = peek; peek = null; if (id === "confirm") act.selectUnit(unit); } // anywhere else on the note closes it
+  };
 
   const mini = $<HTMLCanvasElement>("minimap");
   const pan = (e: PointerEvent) => { const r = mini.getBoundingClientRect(); act.panTo((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height); };
@@ -119,12 +159,18 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
 
   let toastTimer = 0;
   const set = (id: string, text: string) => { const el = $(id); if (el.textContent !== text) el.textContent = text; };
-  const tip = (markup: string | null) => { const el = $("tip"); el.classList.toggle("show", !!markup); if (markup && el.dataset.m !== markup) { el.dataset.m = markup; el.innerHTML = markup; } };
+  const tip = (markup: string | null) => {
+    const el = $("tip");
+    if (markup && touch) markup = markup.replace(/Esc or right-click to cancel\./, "Cancel stops it.").replace(/ Esc to cancel\./, "").replace(/Right-click sends him walking/, "With no unit chosen, a tap on the ground sends him walking")
+      .replace(/Press \d or click him/, "Tap him").replace(/Press T, then click,/, "Tap Teleport, then the ground,").replace(/ \(or Shift\+3\)/, "").replace(/ \(Del\)/, "").replace(/\bClick\b/g, "Tap").replace(/\bclick\b/g, "tap").replace(/\bclicking\b/g, "tapping");
+    el.classList.toggle("show", !!markup);
+    if (markup && el.dataset.m !== markup) { el.dataset.m = markup; el.innerHTML = markup; }
+  };
 
   /** The whole battlefield from above: every lane, its shrines, towers, armies and keepers, and a frame for what the screen shows. */
   function drawMinimap(s: GameState, v: HudView): void {
     const [f0, f1] = fieldZ(s.laneCount), depth = f1 - f0;
-    const w = mini.clientWidth, want = Math.round(Math.min(190, 30 + 46 * s.laneCount)), dpr = devicePixelRatio || 1;
+    const w = mini.clientWidth, want = Math.round(Math.min(190, 30 + 46 * s.laneCount) * Math.min(1, w / 220)), dpr = devicePixelRatio || 1;
     if (mini.clientHeight !== want) mini.style.height = `${want}px`;
     const h = want;
     if (mini.width !== Math.round(w * dpr) || mini.height !== Math.round(h * dpr)) { mini.width = Math.round(w * dpr); mini.height = Math.round(h * dpr); }
@@ -178,14 +224,16 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       $("overlay").className = "show";
       $("overlay").innerHTML = `<div class="panel"><h1>Gravemarch</h1><div class="sub">A war of lines</div><div class="orn"></div>
         <details class="rules"><summary>How to play</summary><dl>
-          <dt>Gravekeepers</dt><dd>Your two gravekeepers do the building. Press 1 for the Sexton or 2 for the Undertaker (or click them), choose a unit, then click your ground: he walks there and the chantry stands at once. Keep clicking to queue more. Right-click sends him walking. Only the Undertaker raises tier IV and hires mercenaries.</dd>
+          <dt>Gravekeepers</dt><dd>Your two gravekeepers do the building. Press 1 for the Sexton or 2 for the Undertaker (or click them), choose a unit with its letter (the cards sit like the keys: Q W E R above, A S D F below; Z X C switch the Sexton's tier), then click your ground: he walks there and the chantry stands at once. Keep clicking to queue more. Right-click sends him walking. The Sexton raises tiers I to III; the Undertaker raises tier IV and hires mercenaries, with a short wait between bands.</dd>
           <dt>Muster</dt><dd>Every chantry sends its soldier at each toll of the bell, for the rest of the war. Mercenaries are hired once: they fight as far as the middle shrine and leave.</dd>
           <dt>Shrines</dt><dd>You begin with the shrine nearest your cathedral, guarded by two towers. Claim the others by marching over them; the enemy home shrine falls only after both its towers, and two more towers guard each base. Each shrine you hold pays gold.</dd>
-          <dt>Study</dt><dd>You begin knowing three units. Click any other card of an open tier to study it; your scholars learn one thing at a time. The Rites (R) open the higher tiers (Tab to browse them), whose units must each be studied in turn.</dd>
+          <dt>Study</dt><dd>You begin knowing three units. Click any other card of an open tier to study it; your scholars learn one thing at a time. The Rites (4) open the higher tiers (Z X C or Tab to browse them), whose units must each be studied in turn.</dd>
           <dt>Counters</dt><dd>Every unit has its own gift and its own bane: flyers shrug off swords, fire clears swarms, lanterns unmask shades. Hover a card to read it.</dd>
-          <dt>Tithe</dt><dd>Raise the tithe (E) to earn more from every shrine you hold.</dd>
+          <dt>Storm</dt><dd>Once The Third Rite is done you may call the Storm of Wrath (5): for a price, lightning strikes every enemy soldier on the field for ten seconds. Then the sky must rest.</dd>
+          <dt>Tithe</dt><dd>Raise the tithe (3) to earn more from every shrine your side holds in a lane. In team games you may raise it on an ally's lane too (Shift+3 changes lane); it only ever raises your own income.</dd>
           <dt>Team games</dt><dd>In 2v2 and 3v3 every player has a lane, and all share one cathedral. Your keepers may build in any lane of your side: the Undertaker walks there, the Sexton steps through the grave (T, then click the ground or the map).</dd>
-          <dt>Survey</dt><dd>Drag, scroll, use A / D or the arrow keys, or click the map strip. Space returns to your cathedral.</dd>
+          <dt>Survey</dt><dd>Drag, scroll, use the arrow keys, or click the map in the corner. Space returns to your cathedral.</dd>
+          <dt>Touch</dt><dd>Drag to look around and pinch to zoom. Tap a keeper, a card, then your ground. A card that costs gold at once shows its notes first: tap again to pay. Teleport, Cathedral and Cancel sit above the bar.</dd>
           <dt>Victory</dt><dd>Bring down the enemy cathedral at the far end of the lane.</dd>
         </dl></details>
         <div class="sizes" role="group" aria-label="Team size">${([1, 2, 3] as const).map(n => `<button class="ghost size${n === size ? " on" : ""}" data-size="${n}">${n}v${n}<small>${n === 1 ? "one lane" : `${n} lanes`}</small></button>`).join("")}</div>
@@ -290,6 +338,10 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
 
     update(s: GameState, v: HudView): void {
       const p = s.players[v.me]!, foe = (1 - p.team) as 0 | 1;
+      me = p;
+      if (peek && (v.keeper === null || tabOf(peek) !== v.tier || v.selectedUnit)) peek = null;
+      $("tbTele").classList.toggle("on", v.teleport);
+      $("tbCancel").style.display = peek || v.teleport || v.selectedUnit || v.selectedBuilding !== null || v.keeper !== null ? "" : "none";
       set("credits", String(p.credits));
       set("income", `+${incomeOf(s, v.me)}`);
       set("incomeIn", String(secs(RULES.incomeIntervalTicks - (s.tick % RULES.incomeIntervalTicks))));
@@ -306,22 +358,24 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       const studying = p.research?.unit ?? null, busy = p.research ? (s.tick - p.research.startTick) / (p.research.doneTick - p.research.startTick) : 0;
       $("cards").dataset.tier = String(v.tier);
       $("build").classList.toggle("open", v.keeper !== null);
-      const top = v.keeper === null ? 0 : KEEPERS[v.keeper].maxTier, hires = v.keeper !== null && KEEPERS[v.keeper].mercs;
+      const low = v.keeper === null ? 1 : KEEPERS[v.keeper].minTier, top = v.keeper === null ? 0 : KEEPERS[v.keeper].maxTier;
       document.querySelectorAll<HTMLButtonElement>(".keeper").forEach(b => {
         const slot = Number(b.dataset.keeper), k = s.keepers.find(q => q.owner === v.me && q.slot === slot);
         b.classList.toggle("sel", v.keeper === slot); b.classList.toggle("busy", !!k && k.jobs.length > 0);
         b.dataset.jobs = k && k.jobs.length ? String(k.jobs.length) : "";
-        const rest = k && KEEPERS[slot]!.teleport ? k.teleReady - s.tick : 0;
-        b.classList.toggle("armed", v.teleport && v.keeper === slot); b.classList.toggle("resting", rest > 0);
-        b.dataset.rest = rest > 0 ? `T ${secs(rest)}s` : KEEPERS[slot]!.teleport ? "T" : "";
+        b.classList.toggle("armed", v.teleport && v.keeper === slot);
+        b.dataset.rest = KEEPERS[slot]!.teleport ? "T" : "";
       });
+      let shown = 0;
       document.querySelectorAll<HTMLButtonElement>(".tier").forEach(b => {
-        const t = Number(b.dataset.tier), merc = t === MERC_TAB;
-        b.style.display = (merc ? hires : t <= top) ? "" : "none";
-        b.classList.toggle("on", t === v.tier); b.classList.toggle("shut", !merc && t > p.tier);
-        const small = b.querySelector("small")!, text = merc ? "hire" : t > p.tier ? "sealed" : `${unitsOfTier(t).filter(id => isUnlocked(p, id)).length}/${unitsOfTier(t).length}`;
+        const t = Number(b.dataset.tier), mine = t >= low && t <= top;
+        b.style.display = mine ? "" : "none";
+        if (mine) b.dataset.key = (TAB_KEYS[shown++] ?? "").toUpperCase();
+        b.classList.toggle("on", t === v.tier); b.classList.toggle("shut", t > p.tier);
+        const small = b.querySelector("small")!, text = t > p.tier ? "sealed" : `${unitsOfTier(t).filter(id => isUnlocked(p, id)).length}/${unitsOfTier(t).length}`;
         if (small.textContent !== text) small.textContent = text;
       });
+      $("tiers").style.display = shown > 1 ? "" : "none"; // a keeper with a single page needs no tabs
       document.querySelectorAll<HTMLButtonElement>(".card").forEach(b => {
         const d = UNITS[b.dataset.unit!]!, cost = b.querySelector(".cost")!, seal = b.querySelector(".seal")!, prog = b.querySelector<HTMLElement>(".prog")!;
         let costText: string, sealText: string;
@@ -346,7 +400,12 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
         if (seal.textContent !== sealText) seal.textContent = sealText;
       });
 
-      const level = p.invest[p.lane] ?? 0, tier = INVEST_TIERS[level], held = beaconsHeld(s, p.team, p.lane);
+      const iLane = v.investLane, lanePick = $("investL"), laneOwner = (l: number) => s.players.find(q => q.team === p.team && q.lane === l);
+      const laneName = (l: number) => l === p.lane ? "your lane" : `${v.names[laneOwner(l)?.id ?? -1] ?? "your ally"}'s lane`;
+      if (lanePick.childElementCount !== (s.laneCount > 1 ? s.laneCount : 0))
+        lanePick.innerHTML = s.laneCount > 1 ? Array.from({ length: s.laneCount }, (_, l) => `<i data-lane="${l}" title="Raise the tithe on lane ${ROMAN[l + 1]}">${ROMAN[l + 1]}</i>`).join("") : "";
+      lanePick.querySelectorAll<HTMLElement>("i").forEach(el => { const l = Number(el.dataset.lane); el.classList.toggle("on", l === iLane); el.classList.toggle("own", l === p.lane); });
+      const level = p.invest[iLane] ?? 0, tier = INVEST_TIERS[level], held = beaconsHeld(s, p.team, iLane);
       const gain = tier ? tier.bonus * held : 0;
       const payback = tier && gain > 0 ? `repays itself in ${Math.ceil((tier.cost / gain) * (RULES.incomeIntervalTicks / TICK_RATE))}s` : "pays nothing until you hold a shrine";
       set("investC", tier ? String(tier.cost) : "—");
@@ -361,15 +420,29 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       $("researchBar").style.width = rite ? `${busy * 100}%` : "0%";
       $("research").classList.toggle("poor", !!next && (!!p.research || p.credits < next.cost)); $("research").classList.toggle("done", !next);
 
+      const block = stormBlock(s, p), rest = p.stormReady - s.tick, strikes = RULES.stormTicks / RULES.stormInterval;
+      const mine = s.storms.filter(q => q.team === p.team).length, theirs = s.storms.length - mine;
+      set("stormC", String(RULES.stormCost));
+      set("stormT", mine ? `Raging · ${mine > 1 ? `${mine} storms` : "the enemy burns"}` : block === "tier" ? "Sealed until The Third Rite" : rest > 0 ? `The sky rests · ${secs(rest)}s` : "Lightning on every enemy");
+      $("stormBar").style.width = rest > 0 ? `${100 - (rest / RULES.stormCooldownTicks) * 100}%` : "0%";
+      $("storm").classList.toggle("poor", block === "gold"); $("storm").classList.toggle("done", block === "tier" || block === "resting");
+      $("storm").classList.toggle("raging", mine > 0); root.classList.toggle("stormed", theirs > 0);
+
       const b = s.buildings.find(q => q.id === v.selectedBuilding);
-      const unit = hover && UNITS[hover] ? hover : !hover ? v.selectedUnit : null;
-      if (v.teleport && !hover) tip(`<h3>Through the grave<span class="num">T</span></h3><p>Click any ground your side holds, in any lane, here or on the map: the Sexton is there at once.</p><p class="hint">Esc or right-click to cancel. He rests ${secs(RULES.teleportCooldownTicks)} seconds afterwards, and his queued chantries are refunded.</p>`);
+      const unit = hover && UNITS[hover] ? hover : !hover ? peek ?? v.selectedUnit : null;
+      const go = (label: string) => (touch && peek === unit ? `<button id="confirm">${label}</button>` : "");
+      if (v.teleport && !hover) tip(`<h3>Through the grave<span class="num">T</span></h3><p>Click any ground your side holds, in any lane, here or on the map: the Sexton is there at once.</p><p class="hint">Esc or right-click to cancel. He may step again as often as you like; his queued chantries are refunded each time.</p>`);
       else if (hover === "invest") tip(`<h3>Raise the tithe${tier ? `<span class="num">${tier.cost}</span>` : ""}</h3>
-        <p>${tier ? `Every shrine you hold pays you <b>+${tier.bonus}</b> more gold each collection. You hold ${held} of 3, so this ${payback}.` : "Your tithe is as high as it can go."}</p>
-        <p class="stats">Tithe level ${level} of ${INVEST_TIERS.length} · currently +${investBonus(level)} per shrine</p>`);
+        <p>${tier ? `Every shrine your side holds in ${laneName(iLane)} pays you <b>+${tier.bonus}</b> more gold each collection. It holds ${held} of 3, so this ${payback}.` : "Your tithe is as high as it can go."}</p>
+        <p class="stats">Tithe level ${level} of ${INVEST_TIERS.length} on ${laneName(iLane)} · currently +${investBonus(level)} per shrine</p>
+        ${s.laneCount > 1 ? `<p class="hint">Pick a lane with the numerals (or Shift+3): your own or an ally's. The tithe is yours alone: it raises only your income from that lane's shrines, never your ally's.</p>` : ""}`);
       else if (hover === "research") tip(`<h3>${next ? RITE[next.tier] : "The Rites"}${next ? `<span class="num">${next.cost}</span>` : ""}</h3>
         <p>${next ? `A ${secs(next.ticks)}-second rite that opens tier ${ROMAN[next.tier]}. Its units still have to be studied one by one: ${unitsOfTier(next.tier).map(u => UNITS[u]!.name).join(", ")}.` : "Every rite is complete. Any unit may be studied."}</p>
         <p class="hint">Your scholars work on one rite or study at a time.</p>`);
+      else if (hover === "storm") tip(`<h3>Storm of Wrath<span class="num">${RULES.stormCost}</span></h3>
+        <p>For ${secs(RULES.stormTicks)} seconds lightning falls on <b>every enemy soldier on the whole field</b>, in every lane, on the ground and in the air: ${RULES.stormDamage} damage a second to each, ${strikes * RULES.stormDamage} in all, through any armor. Towers and cathedrals are spared.</p>
+        <p class="stats">It thins a swarm and softens the great; it will not win a battle alone. Storms called together strike together.</p>
+        <p class="hint">${block === "tier" ? "Sealed until The Third Rite is complete." : `The sky rests ${secs(RULES.stormCooldownTicks)} seconds between your storms.`}</p>`);
       else if (hover === "keeper0" || hover === "keeper1") {
         const slot = Number(hover.slice(6)), k = KEEPERS[slot]!, mine = s.keepers.find(q => q.owner === v.me && q.slot === slot);
         tip(`<h3>${k.name}<span class="num">${slot + 1}</span></h3><p>${k.blurb}</p>
@@ -378,16 +451,16 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       } else if (unit && UNITS[unit]!.merc) {
         const d = UNITS[unit]!;
         tip(`<h3>${d.name}<span class="num">${d.cost}</span></h3><p>${d.blurb}</p>${abilityLines(unit)}<p class="stats">${statLine(unit)}</p>
-          <p class="hint">Click to hire. They form up in front of your towers at once, fight as far as the middle of the lane, and leave.</p>`);
+          <p class="hint">Click to hire. They form up in front of your towers at once, fight as far as the middle of the lane, and leave.</p>${go(`Hire · ${d.cost}`)}`);
       } else if (unit) {
         const d = UNITS[unit]!, known = isUnlocked(p, unit), open = d.tier <= p.tier, study = UNIT_RESEARCH[d.tier]!;
         tip(`<h3>${d.name}<span class="num">${d.cost}</span></h3><p>${d.blurb}</p>${abilityLines(unit)}<p class="stats">${statLine(unit)}</p>
           <p class="hint">${!open ? `Sealed until ${RITE[d.tier]}.` : studying === unit ? "Your scholars are studying it now."
             : !known ? `Click to study it: ${study.cost} gold, ${secs(study.ticks)} seconds.${p.research ? " Your scholars are busy until the current work is done." : ""}`
             : d.tier > top ? "Only the Undertaker can raise it."
-            : v.selectedUnit === unit ? "Click anywhere free on your ground: your keeper walks there and raises it. Keep clicking to queue more. Esc to cancel." : `Its chantry musters ${d.count ? ["", "one", "two", "three"][d.count] : "one"} each wave.`}</p>`);
+            : v.selectedUnit === unit ? "Click anywhere free on your ground: your keeper walks there and raises it. Keep clicking to queue more. Esc to cancel." : `Its chantry musters ${d.count ? ["", "one", "two", "three"][d.count] : "one"} each wave.`}</p>${open && !known && studying !== unit ? go(`Study · ${study.cost}`) : ""}`);
       } else if (b) tip(`<h3>${UNITS[b.unit]!.name} chantry</h3><p>Musters at every toll of the bell.</p>${abilityLines(b.unit)}<p class="stats">${statLine(b.unit)}</p>
-          <button id="sell">Tear down · refund ${sellRefund(b.unit, b.produced)} (X)</button>`);
+          <button id="sell">Tear down · refund ${sellRefund(b.unit, b.produced)} (Del)</button>`);
       else tip(null);
 
       drawMinimap(s, v);

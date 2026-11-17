@@ -243,6 +243,29 @@ export function graveyardModel(fromX: number, toX: number, zNear: number): G {
   return merge(parts);
 }
 
+/**
+ * The wall of the cathedral close: a tall buttressed curtain running across the lanes (along z, from z0 to z1) at x = 0.
+ * The cathedral stands in it; where a lane ends beside the cathedral rather than at it, a chapel stands in the wall instead.
+ */
+export function curtainModel(z0: number, z1: number): G {
+  const len = z1 - z0, mid = (z0 + z1) / 2, parts: G[] = [box(0.9, 3.4, len, PAL.stone, 0, 1.7, mid), box(1.15, 0.2, len + 0.1, PAL.stoneHi, 0, 3.5, mid)];
+  const n = Math.max(1, Math.round(len / 4.5));
+  for (let i = 0; i <= n; i++) { const z = z0 + (len * i) / n; parts.push(box(1.5, 4.2, 1.1, PAL.stoneLo, 0, 2.1, z), spire(0.5, 0.9, PAL.roof, 0, 4.2, z)); }
+  for (let i = 0; i < n; i++) parts.push(box(1.0, 0.5, 1.2, PAL.stone, 0, 3.85, z0 + (len * (i + 0.5)) / n)); // merlons
+  return merge(parts);
+}
+/** A chapel of the cathedral close, its lit door and windows facing the lane (+x). It is the cathedral's face in an outer lane. */
+export function chapelModel(team: 0 | 1): { lit: G; glow: G } {
+  const t = TEAM[team], lit: G[] = [box(5, 0.4, 8.4, PAL.stoneLo, 0, 0.2, 0), box(4, 6, 7, PAL.stone, 0, 3.4, 0), box(4.3, 0.3, 7.3, PAL.stoneHi, 0, 6.5, 0),
+    spire(2.3, 4.6, PAL.roof, 0, 6.6, 0), ...crossGeo(PAL.gold, 0, 11.1, 0, 1.1), ...lancet(0x120d0b, 2.02, 1.7, 0, 1.6, 2.4, "x"), box(0.5, 0.25, 2.4, PAL.stoneHi, 2.2, 0.55, 0)];
+  const glow: G[] = [box(0.05, 1.9, 0.14, PAL.candle, 2.06, 1.5, 0), cyl(0.7, 0.7, 0.06, 16, t.glow, 2.04, 5.2, 0, { rz: Math.PI / 2 })];
+  for (const sz of [-1, 1]) {
+    lit.push(box(1.1, 7.4, 1.1, PAL.stoneLo, 1.7, 3.7, sz * 3.6), spire(0.55, 1.5, PAL.roof, 1.7, 7.4, sz * 3.6), box(0.5, 2.2, 0.06, t.main, 2.1, 3.3, sz * 2.3));
+    glow.push(...lancet(t.glow, 2.03, 3.2, sz * 2.3, 0.6, 2, "x"));
+  }
+  return { lit: merge(lit), glow: merge(glow) };
+}
+
 /** Wrought-iron fence along the near edge. */
 export function fenceModel(fromX: number, toX: number, z: number): G {
   const parts: G[] = [box(toX - fromX, 0.12, 0.12, PAL.ink, (fromX + toX) / 2, 1.5, z), box(toX - fromX, 0.12, 0.12, PAL.ink, (fromX + toX) / 2, 0.4, z)];
@@ -253,10 +276,11 @@ export function fenceModel(fromX: number, toX: number, z: number): G {
 
 /**
  * Precinct wall around a team's building ground, in local coordinates: x runs from the rear (0) to
- * the front (len), z across the lane (0..depth). A low buttressed wall closes the rear and both
- * sides; the front is left open for the army, flanked by the base towers. Banners hang in team colour.
+ * the front (len), z across the lane (0..depth). A low buttressed wall closes both sides and runs `back`
+ * further to the cathedral close; the rear is open, so the ground runs straight up to the cathedral steps and
+ * an enemy who breaks through has a clear road to it. The front is open for the army, flanked by the base towers.
  */
-export function precinctModel(team: 0 | 1, len: number, depth: number, gateFar = false, gateNear = false): { lit: G; glow: G } {
+export function precinctModel(team: 0 | 1, len: number, depth: number, gateFar = false, gateNear = false, back = 0): { lit: G; glow: G } {
   const t = TEAM[team], lit: G[] = [], glow: G[] = [], h = 1.1, th = 0.5, m = 0.9; // m = margin outside the ground
   const run = (x0: number, x1: number, z: number) => {
     lit.push(box(x1 - x0, h, th, PAL.stone, (x0 + x1) / 2, h / 2, z), box(x1 - x0 + 0.1, 0.14, th + 0.2, PAL.stoneHi, (x0 + x1) / 2, h + 0.07, z));
@@ -264,14 +288,13 @@ export function precinctModel(team: 0 | 1, len: number, depth: number, gateFar =
   };
   // a side that faces another lane's ground has a gate in the middle for the gravekeepers
   const side = (z: number, gate: boolean) => {
-    if (!gate) return run(-m, len + 0.5, z);
+    if (!gate) return run(-back, len + 0.5, z);
     const g0 = len / 2 - 3.2, g1 = len / 2 + 3.2;
-    run(-m, g0, z); run(g1, len + 0.5, z);
+    run(-back, g0, z); run(g1, len + 0.5, z);
     for (const x of [g0, g1]) { lit.push(box(0.9, 2.6, 0.9, PAL.stoneLo, x, 1.3, z), spire(0.45, 0.9, PAL.roof, x, 2.6, z)); glow.push(ball(0.16, PAL.candle, x, 2.2, z + (z < 0 ? -0.5 : 0.5), 0)); }
   };
   side(-m, gateFar); side(depth + m, gateNear);
-  lit.push(box(th, h, depth + m * 2, PAL.stone, -m, h / 2, depth / 2), box(th + 0.2, 0.14, depth + m * 2 + 0.1, PAL.stoneHi, -m, h + 0.07, depth / 2));
-  for (const [x, z] of [[-m, -m], [-m, depth + m], [len + 0.5, -m], [len + 0.5, depth + m]] as const) { // corner piers with braziers
+  for (const [x, z] of [[len + 0.5, -m], [len + 0.5, depth + m]] as const) { // corner piers with braziers
     lit.push(box(1.1, 2.4, 1.1, PAL.stoneLo, x, 1.2, z), box(1.3, 0.2, 1.3, PAL.stoneHi, x, 2.5, z), cyl(0.5, 0.3, 0.3, 6, PAL.ink, x, 2.75, z));
     glow.push(ball(0.3, PAL.flame, x, 3.0, z, 0));
   }

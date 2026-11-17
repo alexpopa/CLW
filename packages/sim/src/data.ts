@@ -69,87 +69,87 @@ export const UNITS: Record<string, UnitDef> = {
   zealot: U({ id: "zealot", name: "Pyre Zealot", tier: 1, role: "front", free: true,
     blurb: "Swings a burning censer that scorches every foe nearby. Weak against armor.",
     ability: "Immolate: foes it scorches keep burning for 2 damage a second, through any armor.",
-    cost: 145, hp: 110, damage: 5, interval: sec(0.5), range: 3 * UNIT, splash: 2500, dot: { dmg: 2, ticks: sec(2) } }),
+    cost: 150, hp: 110, damage: 5, interval: sec(0.5), range: 3 * UNIT, splash: 2500, dot: { dmg: 2, ticks: sec(2) } }),
   hound: U({ id: "hound", name: "Grave Hounds", tier: 1, role: "front",
     blurb: "A pair of starved hounds. Fast and frail: they run down archers and war engines.",
     ability: "Pack: each kennel looses two hounds every wave.",
-    cost: 145, hp: 112, damage: 8, interval: sec(0.6), range: 1200, speed: 420, count: 2 }),
+    cost: 135, hp: 112, damage: 8, interval: sec(0.6), range: 1200, speed: 420, count: 2 }),
   flagellant: U({ id: "flagellant", name: "Flagellant", tier: 1, role: "front",
     blurb: "Unarmored penitent with a barbed scourge. Hits hard and dies fast.",
     ability: "Frenzy: strikes faster the more it bleeds, up to twice as fast near death.",
     cost: 170, hp: 215, damage: 16, interval: sec(1), range: 1500, speed: 320, frenzy: 50 }),
   hexbinder: U({ id: "hexbinder", name: "Hexbinder", tier: 1, role: "ranged",
     blurb: "Hedge witch who flings curses. Little damage, but her victims crawl.",
-    ability: "Leaden Curse: foes she hits move and attack 40% slower for 2 seconds. Can curse flying foes.",
-    cost: 170, hp: 120, damage: 12, interval: sec(1.2), range: 7 * UNIT, air: true, slow: { pct: 40, ticks: sec(2) } }),
+    ability: "Leaden Curse: foes she hits move and attack 45% slower for 2 seconds. Can curse flying foes.",
+    cost: 180, hp: 120, damage: 12, interval: sec(1.2), range: 7 * UNIT, air: true, slow: { pct: 45, ticks: sec(2) } }),
 
   // ---------- Tier II ----------
   doctor: U({ id: "doctor", name: "Plague Doctor", tier: 2, role: "support",
     blurb: "Follows the line and keeps it standing. Does not fight.",
     ability: "Mend: restores 16 health a second to the nearest wounded ally, on foot or on the wing.",
-    cost: 150, hp: 125, damage: 0, heal: 16, interval: sec(1), range: 5 * UNIT }),
+    cost: 120, hp: 125, damage: 0, heal: 16, interval: sec(1), range: 5 * UNIT }),
   dreadknight: U({ id: "dreadknight", name: "Dreadknight", tier: 2, role: "front",
     blurb: "Heavy armored lancer. Fast, hard to kill, and terrible on the charge.",
     ability: "Lance Charge: its first strike against each new foe deals triple damage.",
-    cost: 350, hp: 350, armor: 2, damage: 20, interval: sec(1), range: 2500, speed: 340, charge: 300}),
+    cost: 365, hp: 350, armor: 2, damage: 20, interval: sec(1), range: 2500, speed: 340, charge: 300}),
   gargoyle: U({ id: "gargoyle", name: "Gargoyle", tier: 2, role: "ranged",
     blurb: "Stone-skinned flyer that drops on its prey. Swords and lances cannot reach it.",
     ability: "Flight: only foes that can strike the air may harm it. Claws flyers and walkers alike.",
-    cost: 310, hp: 270, armor: 1, damage: 17, interval: sec(1), range: 1500, speed: 320, flying: true, air: true }),
+    cost: 315, hp: 270, armor: 1, damage: 17, interval: sec(1), range: 1500, speed: 320, flying: true, air: true }),
   witchhunter: U({ id: "witchhunter", name: "Witch Hunter", tier: 2, role: "ranged",
     blurb: "Marksman with silvered shot and a hooded lantern. The answer to wings and shadows.",
-    ability: "Silver Shot: two and a half times its damage to flying foes. Lantern: reveals veiled foes within 9.",
-    cost: 310, hp: 160, damage: 26, interval: sec(1.5), range: 8 * UNIT, air: true, bonus: { flying: 150 }, reveal: 9 * UNIT }),
+    ability: "Silver Shot: two and a half times its damage to flying foes. Lantern: reveals veiled foes within 11.",
+    cost: 310, hp: 160, damage: 26, interval: sec(1.5), range: 8 * UNIT, air: true, bonus: { flying: 150 }, reveal: 11 * UNIT }),
   penitent: U({ id: "penitent", name: "Iron Penitent", tier: 2, role: "front",
     blurb: "Giant sealed in a riveted cage, swinging a great maul. Slow and nearly unbreakable.",
     ability: "Sunder: every blow strips 1 armor from its victim, up to 4.",
-    cost: 360, hp: 480, armor: 2, damage: 23, interval: sec(1.2), range: 1500, speed: 280, sunder: 4 }),
+    cost: 405, hp: 480, armor: 2, damage: 23, interval: sec(1.2), range: 1500, speed: 280, sunder: 4 }),
   necromancer: U({ id: "necromancer", name: "Necromancer", tier: 2, role: "ranged",
     blurb: "Casts withering bolts from the rear and makes soldiers of the fallen.",
     ability: "Raise Dead: when anyone on foot dies within 10, a Skeleton rises to fight for the Necromancer (once every 3 seconds).",
-    cost: 470, hp: 165, damage: 16, interval: sec(1.2), range: 7 * UNIT, air: true, raise: { unit: "skeleton", radius: 10 * UNIT, cooldown: sec(3) } }),
+    cost: 445, hp: 165, damage: 16, interval: sec(1.2), range: 7 * UNIT, air: true, raise: { unit: "skeleton", radius: 10 * UNIT, cooldown: sec(3) } }),
   trebuchet: U({ id: "trebuchet", name: "Trebuchet", tier: 2, role: "siege",
     blurb: "Hurls stones a very long way, crushing whole clusters and breaking walls. Helpless up close.",
     ability: "Siege Stones: half again as much damage to towers and the cathedral, from beyond their reach. Cannot hit foes nearer than 4 or in the air.",
-    cost: 480, hp: 180, armor: 1, damage: 32, interval: sec(3), range: 13 * UNIT, splash: 2200, speed: 220, minRange: 4 * UNIT, bonus: { structure: 50 } }),
+    cost: 470, hp: 180, armor: 1, damage: 32, interval: sec(3), range: 13 * UNIT, splash: 2200, speed: 220, minRange: 4 * UNIT, bonus: { structure: 50 } }),
   shade: U({ id: "shade", name: "Shade", tier: 2, role: "front",
     blurb: "A murderer's ghost with twin sickles. Slips past the line to gut whoever stands behind it.",
     ability: "Veil: cannot be targeted from farther than 2 unless revealed. Ghost Blades: ignore armor.",
-    cost: 485, hp: 265, damage: 33, interval: sec(0.8), range: 1500, speed: 360, veil: 2 * UNIT, pierce: true }),
+    cost: 515, hp: 265, damage: 33, interval: sec(0.8), range: 1500, speed: 360, veil: 2 * UNIT, pierce: true }),
 
   // ---------- Tier III ----------
   colossus: U({ id: "colossus", name: "Bone Colossus", tier: 3, role: "front",
     blurb: "A walking ossuary. Its scything arms mow down whole ranks.",
     ability: "Cleave: hits every foe around its target. Ossuary: collapses into four Skeletons when slain.",
-    cost: 905, hp: 900, armor: 2, damage: 30, interval: sec(1.5), range: 2500, splash: 2000, speed: 240, spawnOnDeath: { unit: "skeleton", count: 4 } }),
+    cost: 955, hp: 900, armor: 2, damage: 30, interval: sec(1.5), range: 2500, splash: 2000, speed: 240, spawnOnDeath: { unit: "skeleton", count: 4 } }),
   wyrm: U({ id: "wyrm", name: "Ash Wyrm", tier: 3, role: "ranged",
     blurb: "Great winged serpent that bathes one victim in fire until nothing is left.",
     ability: "Searing Breath: +25% damage for each consecutive hit on the same foe, up to +200%. Flies.",
-    cost: 1080, hp: 700, armor: 1, damage: 12, interval: sec(0.5), range: 5 * UNIT, speed: 300, flying: true, air: true, ramp: { pct: 25, max: 8 } }),
+    cost: 1140, hp: 700, armor: 1, damage: 12, interval: sec(0.5), range: 5 * UNIT, speed: 300, flying: true, air: true, ramp: { pct: 25, max: 8 } }),
   cantor: U({ id: "cantor", name: "Tempest Cantor", tier: 3, role: "ranged",
     blurb: "Her hymn calls down lightning that leaps from soldier to soldier.",
     ability: "Chain Lightning: each strike leaps to 4 more foes within 4, losing a quarter of its force per leap. Strikes the air too.",
-    cost: 730, hp: 200, damage: 33, interval: sec(1.5), range: 8 * UNIT, air: true, chain: { jumps: 4, radius: 4 * UNIT, falloff: 25 } }),
+    cost: 725, hp: 200, damage: 33, interval: sec(1.5), range: 8 * UNIT, air: true, chain: { jumps: 4, radius: 4 * UNIT, falloff: 25 } }),
   reliquary: U({ id: "reliquary", name: "Reliquary", tier: 3, role: "support",
     blurb: "A saint's bones borne in a gilded ark. Those who march beside it do not fall easily.",
     ability: "Sanctuary: allies within 7 gain 3 armor and regain 15 health a second. Does not fight.",
-    cost: 300, hp: 520, armor: 2, damage: 0, interval: sec(1), range: 5 * UNIT, speed: 280, aura: { radius: 7 * UNIT, armor: 3, regen: 15 } }),
+    cost: 260, hp: 520, armor: 2, damage: 0, interval: sec(1), range: 5 * UNIT, speed: 280, aura: { radius: 7 * UNIT, armor: 3, regen: 15 } }),
   countess: U({ id: "countess", name: "Crimson Countess", tier: 3, role: "front",
     blurb: "Vampire duelist. Every wound she deals closes one of her own.",
-    ability: "Blood Feast: heals herself for half of the damage she deals.",
-    cost: 990, hp: 800, armor: 1, damage: 42, interval: sec(0.8), range: 1500, speed: 340, leech: 50}),
+    ability: "Blood Feast: her heavy blade heals her for two fifths of the damage it deals.",
+    cost: 950, hp: 800, armor: 1, damage: 75, interval: sec(1.5), range: 1500, speed: 340, leech: 40 }),
   ballista: U({ id: "ballista", name: "Impaler", tier: 3, role: "siege",
     blurb: "A great ballista whose iron stake runs through everything in its path, in the lane or above it.",
     ability: "Impale: skewers every foe in a line 14 long. Two and a half times its damage to flying foes.",
-    cost: 685, hp: 210, armor: 1, damage: 42, interval: sec(2.5), range: 12 * UNIT, speed: 240, air: true, line: { length: 14 * UNIT, width: 900 }, bonus: { flying: 150 } }),
+    cost: 615, hp: 210, armor: 1, damage: 42, interval: sec(2.5), range: 12 * UNIT, speed: 240, air: true, line: { length: 14 * UNIT, width: 900 }, bonus: { flying: 150 } }),
   lich: U({ id: "lich", name: "Pale Lich", tier: 3, role: "ranged",
     blurb: "Dead sorcerer-king. His grave-frost bursts among the enemy and freezes them where they stand.",
     ability: "Grave Frost: bursts in an area, ignores armor, and slows everyone caught by 40% for 3 seconds.",
-    cost: 720, hp: 200, damage: 18, interval: sec(1.5), range: 8 * UNIT, splash: 2200, air: true, pierce: true, slow: { pct: 40, ticks: sec(3) } }),
+    cost: 745, hp: 200, damage: 18, interval: sec(1.5), range: 8 * UNIT, splash: 2200, air: true, pierce: true, slow: { pct: 40, ticks: sec(3) } }),
   headsman: U({ id: "headsman", name: "Headsman", tier: 3, role: "front",
     blurb: "The executioner. The greater the foe, the deeper the axe bites.",
     ability: "Execute: every blow deals bonus damage equal to 10% of its victim's full health.",
-    cost: 785, hp: 850, armor: 2, damage: 44, interval: sec(1.4), range: 1800, maim: 10}),
+    cost: 815, hp: 850, armor: 2, damage: 44, interval: sec(1.4), range: 1800, maim: 10}),
 
   // ---------- Tier IV: raised by the Undertaker only ----------
   titan: U({ id: "titan", name: "Belfry Titan", tier: 4, role: "front",
@@ -209,8 +209,8 @@ export const MERC_ORDER = ["gallowglass", "marksman", "fireeater", "ogre"] as co
 export const MAX_TIER = 4;
 /** Each player has two gravekeepers who do the building. Slot 0 is the Sexton, slot 1 the Undertaker. */
 export const KEEPERS = [
-  { id: "sexton", name: "Sexton", blurb: "Gravedigger of the parish. Raises chantries of the first three tiers, and can step through the grave to any ground his side holds.", maxTier: 3, mercs: false, teleport: true },
-  { id: "undertaker", name: "Undertaker", blurb: "Keeps the ledger of the dead. Raises chantries of every tier, the fourth included, and hires mercenaries.", maxTier: 4, mercs: true, teleport: false },
+  { id: "sexton", name: "Sexton", blurb: "Gravedigger of the parish. Raises chantries of the first three tiers, and can step through the grave to any ground his side holds.", minTier: 1, maxTier: 3, mercs: false, teleport: true },
+  { id: "undertaker", name: "Undertaker", blurb: "Keeps the ledger of the dead. Raises the great chantries of the fourth tier, which the Sexton cannot, and hires mercenaries.", minTier: 4, maxTier: 4, mercs: true, teleport: false },
 ] as const;
 export const unitsOfTier = (tier: number): string[] => UNIT_ORDER.filter(id => UNITS[id]!.tier === tier);
 
@@ -219,8 +219,8 @@ export const MAP = {
   laneLength: 480 * UNIT,
   cell: 1 * UNIT,            // placement grid step (not drawn); buildings snap to it
   footprint: 2,              // a building covers footprint x footprint cells, so neighbours can be staggered
-  zoneCols: 24, zoneRows: 24, // laneWidth = zoneRows * cell; room for 144 buildings
-  zoneStart: 20 * UNIT,      // distance from the team's own lane end to the rear of its zone
+  zoneCols: 36, zoneRows: 24, // laneWidth = zoneRows * cell; room for 216 buildings
+  zoneStart: 16 * UNIT,      // distance from the team's own lane end to the rear of its zone: the ground begins at the cathedral steps
   hqOffset: 8 * UNIT,        // HQ centre distance from the lane end
   hqRadius: 4 * UNIT,
   beaconX: [120 * UNIT, 240 * UNIT, 360 * UNIT], // 25% / 50% / 75%; first and last are the home shrines
@@ -263,10 +263,13 @@ export const RULES = {
   keeperSpeed: 450,               // gravekeepers walk at this many milli-units per tick
   keeperReach: 2500,              // a keeper raises a chantry once this close to its centre; the chantry stands at once
   keeperQueue: 8,                 // build orders one keeper can have waiting
-  teleportCooldownTicks: sec(8),  // the Sexton's rest between two teleports
   mercCooldownTicks: sec(6),      // pause between two hirings
   mercApproachPad: 40,           // step inside attack range so a hired band can clear foes and reach midfield
   mercAhead: 3 * UNIT,            // mercenaries appear this far in front of the base towers
+  // The Storm of Wrath: any player who has opened `stormTier` may call it. For `stormTicks` lightning strikes every enemy
+  // soldier on the whole board (every lane, ground and air; not towers) for `stormDamage` each `stormInterval`, through armor.
+  // Storms stack: two at once strike twice as hard.
+  stormTier: 3, stormCost: 500, stormCooldownTicks: sec(150), stormTicks: sec(10), stormInterval: sec(1), stormDamage: 9,
   sellRefundFreshPct: 75,         // before the building's first wave
   sellRefundUsedPct: 25,          // after it has produced
   acquireRange: 9 * UNIT,         // units notice enemies at max(this, weapon range + acquirePad)
@@ -307,6 +310,8 @@ export const AI = {
   buildingsPer2Research: 3,       // ...and this many more for every two researches after that
   antiAirShare: 3,                // when the enemy fields flyers, at least 1 building in this many must be able to hit them
   mercReserve: 200,               // when threatened it hires mercenaries only with this much gold to spare
+  stormMinFoes: 16,               // calls the storm once this many enemy soldiers are on the board...
+  stormReserve: 250,              // ...and it has this much gold to spare
   investBuildingsPerLevel: 3,     // needs this many buildings per investment level before investing again
   investMinBeacons: 2,
 };

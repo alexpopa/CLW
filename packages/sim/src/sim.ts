@@ -75,6 +75,11 @@ export function researchOffer(p: PlayerState, unit?: string): { tier: number; un
   return study && tier <= p.tier ? { tier, unit, ...study } : null;
 }
 
+/** Why this player may not call the Storm of Wrath right now, or null if he may. */
+export function stormBlock(s: GameState, p: PlayerState): "tier" | "resting" | "gold" | null {
+  return p.tier < RULES.stormTier ? "tier" : s.tick < p.stormReady ? "resting" : p.credits < RULES.stormCost ? "gold" : null;
+}
+
 /** Create a unit at full health and add it to the lane. */
 export function addUnit(s: GameState, type: string, owner: PlayerId, team: TeamId, lane: number, x: number, y: number): UnitState {
   const def = UNITS[type]!;
@@ -95,17 +100,17 @@ export function createGame(cfg: GameConfig): GameState {
     tick: 0, rngState: cfg.seed >>> 0, nextId: 1, teamSize: n, laneCount,
     players: Array.from({ length: n * 2 }, (_, i) => ({
       id: i, team: (i < n ? 0 : 1) as TeamId, lane: (i % n) % laneCount,
-      credits: RULES.startCredits, tier: 1, unlocked: UNIT_ORDER.filter(id => UNITS[id]!.free), research: null, mercReady: 0,
+      credits: RULES.startCredits, tier: 1, unlocked: UNIT_ORDER.filter(id => UNITS[id]!.free), research: null, mercReady: 0, stormReady: 0,
       invest: Array.from({ length: laneCount }, () => 0),
       isAI: cfg.aiSlots?.includes(i) ?? false,
     })),
     teams: [{ hqHp: RULES.hqHp * laneCount, hqCooldown: 0 }, { hqHp: RULES.hqHp * laneCount, hqCooldown: 0 }],
-    beacons: [], buildings: [], keepers: [], units: [], events: [], winner: null,
+    beacons: [], buildings: [], keepers: [], storms: [], units: [], events: [], winner: null,
   };
   // Two gravekeepers per player wait near the rear of their own building ground.
   for (const p of s.players) for (const slot of [0, 1] as const) {
     const at = keeperGround(p.team, p.team === 0 ? MAP.zoneStart + 4 * MAP.cell : MAP.laneLength - MAP.zoneStart - 4 * MAP.cell, LANE_WIDTH / 2 + (slot ? 3 : -3) * MAP.cell);
-    s.keepers.push({ owner: p.id, team: p.team, slot, lane: p.lane, ...at, tlane: p.lane, tx: at.x, ty: at.y, jobs: [], teleReady: 0 });
+    s.keepers.push({ owner: p.id, team: p.team, slot, lane: p.lane, ...at, tlane: p.lane, tx: at.x, ty: at.y, jobs: [] });
   }
   const lastB = MAP.beaconX.length - 1;
   for (let lane = 0; lane < laneCount; lane++) {
@@ -135,6 +140,7 @@ export function parseCommand(raw: unknown): Command | null {
   if (r.type === "move") return keeper !== null && int(r.x) && int(r.y) ? { type: "move", keeper, x: r.x, y: r.y, ...lane } : null;
   if (r.type === "teleport") return keeper !== null && int(r.x) && int(r.y) ? { type: "teleport", keeper, x: r.x, y: r.y, ...lane } : null;
   if (r.type === "hire") return typeof r.unit === "string" && Object.hasOwn(UNITS, r.unit) ? { type: "hire", unit: r.unit } : null;
+  if (r.type === "storm") return { type: "storm" };
   if (r.type === "sell") return int(r.buildingId) ? { type: "sell", buildingId: r.buildingId } : null;
   if (r.type === "invest") return { type: "invest", ...lane };
   if (r.type === "research") {
@@ -151,7 +157,7 @@ function applyCommand(s: GameState, player: PlayerId, c: Command): void {
     const lane = c.lane ?? me.lane, k = keeperOf(s, player, c.keeper);
     if (!k || k.jobs.length >= RULES.keeperQueue || !isBuildable(c.unit) || !isUnlocked(me, c.unit)) return;
     const def = UNITS[c.unit]!;
-    if (def.tier > KEEPERS[k.slot].maxTier || me.credits < def.cost) return;
+    if (def.tier < KEEPERS[k.slot].minTier || def.tier > KEEPERS[k.slot].maxTier || me.credits < def.cost) return;
     if (!Number.isInteger(lane) || lane < 0 || lane >= s.laneCount) return;
     if (!canPlan(s, me.team, lane, c.col, c.row)) return;
     me.credits -= def.cost; // paid on the order, handed back if the chantry cannot be raised
@@ -165,13 +171,12 @@ function applyCommand(s: GameState, player: PlayerId, c: Command): void {
     k.tlane = lane; k.tx = at.x; k.ty = at.y;
   } else if (c.type === "teleport") {
     const lane = c.lane ?? me.lane, k = keeperOf(s, player, c.keeper);
-    if (!k || !KEEPERS[k.slot].teleport || s.tick < k.teleReady || !Number.isInteger(lane) || lane < 0 || lane >= s.laneCount) return;
+    if (!k || !KEEPERS[k.slot].teleport || !Number.isInteger(lane) || lane < 0 || lane >= s.laneCount) return;
     for (const j of k.jobs) me.credits += UNITS[j.unit]!.cost;
     k.jobs = [];
     const at = keeperGround(k.team, c.x, c.y);
     s.events.push({ t: "teleport", player, slot: k.slot, fromLane: k.lane, fromX: k.x, fromY: k.y, lane, ...at });
     k.lane = k.tlane = lane; k.x = k.tx = at.x; k.y = k.ty = at.y;
-    k.teleReady = s.tick + RULES.teleportCooldownTicks;
   } else if (c.type === "hire") {
     if (!isMerc(c.unit) || s.tick < me.mercReady) return;
     const def = UNITS[c.unit]!, k = s.keepers.find(q => q.owner === player && KEEPERS[q.slot].mercs);
@@ -182,6 +187,11 @@ function applyCommand(s: GameState, player: PlayerId, c: Command): void {
     for (let i = 0; i < n; i++)
       addUnit(s, def.id, player, me.team, k.lane, me.team === 0 ? local : MAP.laneLength - local, LANE_WIDTH / 2 + Math.trunc((i - (n - 1) / 2) * 2 * MAP.cell));
     s.events.push({ t: "hired", player, unit: def.id });
+  } else if (c.type === "storm") {
+    if (stormBlock(s, me)) return;
+    me.credits -= RULES.stormCost; me.stormReady = s.tick + RULES.stormCooldownTicks;
+    s.storms.push({ owner: player, team: me.team, from: s.tick, until: s.tick + RULES.stormTicks });
+    s.events.push({ t: "storm", player, team: me.team });
   } else if (c.type === "sell") {
     const i = s.buildings.findIndex(b => b.id === c.buildingId && b.owner === player);
     if (i < 0) return;
@@ -313,6 +323,15 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
     }
   };
 
+  // Storms of Wrath: each one strikes every enemy soldier on the board, the same for all, once per interval.
+  s.storms = s.storms.filter(st => s.tick <= st.until);
+  for (const st of s.storms) {
+    if (s.tick === st.from || (s.tick - st.from) % RULES.stormInterval !== 0) continue;
+    let struck = 0;
+    for (const u of s.units) if (u.team !== st.team && !isStructure(u)) { change(u, -RULES.stormDamage); struck++; }
+    s.events.push({ t: "bolt", team: st.team, struck });
+  }
+
   for (const u of s.units) {
     const def = UNITS[u.type]!;
     const dir = u.team === 0 ? 1 : -1;
@@ -360,7 +379,10 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
     const moveToward = (tx: number, ty: number, d: number, want: number) => {
       const m = Math.min(speed, want + (def.merc ? RULES.mercApproachPad : 0));
       if (d <= 0 || m <= 0) return;
-      moves.push([u, Math.trunc(((tx - u.x) * m) / d), Math.trunc(((ty - u.y) * m) / d)]);
+      let mx = Math.trunc(((tx - u.x) * m) / d), my = Math.trunc(((ty - u.y) * m) / d);
+      // A last step shorter than one milli-unit each way would round to nothing and leave it a hair out of reach for ever: close along the longer axis instead.
+      if (mx === 0 && my === 0) { if (Math.abs(tx - u.x) >= Math.abs(ty - u.y)) mx = Math.sign(tx - u.x) * m; else my = Math.sign(ty - u.y) * m; }
+      moves.push([u, mx, my]);
     };
     const advance = () => { moves.push([u, dir * speed, 0]); };
 

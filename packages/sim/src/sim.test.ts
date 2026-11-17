@@ -264,24 +264,24 @@ describe("sim", () => {
     expect(s.teams[0].hqHp).toBe(3 * RULES.hqHp);
     expect(s.units.filter(u => u.type === "tower").length).toBe(24);
     const sexton = s.keepers.find(k => k.owner === 0 && k.slot === 0)!, undertaker = s.keepers.find(k => k.owner === 0 && k.slot === 1)!;
-    // build in an ally's lane: the Undertaker has to walk across the middle lane to get there
-    step(s, [{ player: 0, cmd: { type: "build", keeper: 1, unit: "arbalester", col: 10, row: 10, lane: 2 } },
+    // build in an ally's lane: without his teleport the Sexton has to walk across the middle lane to get there
+    step(s, [{ player: 0, cmd: { type: "build", keeper: 0, unit: "arbalester", col: 10, row: 10, lane: 2 } },
+      { player: 0, cmd: { type: "build", keeper: 1, unit: "arbalester", col: 14, row: 10, lane: 2 } }, // the Undertaker raises tier IV only
       { player: 0, cmd: { type: "teleport", keeper: 1, x: 30000, y: 12000, lane: 2 } }]); // only the Sexton can
     expect(undertaker.lane).toBe(0);
     let walked = 0;
     while (!s.buildings.some(b => b.owner === 0)) { step(s); walked++; }
     expect(s.buildings.find(b => b.owner === 0)).toMatchObject({ lane: 2, col: 10, row: 10, team: 0 });
-    expect(undertaker.lane).toBe(2);
+    expect([sexton.lane, undertaker.lane, undertaker.jobs.length]).toEqual([2, 0, 0]);
     expect(walked).toBeGreaterThan(3 * TICK_RATE);
-    // the Sexton is there at once, wherever he is sent on his side's ground, and then has to rest
+    // the Sexton is there at once, wherever he is sent on his side's ground, as often as he is sent
     step(s, [{ player: 0, cmd: { type: "teleport", keeper: 0, x: 400000, y: 5000, lane: 1 } }]);
     expect([sexton.lane, sexton.x, sexton.y]).toEqual([1, MAP.zoneStart + MAP.zoneCols * MAP.cell, 5000]); // clamped to his own ground
     expect(s.events.some(e => e.t === "teleport")).toBe(true);
     step(s, [{ player: 0, cmd: { type: "teleport", keeper: 0, x: 30000, y: 5000, lane: 0 } }]);
-    expect(sexton.lane).toBe(1);
-    ticks(s, RULES.teleportCooldownTicks);
-    step(s, [{ player: 0, cmd: { type: "teleport", keeper: 0, x: 30000, y: 5000, lane: 0 } }]);
     expect(sexton.lane).toBe(0);
+    step(s, [{ player: 0, cmd: { type: "teleport", keeper: 0, x: 30000, y: 5000, lane: 2 } }]);
+    expect(sexton.lane).toBe(2);
     // the chantry in the ally's lane musters there
     ticks(s, RULES.waveIntervalTicks);
     expect(s.units.some(u => u.type === "arbalester" && u.owner === 0 && u.lane === 2)).toBe(true);
@@ -327,5 +327,47 @@ describe("sim", () => {
       topTier = Math.max(topTier, ...s.players.map(p => p.tier));
     }
     expect(topTier).toBe(3);
+  });
+  it("the Storm of Wrath strikes every enemy soldier on every lane alike, needs tier III, gold and rest, and stacks", () => {
+    const s = createGame({ teamSize: 2, seed: 1 });
+    const storm = (player: number) => step(s, [{ player, cmd: { type: "storm" } }]);
+    const p = s.players[0]!;
+    p.credits = 5000;
+    storm(0);
+    expect(s.storms.length).toBe(0);                       // tier I: the sky stays quiet
+    for (const q of s.players) q.tier = 3;
+    const foes = [addUnit(s, "colossus", 2, 1, 0, 400000, 12000), addUnit(s, "wyrm", 3, 1, 1, 300000, 5000)]; // ground in one lane, wings in the other
+    const mine = addUnit(s, "colossus", 0, 0, 0, 30000, 12000), tower = addUnit(s, "tower", 2, 1, 0, 460000, 3000);
+    storm(0); storm(0);                                    // the second call finds him resting
+    expect([s.storms.length, p.credits]).toEqual([1, 5000 - RULES.stormCost]);
+    ticks(s, RULES.stormTicks + 5);
+    const strikes = RULES.stormTicks / RULES.stormInterval;
+    for (const u of foes) expect(u.hp).toBe(UNITS[u.type]!.hp - strikes * RULES.stormDamage); // armor does not help
+    expect([mine.hp, tower.hp]).toEqual([UNITS.colossus!.hp, UNITS.tower!.hp]);
+    expect(s.storms.length).toBe(0);
+    s.players[1]!.credits = 5000; p.stormReady = 0;         // two allies at once: twice the wrath
+    const before = foes[0]!.hp;
+    step(s, [{ player: 0, cmd: { type: "storm" } }, { player: 1, cmd: { type: "storm" } }]);
+    ticks(s, RULES.stormTicks + 5);
+    expect(foes[0]!.hp).toBe(before - 2 * strikes * RULES.stormDamage);
+    expect(parseCommand({ type: "storm", junk: 1 })).toEqual({ type: "storm" });
+  });
+  it("a player may raise the tithe on an ally's lane: it lifts his own income from that lane's shrines and nobody else's", () => {
+    const s = createGame({ teamSize: 2, seed: 1 });
+    const before = [0, 1, 2].map(p => incomeOf(s, p));
+    s.players[0]!.credits = 1000;
+    step(s, [{ player: 0, cmd: { type: "invest", lane: 1 } }, { player: 0, cmd: { type: "invest", lane: 2 } }]); // lane 1 is his ally's; there is no lane 2
+    expect(s.players[0]!.invest).toEqual([0, 1]);
+    expect(s.players[0]!.credits).toBe(1000 - INVEST_TIERS[0]!.cost);
+    expect([0, 1, 2].map(p => incomeOf(s, p))).toEqual([before[0]! + INVEST_TIERS[0]!.bonus, before[1], before[2]]); // one home shrine held in lane 1
+  });
+
+  it("a soldier a hair out of reach closes the gap instead of standing there", () => {
+    const s = createGame({ teamSize: 1, seed: 1 });
+    const a = spawn(s, "oathguard", 0, 133279, 12401), b = spawn(s, "arbalester", 1, 134567, 13172); // 1501 apart: one past the Oathguard's reach
+    b.cooldown = 1e9;
+    ticks(s, 3 * TICK_RATE);
+    expect(b.hp).toBeLessThan(UNITS.arbalester!.hp);
+    expect(a.hp).toBe(UNITS.oathguard!.hp);
   });
 });

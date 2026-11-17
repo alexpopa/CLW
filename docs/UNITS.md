@@ -33,10 +33,10 @@ Chantries are raised by the player's two gravekeepers, who walk the building gro
 
 | Key | Keeper | Raises | Also |
 |---|---|---|---|
-| 1 | **Sexton** | Tiers I, II, III | Teleports (T): at once to any ground of his side, in any lane; 8 s rest; cancels and refunds his queue |
-| 2 | **Undertaker** | Tiers I, II, III and IV | Hires mercenaries |
+| 1 | **Sexton** | Tiers I, II, III | Teleports (T): at once to any ground of his side, in any lane, as often as wanted; cancels and refunds his queue |
+| 2 | **Undertaker** | Tier IV only | Hires mercenaries (six seconds between bands) |
 
-Select a keeper (1 or 2, or click him), pick a card, click the ground. Gold is paid on the order; he walks there (9 lane units a second) and the chantry stands at once. Up to eight orders queue per keeper. A move order (right-click, or left-click with no unit chosen) cancels his queue and refunds it. The build menu is only shown while a keeper is selected, and tier IV and the mercenaries only appear in the Undertaker's menu. Card keys are 3 4 5 6 7 8 9 0.
+Select a keeper (1 or 2, or click him), pick a card, click the ground. Gold is paid on the order; he walks there (9 lane units a second) and the chantry stands at once. Up to eight orders queue per keeper. A move order (right-click, or left-click with no unit chosen) cancels his queue and refunds it. The build menu is only shown while a keeper is selected, and each keeper shows only his own tabs: tiers I to III for the Sexton, tier IV and the mercenaries for the Undertaker. Cards sit in two staggered rows like their keys: Q W E R above, A S D F below. Z X C switch tab.
 
 Keepers work across lanes: every order carries a lane, and a keeper may stand on any lane of his own team's ground. In 2v2 and 3v3 a player can therefore build in an ally's lane (the chantry is his, and musters into that lane). The Undertaker walks there through the gates between building grounds; the Sexton teleports. Mercenaries appear in whichever lane the Undertaker is standing in.
 
@@ -52,10 +52,10 @@ Each study costs 90 gold and takes 12 s; the first three units are known from th
 |---|---|---:|---:|---:|---|---:|---:|---|---|
 | 3 | **Arbalester** (known) | 140 | 80 | 0 | 11 every 1 s (11/s) | 6 | 6 | yes | Skyward Bolts: can shoot flying foes. |
 | 4 | **Oathguard** (known) | 190 | 280 | 1 | 9 every 1 s (9/s) | 1.5 | 6 | no | Shield Wall: takes 2 less damage from every ranged attack. |
-| 5 | **Pyre Zealot** (known) | 145 | 110 | 0 | 5 every 0.5 s (10/s) | 3 | 6 | no | Immolate: foes it scorches keep burning for 2 damage a second, through any armor. |
-| 6 | **Grave Hounds** (×2) | 145 | 112 | 0 | 8 every 0.6 s (13/s) | 1.2 | 8.4 | no | Pack: each kennel looses two hounds every wave. |
+| 5 | **Pyre Zealot** (known) | 150 | 110 | 0 | 5 every 0.5 s (10/s) | 3 | 6 | no | Immolate: foes it scorches keep burning for 2 damage a second, through any armor. |
+| 6 | **Grave Hounds** (×2) | 135 | 112 | 0 | 8 every 0.6 s (13/s) | 1.2 | 8.4 | no | Pack: each kennel looses two hounds every wave. |
 | 7 | **Flagellant** | 170 | 215 | 0 | 16 every 1 s (16/s) | 1.5 | 6.4 | no | Frenzy: strikes faster the more it bleeds, up to twice as fast near death. |
-| 8 | **Hexbinder** | 170 | 120 | 0 | 12 every 1.2 s (10/s) | 7 | 6 | yes | Leaden Curse: foes she hits move and attack 40% slower for 2 seconds. Can curse flying foes. |
+| 8 | **Hexbinder** | 180 | 120 | 0 | 12 every 1.2 s (10/s) | 7 | 6 | yes | Leaden Curse: foes she hits move and attack 45% slower for 2 seconds. Can curse flying foes. |
 
 ### Tier II
 
@@ -63,14 +63,14 @@ Opened by the Second Rite (400 gold, 30 s). Each study costs 150 gold and takes 
 
 | Key | Unit | Cost | Health | Armor | Attack | Reach | Speed | Hits air | Ability |
 |---|---|---:|---:|---:|---|---:|---:|---|---|
-| 3 | **Plague Doctor** | 150 | 125 | 0 | mends 16/s | 5 | 6 | – | Mend: restores 16 health a second to the nearest wounded ally, on foot or on the wing. |
-| 4 | **Dreadknight** | 350 | 350 | 2 | 20 every 1 s (20/s) | 2.5 | 6.8 | no | Lance Charge: its first strike against each new foe deals triple damage. |
-| 5 | **Gargoyle** (flies) | 310 | 270 | 1 | 17 every 1 s (17/s) | 1.5 | 6.4 | yes | Flight: only foes that can strike the air may harm it. Claws flyers and walkers alike. |
-| 6 | **Witch Hunter** | 310 | 160 | 0 | 26 every 1.5 s (17/s) | 8 | 6 | yes | Silver Shot: two and a half times its damage to flying foes. Lantern: reveals veiled foes within 9. |
-| 7 | **Iron Penitent** | 360 | 480 | 2 | 23 every 1.2 s (19/s) | 1.5 | 5.6 | no | Sunder: every blow strips 1 armor from its victim, up to 4. |
-| 8 | **Necromancer** | 470 | 165 | 0 | 16 every 1.2 s (13/s) | 7 | 6 | yes | Raise Dead: when anyone on foot dies within 10, a Skeleton rises to fight for the Necromancer (once every 3 seconds). |
-| 9 | **Trebuchet** | 480 | 180 | 1 | 32 every 3 s (11/s) | 13 | 4.4 | no | Siege Stones: half again as much damage to towers and the cathedral, from beyond their reach. Cannot hit foes nearer than 4 or in the air. |
-| 0 | **Shade** | 485 | 265 | 0 | 33 every 0.8 s (41/s) | 1.5 | 7.2 | no | Veil: cannot be targeted from farther than 2 unless revealed. Ghost Blades: ignore armor. |
+| 3 | **Plague Doctor** | 120 | 125 | 0 | mends 16/s | 5 | 6 | – | Mend: restores 16 health a second to the nearest wounded ally, on foot or on the wing. |
+| 4 | **Dreadknight** | 365 | 350 | 2 | 20 every 1 s (20/s) | 2.5 | 6.8 | no | Lance Charge: its first strike against each new foe deals triple damage. |
+| 5 | **Gargoyle** (flies) | 315 | 270 | 1 | 17 every 1 s (17/s) | 1.5 | 6.4 | yes | Flight: only foes that can strike the air may harm it. Claws flyers and walkers alike. |
+| 6 | **Witch Hunter** | 310 | 160 | 0 | 26 every 1.5 s (17/s) | 8 | 6 | yes | Silver Shot: two and a half times its damage to flying foes. Lantern: reveals veiled foes within 11. |
+| 7 | **Iron Penitent** | 405 | 480 | 2 | 23 every 1.2 s (19/s) | 1.5 | 5.6 | no | Sunder: every blow strips 1 armor from its victim, up to 4. |
+| 8 | **Necromancer** | 445 | 165 | 0 | 16 every 1.2 s (13/s) | 7 | 6 | yes | Raise Dead: when anyone on foot dies within 10, a Skeleton rises to fight for the Necromancer (once every 3 seconds). |
+| 9 | **Trebuchet** | 470 | 180 | 1 | 32 every 3 s (11/s) | 13 | 4.4 | no | Siege Stones: half again as much damage to towers and the cathedral, from beyond their reach. Cannot hit foes nearer than 4 or in the air. |
+| 0 | **Shade** | 515 | 265 | 0 | 33 every 0.8 s (41/s) | 1.5 | 7.2 | no | Veil: cannot be targeted from farther than 2 unless revealed. Ghost Blades: ignore armor. |
 
 ### Tier III
 
@@ -78,14 +78,14 @@ Opened by the Third Rite (800 gold, 45 s). Each study costs 260 gold and takes 2
 
 | Key | Unit | Cost | Health | Armor | Attack | Reach | Speed | Hits air | Ability |
 |---|---|---:|---:|---:|---|---:|---:|---|---|
-| 3 | **Bone Colossus** | 905 | 900 | 2 | 30 every 1.5 s (20/s) | 2.5 | 4.8 | no | Cleave: hits every foe around its target. Ossuary: collapses into four Skeletons when slain. |
-| 4 | **Ash Wyrm** (flies) | 1080 | 700 | 1 | 12 every 0.5 s (24/s) | 5 | 6 | yes | Searing Breath: +25% damage for each consecutive hit on the same foe, up to +200%. Flies. |
-| 5 | **Tempest Cantor** | 730 | 200 | 0 | 33 every 1.5 s (22/s) | 8 | 6 | yes | Chain Lightning: each strike leaps to 4 more foes within 4, losing a quarter of its force per leap. Strikes the air too. |
-| 6 | **Reliquary** | 300 | 520 | 2 | none | 5 | 5.6 | – | Sanctuary: allies within 7 gain 3 armor and regain 15 health a second. Does not fight. |
-| 7 | **Crimson Countess** | 990 | 800 | 1 | 42 every 0.8 s (53/s) | 1.5 | 6.8 | no | Blood Feast: heals herself for half of the damage she deals. |
-| 8 | **Impaler** | 685 | 210 | 1 | 42 every 2.5 s (17/s) | 12 | 4.8 | yes | Impale: skewers every foe in a line 14 long. Two and a half times its damage to flying foes. |
-| 9 | **Pale Lich** | 720 | 200 | 0 | 18 every 1.5 s (12/s) | 8 | 6 | yes | Grave Frost: bursts in an area, ignores armor, and slows everyone caught by 40% for 3 seconds. |
-| 0 | **Headsman** | 785 | 850 | 2 | 44 every 1.4 s (31/s) | 1.8 | 6 | no | Execute: every blow deals bonus damage equal to 10% of its victim's full health. |
+| 3 | **Bone Colossus** | 955 | 900 | 2 | 30 every 1.5 s (20/s) | 2.5 | 4.8 | no | Cleave: hits every foe around its target. Ossuary: collapses into four Skeletons when slain. |
+| 4 | **Ash Wyrm** (flies) | 1140 | 700 | 1 | 12 every 0.5 s (24/s) | 5 | 6 | yes | Searing Breath: +25% damage for each consecutive hit on the same foe, up to +200%. Flies. |
+| 5 | **Tempest Cantor** | 725 | 200 | 0 | 33 every 1.5 s (22/s) | 8 | 6 | yes | Chain Lightning: each strike leaps to 4 more foes within 4, losing a quarter of its force per leap. Strikes the air too. |
+| 6 | **Reliquary** | 260 | 520 | 2 | none | 5 | 5.6 | – | Sanctuary: allies within 7 gain 3 armor and regain 15 health a second. Does not fight. |
+| 7 | **Crimson Countess** | 950 | 800 | 1 | 75 every 1.5 s (50/s) | 1.5 | 6.8 | no | Blood Feast: her heavy blade heals her for two fifths of the damage it deals. |
+| 8 | **Impaler** | 615 | 210 | 1 | 42 every 2.5 s (17/s) | 12 | 4.8 | yes | Impale: skewers every foe in a line 14 long. Two and a half times its damage to flying foes. |
+| 9 | **Pale Lich** | 745 | 200 | 0 | 18 every 1.5 s (12/s) | 8 | 6 | yes | Grave Frost: bursts in an area, ignores armor, and slows everyone caught by 40% for 3 seconds. |
+| 0 | **Headsman** | 815 | 850 | 2 | 44 every 1.4 s (31/s) | 1.8 | 6 | no | Execute: every blow deals bonus damage equal to 10% of its victim's full health. |
 
 ### Tier IV
 
@@ -135,7 +135,7 @@ Every ability is automatic: units use them on their own, and the autopilot uses 
 | Sunder (`sunder`) | Iron Penitent | Each hit permanently removes 1 armor from the target, down to 4 below its normal armor (never below zero). Works on towers. |
 | Ghost Blades, Grave Frost (`pierce`) | Shade, Pale Lich | The attack ignores armor (but not Shield Wall). |
 | Veil (`veil`) | Shade | Cannot be targeted from farther than 2 unless revealed. Area attacks aimed at something else still hurt it. |
-| Lantern (`reveal`) | Witch Hunter | Enemy veiled units within 9 can be targeted by everyone as usual. |
+| Lantern (`reveal`) | Witch Hunter | Enemy veiled units within 11 can be targeted by everyone as usual. |
 | Silver Shot, Impale, Siege Stones (`bonus`) | Witch Hunter, Impaler, Trebuchet | Extra damage against one kind of target: flying units (Witch Hunter, Impaler: two and a half times) or towers and the cathedral (Trebuchet: half again as much, from outside their reach). |
 | Minimum range (`minRange`) | Trebuchet | Cannot attack anything nearer than 4. With enemies inside that distance and nothing else to shoot, it holds still. |
 | Raise Dead (`raise`) | Necromancer | When a unit on foot (not a Skeleton, not a flyer, not a tower) dies within 10 of a Necromancer whose ability is ready, a Skeleton rises for the Necromancer's side. Ready again after 3 s. If several Necromancers could claim a corpse, the nearest does. |
@@ -144,7 +144,7 @@ Every ability is automatic: units use them on their own, and the autopilot uses 
 | Searing Breath (`ramp`) | Ash Wyrm | Each consecutive hit on the same target deals 25% more than the last, up to +200% after eight hits. Changing target resets it. |
 | Chain Lightning (`chain`) | Tempest Cantor | After the target, the bolt leaps to the nearest unstruck enemy within 4, up to four times, losing a quarter of its damage each leap. |
 | Sanctuary (`aura`) | Reliquary | Allies within 7 (not itself, not towers) have 3 more armor and regain 15 health a second. Several Reliquaries do not stack. |
-| Blood Feast (`leech`) | Crimson Countess | Heals herself for half of the damage she deals. |
+| Blood Feast (`leech`) | Crimson Countess | Heals herself for two fifths of the damage she deals. |
 | Impale (`line`) | Impaler | The stake hits every enemy within 0.9 of a line 14 long, starting at the Impaler and passing through its target. |
 | Execute (`maim`) | Headsman | Each hit deals extra damage equal to 10% of the target's full health. Not against towers or the cathedral. |
 | Mend (`heal`) | Plague Doctor | Heals the nearest wounded ally in reach; stays behind the fighting. |
@@ -191,7 +191,7 @@ The harness found and fixed several things that playing by hand would have taken
 
 - **A first-strike bias in the rules.** Units used to move one after another within a tick, so a unit later in the list saw its enemy already stepped into range and fired a tick earlier. In a mirrored fight one side won every time. Movement is now applied after every unit has decided. Three smaller asymmetries (pack spawn positions, burn timing, which Necromancer claims a corpse) were fixed the same way. A mirrored match now stays mirrored to the last tick.
 - **The Trebuchet** was by far the best unit for its gold. Its damage, area and rate of fire were cut and it gained a minimum range; what it keeps is reach beyond a tower's.
-- **Units that stood a hair out of reach.** A unit walking up to a stationary target could stop a fraction of a unit short because of integer rounding, and then never attack. It mostly hurt melee units, and made armies of them look weaker than they are. Units now step slightly inside their reach, and every cost was re-tuned afterwards.
+- **Units that stood a hair out of reach.** A unit walking up to a stationary target could stop a fraction of a unit short because of integer rounding, and then never attack. It mostly hurt melee units, and made armies of them look weaker than they are. The bug came back once when the first fix was simplified away, and was found again by `scripts/stall.ts`, which plays whole autopilot matches and reports any soldier that stands idle for 15 seconds: it found hundreds per match. A last step too short to survive rounding is now taken along the longer axis, a test pins it, and costs were re-tuned afterwards. The Crimson Countess, who had only looked weak against archers because she kept stopping short, was given a slower, heavier blade (so she wastes blows on small soldiers) and less leech; the Hexbinder's curse went from 40% to 45% and the Witch Hunter's lantern from 9 to 11.
 - **Fast units are worse than they look.** Hounds, cavalry, Shades and flyers outrun their army and meet the enemy alone. They were slowed toward the army's pace and made cheaper.
 - **Flyers** won every clash against armies without anti-air but lost most lane matches, because towers shoot upward. They were made much cheaper rather than tougher, to keep them a counter-pick.
 - **Support units** are only worth a fraction of an army; the Plague Doctor and the Reliquary were priced for that.
@@ -201,7 +201,7 @@ The harness found and fixed several things that playing by hand would have taken
 
 The costs in the tables above come from the latest lane tuning pass, run after a rules fix that changed melee combat (units could stop a hair short of their target and never strike; see "What the testing changed"). In that pass, on the lane, most tier I to III units scored within about 15 points of even after three rounds; the Plague Doctor and the Reliquary were still weak and were strengthened rather than made cheaper, and the flyers and the Crimson Countess were still somewhat strong and were made dearer.
 
-In massed equal-gold clashes (`npm run balance`) every tier I to III unit averages between −33 and +31 against the rest, except the Necromancer (−58), which is priced for fighting behind a line. Every unit, tier IV included, loses clearly to something: the Belfry Titan and the Pale Rider to flyers and to the Hexbinder, the Ashen Seraph to the Witch Hunter and the Impaler, the Hellmouth to anything fast.
+In massed equal-gold clashes (`npm run balance`) every tier I to III unit averages between about −50 and +50 against the rest (melee and flyers high, ranged and siege low, the Necromancer lowest), which is the open-field picture; prices follow the lane tuner, where escorts and towers matter, which is priced for fighting behind a line. Every unit, tier IV included, loses clearly to something: the Belfry Titan and the Pale Rider to flyers and to the Hexbinder, the Ashen Seraph to the Witch Hunter and the Impaler, the Hellmouth to anything fast.
 
 Tier IV and the mercenaries are priced by hand. They have been checked for having counters, not tuned on the lane, and nothing here has been tuned for 2v2 or 3v3. Run the three balance commands for current figures rather than trusting numbers written down here.
 

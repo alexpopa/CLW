@@ -3,8 +3,8 @@ import { MAP } from "@lw/sim";
 import { shotKind } from "./scene";
 
 /** All sound is synthesized with WebAudio: no audio files. Presentation only. */
-type Name = "click" | "deny" | "coin" | "build" | "rite" | "bell" | "bolt" | "clang" | "flame" | "heal" | "thud" | "boom" | "smite" | "gun" | "curse" | "zap" | "frost" | "raise" | "study" | "death" | "capture" | "lost" | "victory" | "defeat";
-const GAP: Partial<Record<Name, number>> = { bolt: 70, clang: 80, flame: 110, heal: 160, death: 90, thud: 200, boom: 200, smite: 120, gun: 90, curse: 120, zap: 110, frost: 150, raise: 200 };
+type Name = "click" | "deny" | "coin" | "build" | "rite" | "bell" | "bolt" | "clang" | "flame" | "heal" | "thud" | "boom" | "smite" | "gun" | "curse" | "zap" | "frost" | "raise" | "study" | "death" | "capture" | "lost" | "victory" | "defeat" | "thunder";
+const GAP: Partial<Record<Name, number>> = { bolt: 70, clang: 80, flame: 110, heal: 160, death: 90, thud: 200, boom: 200, smite: 120, gun: 90, curse: 120, zap: 110, frost: 150, raise: 200, thunder: 350 };
 
 export class Sound {
   private ctx?: AudioContext;
@@ -94,6 +94,7 @@ export class Sound {
       case "frost": this.noise(0.4, 0.09 * v, "bandpass", 5200, { pan, q: 4, to: 1800, wet: 0.5 }); this.tone(1760, 0.3, 0.03 * v, "sine", { pan, wet: 0.6 }); break;
       case "raise": this.tone(98, 0.7, 0.09 * v, "sawtooth", { to: 196, pan, wet: 0.7, lp: 600, attack: 0.2 }); break;
       case "study": this.organ([220, 277.2, 329.6], 1.0, 0.03 * v); this.tone(1318.5, 0.5, 0.04 * v, "sine", { at: 0.1, wet: 0.5 }); break;
+      case "thunder": this.noise(0.06, 0.5 * v, "highpass", 2800, { wet: 0.5 }); this.noise(2.4, 0.5 * v, "lowpass", 700, { to: 60, wet: 0.8, at: 0.05 }); this.tone(70, 1.8, 0.4 * v, "sine", { to: 28, wet: 0.6, at: 0.05 }); break;
       case "death": this.noise(0.14, 0.14 * v, "lowpass", 600, { pan }); this.tone(170, 0.16, 0.08 * v, "triangle", { to: 70, pan }); break;
       case "capture": this.bell(392, 0.7 * v, 0, pan); this.organ([196, 293.7, 392], 1.4, 0.025 * v, 0.05); break;
       case "lost": this.bell(155.6, 0.6 * v, 0, pan); break;
@@ -127,6 +128,8 @@ export class Sound {
       else if (e.t === "death") this.play(e.unit === "tower" ? "boom" : "death", ...at(e.x));
       else if (e.t === "capture") { const i = e.beacon - 1; this.play(e.team === myTeam ? "capture" : "lost", 1, ((MAP.beaconX[i] ?? 0) / 1000 - camX) / 60); }
       else if (e.t === "wave") this.play("bell");
+      else if (e.t === "storm") this.play("thunder", 1);
+      else if (e.t === "bolt" && e.struck > 0) this.play("thunder", 0.45 + Math.random() * 0.2);
     }
   }
 

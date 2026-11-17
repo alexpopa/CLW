@@ -1,8 +1,8 @@
-import { canPlan, createGame, isUnlocked, researchOffer, simpleAI, step, INVEST_TIERS, KEEPERS, MAP, TICK_RATE, UNITS } from "@lw/sim";
+import { canPlan, createGame, isUnlocked, researchOffer, simpleAI, step, stormBlock, INVEST_TIERS, KEEPERS, MAP, RULES, TICK_RATE, UNITS } from "@lw/sim";
 import type { Command, GameState, TimedCommand } from "@lw/sim";
 import { Renderer } from "./scene";
 import { fieldZ, laneAt } from "./layout";
-import { CARD_KEYS, MERC_TAB, RITE, createHud, tabUnits } from "./hud";
+import { RITE, TAB_KEYS, cardByKey, createHud } from "./hud";
 import { Sound } from "./audio";
 import { hostedAccounts, matchCredentials, Net } from "./net";
 
@@ -31,10 +31,11 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   let pending: Command[] = [];
   let acc = 0, last = performance.now();
   let selectedUnit: string | null = null, selectedBuilding: number | null = null;
-  let tierTab = 1;                         // which tier's cards the bar shows (MERC_TAB = mercenaries)
+  let investLane = 0;                      // the lane my tithe button acts on: mine by default, an ally's if I choose
+  let tierTab = 1;                         // which tier's cards the bar shows (the mercenaries share the last tier's page)
   let selectedKeeper: 0 | 1 | null = null; // the gravekeeper taking orders; the build menu shows only while one is chosen
   /** Tabs the chosen keeper offers: the Sexton tiers I-III, the Undertaker those plus tier IV and the mercenaries. */
-  const tabs = (): number[] => { const k = selectedKeeper === null ? null : KEEPERS[selectedKeeper]; return k ? [...Array.from({ length: k.maxTier }, (_, i) => i + 1), ...(k.mercs ? [MERC_TAB] : [])] : []; };
+  const tabs = (): number[] => { const k = selectedKeeper === null ? null : KEEPERS[selectedKeeper]; return k ? Array.from({ length: k.maxTier - k.minTier + 1 }, (_, i) => k.minTier + i) : []; };
   let hoverCell: { col: number; row: number; lane: number } | null = null;
   const keys = new Set<string>();
   let mouseX = -1, mouseY = -1, mouseInside = false;
@@ -44,7 +45,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   const send = (cmd: Command) => { if (!running || ended) return; if (online) net?.command(cmd); else pending.push(cmd); };
   const begin = (state: GameState, slot: number) => {
     game = state; ME = slot; pending = []; inbox = []; acc = 0; ended = false; running = true; paused = false; speed = online ? 1 : speed;
-    selectedUnit = null; selectedBuilding = null; tierTab = 1; selectedKeeper = null; teleporting = false;
+    selectedUnit = null; selectedBuilding = null; tierTab = 1; selectedKeeper = null; teleporting = false; investLane = me().lane;
     view.reset(); view.layout(state.laneCount); view.lookAt(me().lane, home()); hud.hideOverlay(); sound.play("bell");
     const team = me().team;
     hud.setSide(team, (pics[team] ??= view.portraits(team)));
@@ -91,8 +92,8 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   const hud = createHud(hudRoot, pics[0]!, {
     selectKeeper(slot) {
       selectedKeeper = slot; selectedBuilding = null; teleporting = false; sound.play("click");
-      if (!tabs().includes(tierTab)) tierTab = 1;
-      if (selectedUnit && UNITS[selectedUnit]!.tier > KEEPERS[slot].maxTier) selectedUnit = null;
+      if (!tabs().includes(tierTab)) tierTab = tabs()[0]!; // each keeper has his own tabs
+      if (selectedUnit && !tabs().includes(UNITS[selectedUnit]!.tier)) selectedUnit = null;
     },
     selectUnit(id) {
       const p = me(), d = UNITS[id]!;
@@ -104,7 +105,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
         else { send({ type: "hire", unit: id }); sound.play("coin"); hud.toast(`${d.name} hired`); }
         return;
       }
-      if (d.tier > KEEPERS[selectedKeeper].maxTier) { deny("Only the Undertaker can raise it"); return; }
+      if (!tabs().includes(d.tier)) { deny(`Only the ${KEEPERS.find(q => q.minTier <= d.tier && d.tier <= q.maxTier)!.name} can raise it`); return; }
       if (isUnlocked(p, id)) { selectedUnit = selectedUnit === id ? null : id; selectedBuilding = null; sound.play("click"); return; }
       const offer = researchOffer(p, id);
       if (!offer) deny(`Sealed until ${RITE[d.tier]}`);
@@ -114,11 +115,12 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     },
     setTier(tier) { if (tabs().includes(tier)) { tierTab = tier; selectedUnit = null; sound.play("click"); } },
     invest() {
-      const tier = INVEST_TIERS[me().invest[me().lane] ?? 0];
+      const tier = INVEST_TIERS[me().invest[investLane] ?? 0];
       if (!tier) deny("The tithe cannot be raised further");
       else if (me().credits < tier.cost) deny("Not enough gold");
-      else { send({ type: "invest" }); sound.play("coin"); }
+      else { send({ type: "invest", lane: investLane }); sound.play("coin"); }
     },
+    setInvestLane(lane) { if (lane >= 0 && lane < game.laneCount) { investLane = lane; sound.play("click"); } },
     research() {
       const next = researchOffer(me());
       if (!next) deny("Every rite is complete");
@@ -126,6 +128,19 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
       else if (me().credits < next.cost) deny("Not enough gold");
       else { send({ type: "research" }); sound.play("rite"); }
     },
+    storm() {
+      const block = stormBlock(game, me());
+      if (block === "tier") deny("The storm answers only after The Third Rite");
+      else if (block === "resting") deny(`The sky is still resting: ${Math.ceil((me().stormReady - game.tick) / TICK_RATE)}s`);
+      else if (block === "gold") deny(`The storm costs ${RULES.stormCost} gold`);
+      else send({ type: "storm" });
+    },
+    teleport() { // arm the Sexton's teleport: he is chosen, and the next click on friendly ground (or on the map's ground) sends him
+      if (!running) return;
+      hud.actions.selectKeeper(KEEPERS.findIndex(q => q.teleport) as 0 | 1); selectedUnit = null; teleporting = true;
+    },
+    home() { view.lookAt(me().lane, home()); },
+    cancel() { if (teleporting) teleporting = false; else if (selectedUnit || selectedBuilding !== null) { selectedUnit = null; selectedBuilding = null; } else selectedKeeper = null; },
     sell() { if (selectedBuilding !== null) { send({ type: "sell", buildingId: selectedBuilding }); selectedBuilding = null; sound.play("coin"); } },
     setSpeed(n) { if (online) return deny("Time cannot be bent in a shared match"); speed = n; paused = false; sound.play("click"); },
     togglePause() { if (online) return deny("A shared match cannot be paused"); paused = !paused; sound.play("click"); },
@@ -162,11 +177,32 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   let down: { x: number; y: number; camX: number; camZ: number; moved: boolean } | null = null;
   /** The cell of my side's building ground under the pointer, in whichever lane that is. */
   const cellUnder = (e: PointerEvent) => { const w = view.pick(e.clientX, e.clientY), c = w && view.cellAt(me().team, w.x, w.y); return w && c ? { ...c, lane: w.lane } : null; };
-  canvas.addEventListener("pointerdown", e => { if (e.button === 0) { down = { x: e.clientX, y: e.clientY, camX: view.camX, camZ: view.camZ, moved: false }; canvas.setPointerCapture(e.pointerId); } });
+  // fingers on the glass: one drags the view (or taps), two pinch it nearer or farther
+  const fingers = new Map<number, { x: number; y: number }>();
+  let pinch: { span: number; zoom: number } | null = null, pinched = false, touching = false;
+  // a dragged view keeps gliding when the finger lifts, and slows to a stop
+  let fling: { vx: number; vz: number } | null = null, lastMove = { t: 0, camX: 0, camZ: 0, vx: 0, vz: 0 };
+  const span = () => { const [a, b] = [...fingers.values()]; return a && b ? Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) : 1; };
+  addEventListener("pointerdown", e => { touching = e.pointerType !== "mouse"; if (touching) mouseInside = false; }, true);
+  document.addEventListener("gesturestart", e => e.preventDefault()); // Safari's own page zoom
+  canvas.addEventListener("pointerdown", e => {
+    fling = null;
+    if (e.pointerType !== "mouse") { fingers.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (fingers.size === 2) { pinch = { span: span(), zoom: view.zoom }; pinched = true; down = null; return; } }
+    if (e.button === 0) { down = { x: e.clientX, y: e.clientY, camX: view.camX, camZ: view.camZ, moved: false }; canvas.setPointerCapture(e.pointerId); }
+  });
+  canvas.addEventListener("pointercancel", e => { fingers.delete(e.pointerId); pinch = null; down = null; if (!fingers.size) pinched = false; });
   canvas.addEventListener("pointermove", e => {
+    if (fingers.has(e.pointerId)) fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && fingers.size === 2) { view.setZoom((pinch.zoom * pinch.span) / span()); return; }
     if (down) {
       if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) down.moved = true;
-      if (down.moved) { view.camX = down.camX - (e.clientX - down.x) * view.unitsPerPixel(); view.camZ = down.camZ - (e.clientY - down.y) * view.unitsPerPixel() * 1.3; view.clampCam(); }
+      if (down.moved) {
+        view.camX = down.camX - (e.clientX - down.x) * view.unitsPerPixel(); view.camZ = down.camZ - (e.clientY - down.y) * view.unitsPerPixel() * 1.3; view.clampCam();
+        const t = performance.now(), gap = t - lastMove.t;
+        if (gap > 0 && gap < 120) lastMove = { t, camX: view.camX, camZ: view.camZ, vx: 0.6 * (view.camX - lastMove.camX) / gap + 0.4 * lastMove.vx, vz: 0.6 * (view.camZ - lastMove.camZ) / gap + 0.4 * lastMove.vz };
+        else lastMove = { t, camX: view.camX, camZ: view.camZ, vx: 0, vz: 0 };
+      }
+      if (e.pointerType !== "mouse") return; // a dragging finger has no cursor to place under
     }
     hoverCell = cellUnder(e);
   });
@@ -175,14 +211,16 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   const walkTo = (w: Spot) => { if (selectedKeeper === null) return; send({ type: "move", keeper: selectedKeeper, x: Math.round(w.x), y: Math.round(w.y), lane: w.lane }); selectedUnit = null; sound.play("click"); };
   /** The Sexton steps through the grave to that spot (any lane of my side's ground). */
   const teleportTo = (w: Spot) => {
-    const slot = KEEPERS.findIndex(k => k.teleport) as 0 | 1, k = game.keepers.find(q => q.owner === ME && q.slot === slot);
+    const slot = KEEPERS.findIndex(k => k.teleport) as 0 | 1;
     teleporting = false;
-    if (!k) return;
-    if (game.tick < k.teleReady) return deny("The Sexton is still catching his breath");
     send({ type: "teleport", keeper: slot, x: Math.round(w.x), y: Math.round(w.y), lane: w.lane }); sound.play("raise");
   };
   canvas.addEventListener("pointerup", e => {
     const wasDrag = down?.moved; down = null;
+    fingers.delete(e.pointerId); pinch = null;
+    if (e.pointerType !== "mouse") hoverCell = null; // no cursor to follow
+    if (pinched) { if (!fingers.size) pinched = false; return; } // a pinch is never a tap
+    if (wasDrag && e.pointerType !== "mouse" && performance.now() - lastMove.t < 80 && Math.hypot(lastMove.vx, lastMove.vz) > 0.004) fling = { vx: lastMove.vx, vz: lastMove.vz };
     if (e.button !== 0 || wasDrag || !running) return;
     const w = view.pick(e.clientX, e.clientY), cell = w && view.cellAt(me().team, w.x, w.y);
     if (teleporting) { if (w) teleportTo(w); return; }
@@ -213,34 +251,41 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   // the wheel scrolls along the lanes; with several lanes, a vertical wheel moves across them and shift (or a sideways wheel) along
   canvas.addEventListener("wheel", e => {
     e.preventDefault();
+    if (e.ctrlKey) { view.setZoom(view.zoom * (1 + Math.max(-0.5, Math.min(0.5, e.deltaY * 0.01)))); return; } // a trackpad pinch
     const k = view.unitsPerPixel();
     if (view.lanes > 1 && !e.shiftKey) { view.camX += e.deltaX * k; view.camZ += e.deltaY * k; } else view.camX += (e.deltaX + e.deltaY) * k;
     view.clampCam();
   }, { passive: false });
-  addEventListener("mousemove", e => { mouseX = e.clientX; mouseY = e.clientY; mouseInside = true; });
+  addEventListener("mousemove", e => { if (touching) return; mouseX = e.clientX; mouseY = e.clientY; mouseInside = true; }); // a finger never pushes the screen edge
   document.addEventListener("mouseleave", () => { mouseInside = false; });
   addEventListener("blur", () => { keys.clear(); mouseInside = false; });
   addEventListener("keyup", e => keys.delete(e.key.toLowerCase()));
   addEventListener("keydown", e => {
-    const k = e.key.toLowerCase();
+    // letters and digits by where the key sits, so the card block is the same hand shape on any layout and Shift does not change it
+    const k = /^Key[A-Z]$/.test(e.code) ? e.code.slice(3).toLowerCase() : /^Digit\d$/.test(e.code) ? e.code.slice(5) : e.key.toLowerCase();
     if (e.target instanceof HTMLInputElement) return; // typing a name or a code
-    keys.add(k);
-    if (e.repeat || !running) return;
-    const card = CARD_KEYS.indexOf(k), row = tabUnits(tierTab), open = tabs();
+    keys.add(e.key.toLowerCase());
+    if (e.repeat || !running || e.metaKey || e.ctrlKey || e.altKey) return;
+    const id = cardByKey(tierTab, k), tab = TAB_KEYS.indexOf(k);
+    let open = tabs();
     if (k === "1" || k === "2") hud.actions.selectKeeper(k === "1" ? 0 : 1);
-    else if (card >= 0 && card < row.length && selectedKeeper !== null) hud.actions.selectUnit(row[card]!);
-    else if (k === "tab") { e.preventDefault(); if (open.length) hud.actions.setTier(open[(open.indexOf(tierTab) + (e.shiftKey ? open.length - 1 : 1)) % open.length]!); }
-    else if (k === "e") hud.actions.invest();
-    else if (k === "r") hud.actions.research();
-    else if (k === "x" || k === "delete" || k === "backspace") hud.actions.sell();
-    else if (k === "t") { // arm the Sexton's teleport: he is chosen, and the next click on friendly ground (or on the map's ground) sends him
-      const slot = KEEPERS.findIndex(q => q.teleport) as 0 | 1, keeper = game.keepers.find(q => q.owner === ME && q.slot === slot);
-      if (keeper && game.tick < keeper.teleReady) deny("The Sexton is still catching his breath");
-      else { hud.actions.selectKeeper(slot); selectedUnit = null; teleporting = true; }
+    else if (id) { // Q W E R and A S D F pick, study or hire the cards of the shown tab; with nobody chosen, the keeper who can raise it steps up
+      if (selectedKeeper === null) hud.actions.selectKeeper(Math.max(0, KEEPERS.findIndex(q => (UNITS[id]!.merc ? q.mercs : q.minTier <= UNITS[id]!.tier && UNITS[id]!.tier <= q.maxTier))) as 0 | 1);
+      hud.actions.selectUnit(id);
     }
-    else if (k === "escape") { if (teleporting) teleporting = false; else if (selectedUnit || selectedBuilding !== null) { selectedUnit = null; selectedBuilding = null; } else selectedKeeper = null; }
+    else if (tab >= 0) { // Z X C: the chosen keeper's tabs in order (the Sexton's, if nobody is chosen)
+      if (selectedKeeper === null) { hud.actions.selectKeeper(0); open = tabs(); }
+      if (open[tab]) hud.actions.setTier(open[tab]!);
+    }
+    else if (k === "tab") { e.preventDefault(); if (open.length) hud.actions.setTier(open[(open.indexOf(tierTab) + (e.shiftKey ? open.length - 1 : 1)) % open.length]!); }
+    else if (k === "3") { if (e.shiftKey) hud.actions.setInvestLane((investLane + 1) % game.laneCount); else hud.actions.invest(); }
+    else if (k === "4") hud.actions.research();
+    else if (k === "5") hud.actions.storm();
+    else if (k === "delete" || k === "backspace") hud.actions.sell();
+    else if (k === "t") hud.actions.teleport();
+    else if (k === "escape") hud.actions.cancel();
     else if (k === "p") hud.actions.togglePause();
-    else if (k === " ") { e.preventDefault(); view.lookAt(me().lane, home()); }
+    else if (k === " ") { e.preventDefault(); hud.actions.home(); }
   });
 
   /** One solo tick: my queued commands plus the autopilot's. */
@@ -262,24 +307,31 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
         else { hud.toast(`${RITE[e.tier]} is complete — choose what to study`); if (tabs().includes(e.tier)) tierTab = e.tier; }
         sound.play("capture");
       }
+      else if (e.t === "storm") hud.toast(e.player === ME ? "The storm answers you" : e.team === me().team ? `${names[e.player] ?? "An ally"} calls the Storm of Wrath` : "The enemy calls the Storm of Wrath on your host");
       else if (e.t === "capture") hud.toast(e.team === me().team ? "Shrine claimed" : "Shrine lost");
     }
   };
 
   // ---- main loop ----
+  let hudTurn = false; // on touch devices the HUD is refreshed every other frame: the frame time goes to the picture
   const frame = (now: number) => {
     requestAnimationFrame(frame);
     const dt = Math.min(100, now - last); last = now;
     let pan = 0, panZ = 0;
-    if (keys.has("a") || keys.has("arrowleft")) pan -= 1;
-    if (keys.has("d") || keys.has("arrowright")) pan += 1;
-    if (keys.has("w") || keys.has("arrowup")) panZ -= 1;
-    if (keys.has("s") || keys.has("arrowdown")) panZ += 1;
+    if (keys.has("arrowleft")) pan -= 1;
+    if (keys.has("arrowright")) pan += 1;
+    if (keys.has("arrowup")) panZ -= 1;
+    if (keys.has("arrowdown")) panZ += 1;
     if (mouseInside && !down) {
       if (pan === 0) { if (mouseX <= 6) pan = -1; else if (mouseX >= innerWidth - 6) pan = 1; }
       if (panZ === 0) { if (mouseY <= 6) panZ = -1; else if (mouseY >= innerHeight - 6) panZ = 1; }
     }
     if (pan || panZ) { view.camX += pan * dt * 0.1; view.camZ += panZ * dt * 0.07; view.clampCam(); }
+    if (fling) {
+      view.camX += fling.vx * dt; view.camZ += fling.vz * dt; view.clampCam();
+      const keep = Math.exp(-dt / 300); fling.vx *= keep; fling.vz *= keep;
+      if (Math.hypot(fling.vx, fling.vz) < 0.002) fling = null;
+    }
 
     if (running && !paused && !ended) {
       if (online) {
@@ -302,7 +354,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     }
     if (selectedBuilding !== null && !game.buildings.some(b => b.id === selectedBuilding)) selectedBuilding = null;
     view.draw(game, { selectedKeeper, selectedUnit, hoverCell, selectedBuilding, me: ME }, paused || ended ? 1 : Math.min(1, acc / TICK_MS), now, dt);
-    hud.update(game, { me: ME, keeper: selectedKeeper, tier: tierTab, selectedUnit, selectedBuilding, speed, paused, teleport: teleporting, camRect: view.viewRect(), names: online ? names : [] });
+    if ((hudTurn = !hudTurn) || !touching) hud.update(game, { me: ME, keeper: selectedKeeper, tier: tierTab, selectedUnit, selectedBuilding, speed, paused, investLane, teleport: teleporting, camRect: view.viewRect(), names: online ? names : [] });
   };
   requestAnimationFrame(frame);
 

@@ -11,6 +11,7 @@ export interface PlayerState {
   unlocked: string[];         // units this player may build, in the order they were learned
   research: ResearchState | null; // one research at a time
   mercReady: number;          // tick from which the next mercenary band may be hired
+  stormReady: number;         // tick from which the next Storm of Wrath may be called
   invest: number[];           // personal investment level per lane
   isAI: boolean;
 }
@@ -47,8 +48,9 @@ export interface KeeperState {
   lane: number; x: number; y: number;           // where it stands
   tlane: number; tx: number; ty: number;        // where it was told to go (used when it has no job)
   jobs: KeeperJob[];                            // build orders, first is current
-  teleReady: number;                            // tick from which it may teleport again (the Sexton only)
 }
+/** A Storm of Wrath raging against the enemies of `team`: it strikes every `stormInterval` counted from `from`, and ends at `until`. */
+export interface StormState { owner: PlayerId; team: TeamId; from: number; until: number }
 export interface BeaconState { id: number; lane: number; x: number; owner: TeamId | null }
 export interface TeamState { hqHp: number; hqCooldown: number }
 
@@ -64,6 +66,8 @@ export type SimEvent =
   | { t: "built"; player: PlayerId; slot: 0 | 1; unit: string; lane: number; x: number; y: number }
   | { t: "teleport"; player: PlayerId; slot: 0 | 1; fromLane: number; fromX: number; fromY: number; lane: number; x: number; y: number }
   | { t: "hired"; player: PlayerId; unit: string }
+  | { t: "storm"; player: PlayerId; team: TeamId }   // a storm is called by `team`
+  | { t: "bolt"; team: TeamId; struck: number }      // one volley of a storm of `team`: `struck` enemy soldiers were hit
   | { t: "leave"; unit: string; team: TeamId; lane: number; x: number; y: number }   // a mercenary's contract ends
   | { t: "researched"; player: PlayerId; tier: number; unit: string | null };
 
@@ -78,6 +82,7 @@ export interface GameState {
   beacons: BeaconState[];
   buildings: BuildingState[];
   keepers: KeeperState[];
+  storms: StormState[];
   units: UnitState[];
   events: SimEvent[];
   winner: TeamId | null;
@@ -88,6 +93,7 @@ export type Command =
   | { type: "build"; keeper: 0 | 1; unit: string; col: number; row: number; lane?: number } // queue a chantry for that keeper to raise
   | { type: "move"; keeper: 0 | 1; x: number; y: number; lane?: number }                    // walk there (drops its queue, refunded)
   | { type: "teleport"; keeper: 0 | 1; x: number; y: number; lane?: number }                // the Sexton steps through the grave to any of his team's ground (drops his queue, refunded)
+  | { type: "storm" }                                                                      // call the Storm of Wrath (tier III, costly, long cooldown)
   | { type: "hire"; unit: string }                                                          // a mercenary band, through the Undertaker
   | { type: "sell"; buildingId: number }
   | { type: "invest"; lane?: number }

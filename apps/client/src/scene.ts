@@ -5,7 +5,7 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { KEEPERS, MAP, MERC_ORDER, RULES, UNITS, UNIT_ORDER, canPlan, cellCenter, hqMax, hqX } from "@lw/sim";
 import type { GameState, SimEvent, TeamId } from "@lw/sim";
-import { PAL, TEAM, box, cathedralModel, chantryModel, cloisterModel, fenceModel, graveyardModel, merge, precinctModel, shrineModel, unitModel, wholeModel } from "./models";
+import { PAL, TEAM, box, cathedralModel, chantryModel, chapelModel, cloisterModel, curtainModel, fenceModel, graveyardModel, merge, precinctModel, shrineModel, unitModel, wholeModel } from "./models";
 import type { Gait, ModelDef, Part } from "./models";
 import { LANE_GAP, LANE_LEN, LANE_PITCH, LANE_W, fieldZ, laneAt, laneZ, midZ } from "./layout";
 import { courtyardTile, glowTexture, groundTile, runeTexture } from "./textures";
@@ -54,6 +54,14 @@ export const shotKind = (unit: string): Shot | "melee" => SHOTS[unit]?.kind ?? "
 interface Particle { sprite: THREE.Sprite; vx: number; vy: number; vz: number; born: number; life: number; s0: number; s1: number; grav: number }
 interface Flight { mesh: THREE.Object3D; from: THREE.Vector3; to: THREE.Vector3; born: number; life: number; arc: number; beam: boolean; onEnd?: () => void }
 
+/** Steps of picture quality, dearest first: pixel density, shadow map size (0 = no shadows), and whether the glow pass runs. */
+const QUALITY = [
+  { pixels: 2, shadow: 2048, bloom: true },
+  { pixels: 1.5, shadow: 1024, bloom: true },
+  { pixels: 1.25, shadow: 1024, bloom: false },
+  { pixels: 1, shadow: 512, bloom: false },
+  { pixels: 1, shadow: 0, bloom: false },
+];
 export class Renderer {
   private renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
   private scene = new THREE.Scene();
@@ -79,7 +87,7 @@ export class Renderer {
   private hover!: THREE.Mesh; private range!: THREE.Mesh; private selRing!: THREE.Mesh;
   private keeperRing!: THREE.Mesh; private wayMark!: THREE.Mesh; private ghostMarks: THREE.Mesh[] = [];
   private ray = new THREE.Raycaster(); private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-  private dist = 60; private lastEmber = 0; private hqScale = 1;
+  private dist = 60; private lastEmber = 0; private hqScale = 1; private flash = 0;
   camX = 30; // camera target along the lanes, world units
   camZ = MID_Z; // ...and across them
   lanes = 1;    // lanes of the current battlefield
@@ -87,9 +95,11 @@ export class Renderer {
 
   init(mount: HTMLElement): void {
     const r = this.renderer;
-    r.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+    // phones start a step down, and with plain (cheaper) shadow filtering; every device steps down further if it cannot keep up
+    const phone = matchMedia("(pointer:coarse)").matches;
+    this.quality = phone ? 1 : 0;
     r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.4;
-    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.shadowMap.enabled = true; r.shadowMap.type = phone ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
     mount.append(r.domElement, this.overlay);
     Object.assign(this.overlay.style, { position: "absolute", inset: "0", width: "100%", height: "100%", pointerEvents: "none" });
     this.scene.background = new THREE.Color(0x090b14);
@@ -99,12 +109,30 @@ export class Renderer {
     this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.42, 0.6, 0.85);
     this.composer.addPass(this.bloom); this.composer.addPass(new OutputPass());
     this.scene.add(new THREE.HemisphereLight(0xa9afc4, 0x2a2622, 1.15));
-    const m = this.moon; m.castShadow = true; m.shadow.mapSize.set(2048, 2048);
+    const m = this.moon; m.castShadow = true;
     Object.assign(m.shadow.camera, { left: -58, right: 58, top: 44, bottom: -44, near: 1, far: 160 });
     m.shadow.bias = -0.0006; m.shadow.normalBias = 0.04;
     this.scene.add(m, m.target, this.world);
     this.buildWorld();
+    this.applyQuality();
+  }
+  /** How much the picture costs: 0 is everything, each step up sheds something (see QUALITY). Only ever raised, by `pace`. */
+  private quality = 0;
+  private slow = 0; private frames = 0;
+  private applyQuality(): void {
+    const q = QUALITY[this.quality]!, m = this.moon;
+    this.renderer.setPixelRatio(Math.min(q.pixels, devicePixelRatio || 1));
+    m.castShadow = q.shadow > 0;
+    if (q.shadow > 0 && m.shadow.mapSize.x !== q.shadow) { m.shadow.mapSize.set(q.shadow, q.shadow); m.shadow.map?.dispose(); m.shadow.map = null; }
     this.resize();
+  }
+  /** Watch the frame times; when most of a second's frames run late, shed the next most expensive thing. */
+  private pace(dt: number): void {
+    if (dt >= 100 || document.hidden) return; // a stalled or hidden tab says nothing about the device
+    this.frames++; if (dt > 24) this.slow++;
+    if (this.frames < 90) return;
+    if (this.slow > 45 && this.quality < QUALITY.length - 1) { this.quality++; this.applyQuality(); }
+    this.frames = 0; this.slow = 0;
   }
   /** Rebuild the battlefield for a match with this many lanes (1v1: one, 2v2: two, 3v3: three). */
   layout(lanes: number): void {
@@ -178,15 +206,32 @@ export class Renderer {
       g.position.set(W(hqX(team)) + (team === 0 ? -1 : 1) * 5.5 * (this.hqScale - 1), 0, mid); s.add(g);
     }
 
-    // building ground: a paved, walled precinct in front of the cathedral in every lane, with a gate toward each neighbouring lane
-    const zoneLen = W(MAP.zoneCols * MAP.cell), yardTex = new THREE.CanvasTexture(courtyardTile(40, 12));
-    yardTex.wrapS = yardTex.wrapT = THREE.RepeatWrapping; yardTex.repeat.set((zoneLen + 1.2) / 12, (LANE_W + 1.2) / 12); yardTex.colorSpace = THREE.SRGBColorSpace; yardTex.anisotropy = 8;
+    // the cathedral close: a curtain wall across the back of every lane with the cathedral standing in it. A lane that
+    // ends beside the cathedral rather than at it ends at a chapel of the close, so every army has something of it to storm.
+    const closeX = W(MAP.hqOffset), nave = 9.4 * this.hqScale;
+    for (const team of [0, 1] as const) {
+      const x = team === 0 ? closeX : LANE_LEN - closeX;
+      for (const [z0, z1] of [[-0.9, mid - nave], [mid + nave, nearEdge + 0.9]] as const) {
+        if (z1 - z0 < 1.5) continue;
+        const wall = this.mesh(curtainModel(z0, z1), this.lit); wall.position.x = x; s.add(wall);
+      }
+      for (let l = 0; l < n; l++) {
+        if (Math.abs(LZ(l) + MID_Z - mid) < nave) continue; // this lane runs up to the cathedral itself
+        const c = chapelModel(team), g = new THREE.Group();
+        g.add(this.mesh(c.lit, this.lit), new THREE.Mesh(c.glow, this.glow));
+        g.position.set(x, 0, LZ(l) + MID_Z); g.scale.x = team === 0 ? 1 : -1; s.add(g);
+      }
+    }
+
+    // building ground: a paved precinct that runs from the cathedral steps to the base towers in every lane, walled along its sides, with a gate toward each neighbouring lane
+    const zoneLen = W(MAP.zoneCols * MAP.cell), back = W(MAP.zoneStart - MAP.hqOffset), yardLen = zoneLen + back + 0.6, yardTex = new THREE.CanvasTexture(courtyardTile(40, 12));
+    yardTex.wrapS = yardTex.wrapT = THREE.RepeatWrapping; yardTex.repeat.set(yardLen / 12, (LANE_W + 1.2) / 12); yardTex.colorSpace = THREE.SRGBColorSpace; yardTex.anisotropy = 8;
     const yardMat = new THREE.MeshStandardMaterial({ map: yardTex, roughness: 0.9, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     for (let l = 0; l < n; l++) for (const team of [0, 1] as const) {
       const rear = W(MAP.zoneStart), x0 = team === 0 ? rear : LANE_LEN - rear - zoneLen;
-      const yard = new THREE.Mesh(new THREE.PlaneGeometry(zoneLen + 1.2, LANE_W + 1.2), yardMat);
-      yard.rotation.x = -Math.PI / 2; yard.position.set(x0 + zoneLen / 2, 0.03, LZ(l) + MID_Z); yard.receiveShadow = true; s.add(yard);
-      const wall = precinctModel(team, zoneLen, LANE_W, l > 0, l < n - 1), g = new THREE.Group();
+      const yard = new THREE.Mesh(new THREE.PlaneGeometry(yardLen, LANE_W + 1.2), yardMat);
+      yard.rotation.x = -Math.PI / 2; yard.position.set(x0 + zoneLen / 2 + (team === 0 ? -1 : 1) * (back - 0.6) / 2, 0.03, LZ(l) + MID_Z); yard.receiveShadow = true; s.add(yard);
+      const wall = precinctModel(team, zoneLen, LANE_W, l > 0, l < n - 1, back), g = new THREE.Group();
       g.add(this.mesh(wall.lit, this.lit), new THREE.Mesh(wall.glow, this.glow));
       g.position.set(team === 0 ? rear : LANE_LEN - rear, 0, LZ(l)); g.scale.x = team === 0 ? 1 : -1; s.add(g);
     }
@@ -221,12 +266,19 @@ export class Renderer {
   }
 
   resize(): void {
-    const el = this.renderer.domElement.parentElement!, w = el.clientWidth, h = el.clientHeight, dpr = Math.min(2, devicePixelRatio || 1);
+    const el = this.renderer.domElement.parentElement!, w = el.clientWidth, h = el.clientHeight, dpr = this.renderer.getPixelRatio();
+    this.composer.setPixelRatio(dpr);
     this.renderer.setSize(w, h); this.composer.setSize(w, h); this.bloom.resolution.set(w, h);
     this.overlay.width = w * dpr; this.overlay.height = h * dpr;
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+    this.setZoom(this.zoom);
+  }
+  /** How close the camera stands: 1 is the usual view, less is closer (a pinch, or ctrl + wheel). */
+  zoom = 1;
+  setZoom(z: number): void {
+    this.zoom = Math.max(0.5, Math.min(1.3, z));
     // Far enough to show the whole lane depth, and at least ~46 units of lane width on narrow windows.
-    this.dist = Math.max(74, 104 / this.camera.aspect);
+    this.dist = Math.max(74, 104 / this.camera.aspect) * this.zoom;
     this.clampCam();
   }
   private halfWidth(): number { return this.camera.aspect * Math.tan((FOV * Math.PI) / 360) * this.dist; }
@@ -401,6 +453,23 @@ export class Renderer {
           this.spark(x, 1.2, z, 0x8dffb0, 420, 1, 6, 0, 0, 0, 0, now);
           for (let i = 0; i < 14; i++) this.spark(x + rnd(0.9), 0.1 + Math.random() * 0.4, z + rnd(0.9), i % 3 ? 0x8dffb0 : 0xffffff, 600 + Math.random() * 500, 0.5, 0.1, 0, 2.5 + Math.random() * 3.5, 0, 0, now);
         }
+      } else if (e.t === "storm") {
+        this.flash = now;
+      } else if (e.t === "bolt") {
+        // one volley of a Storm of Wrath: it strikes every enemy soldier, and the sky shows it on a handful of them, in the caster's colour
+        const foes = s.units.filter(u => u.team !== e.team && !UNITS[u.type]!.structure), n = Math.min(foes.length, 16), tint = TEAM[e.team].glow;
+        if (n) this.flash = now;
+        for (let i = 0; i < n; i++) {
+          const u = foes[Math.floor(((i + Math.random()) * foes.length) / n)]!; lane = u.lane;
+          const to = chest(u.id, u.x, u.y), top = new THREE.Vector3(to.x + rnd(7), 42, to.z - 4 + rnd(7));
+          let a = top;
+          for (let k = 1; k <= 7; k++) {
+            const b = top.clone().lerp(to, k / 7); if (k < 7) b.add(new THREE.Vector3(rnd(2.6), 0, rnd(2.6)));
+            this.shoot(new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 1, 4), bright(k % 3 ? 0xe8ecff : tint)), a, b, now, 230, 0, true); a = b;
+          }
+          this.spark(to.x, to.y, to.z, 0xffffff, 260, 2.6, 0.4, 0, 0, 0, 0, now);
+          for (let k = 0; k < 5; k++) this.spark(to.x, 0.3, to.z, tint, 380 + Math.random() * 200, 0.6, 0.1, rnd(7), 2 + Math.random() * 3, rnd(7), -9, now);
+        }
       } else if (e.t === "leave") {
         for (let i = 0; i < 8; i++) this.spark(W(e.x) + rnd(0.8), 0.4 + Math.random() * 1.6, Zy(e.y) + rnd(0.8), i % 2 ? 0xe9c56b : 0x8d8a92, 600 + Math.random() * 300, 0.5, 1.6, rnd(1), 1.2, rnd(1), 0, now);
       } else if (e.t === "heal") {
@@ -454,6 +523,9 @@ export class Renderer {
   draw(s: GameState, v: ViewState, alpha: number, now: number, dt: number): void {
     this.placeCamera();
     const myTeam = s.players[v.me]!.team;
+    // lightning lights the whole field for a moment; while a storm rages the night itself turns colder and flickers
+    const glare = Math.max(0, 1 - (now - this.flash) / 320), raging = s.storms.length > 0 ? 0.5 + 0.5 * Math.sin(now / 90) * Math.sin(now / 37) : 0;
+    this.moon.intensity = 2.5 + glare * 7 + raging * 0.9;
 
     // units
     const seen = new Set<number>(), byId = new Map<number, GameState["units"][number]>();
@@ -637,7 +709,8 @@ export class Renderer {
       return true;
     });
 
-    this.composer.render();
+    if (QUALITY[this.quality]!.bloom) this.composer.render(); else this.renderer.render(this.scene, this.camera);
+    this.pace(dt);
 
     // health bars on a crisp 2D overlay
     const c = this.overlay.getContext("2d")!, dpr = this.overlay.width / this.renderer.domElement.clientWidth;
@@ -652,6 +725,22 @@ export class Renderer {
       if (x < -20 || x > cw + 20) continue;
       c.fillStyle = "rgba(8,7,11,0.85)"; c.fillRect(x - w / 2 - 1, y - 1, w + 2, 5);
       c.fillStyle = u.team === myTeam ? "#8fd18a" : "#e2685c"; c.fillRect(x - w / 2, y, (w * u.hp) / max, 3);
+    }
+    // the cathedral's health, always shown: over the cathedral itself and over each chapel of its close (they are one building, with one life)
+    const full = RULES.hqHp * s.laneCount, mid = midZ(this.lanes), nave = 9.4 * this.hqScale;
+    c.font = "600 11px Cinzel, serif"; c.textAlign = "center";
+    for (const team of [0, 1] as const) {
+      const hp = s.teams[team].hqHp, spots: [number, number][] = [[mid + 7 * this.hqScale, 22 * this.hqScale]];
+      for (let l = 0; l < this.lanes; l++) if (Math.abs(LZ(l) + MID_Z - mid) >= nave) spots.push([LZ(l) + MID_Z, 12.5]);
+      for (const [z, up] of spots) {
+        p.set(W(hqX(team)), up, z).project(this.camera);
+        const x = (p.x * 0.5 + 0.5) * cw, y = Math.max(74, (-p.y * 0.5 + 0.5) * ch), w = 150;
+        if (x < -w || x > cw + w || p.z > 1) continue;
+        c.fillStyle = "rgba(8,7,11,0.88)"; c.fillRect(x - w / 2 - 2, y - 2, w + 4, 11);
+        c.fillStyle = team === myTeam ? "#5f8fe0" : "#d8574c"; if (TEAM[team].css) c.fillStyle = TEAM[team].css; c.fillRect(x - w / 2, y, (w * hp) / full, 7);
+        c.strokeStyle = "#c9a85a"; c.lineWidth = 1; c.strokeRect(x - w / 2 - 1.5, y - 1.5, w + 3, 10);
+        c.fillStyle = "#efe6cf"; c.shadowColor = "#000"; c.shadowBlur = 4; c.fillText(`${team === myTeam ? "Your" : "Enemy"} cathedral · ${hp}`, x, y - 7); c.shadowBlur = 0;
+      }
     }
   }
 }
