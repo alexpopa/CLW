@@ -1,23 +1,26 @@
 # Gravemarch (working title)
 
-Browser RTS inspired by the StarCraft II Arcade map Colonial Line Wars. The supplied research describes a 3v3 strategy game where production buildings send recurring waves down three lanes, armies fight automatically, and teams compete for territory and the opposing colony. Players focus on economy, army composition, placement, and timing. See the [Colonial Line Wars research and recreation specification](docs/COLONIAL_LINE_WARS.md) for the original-game overview, proposed mechanics, and verification notes.
+A browser-based "line wars" RTS in a gothic dark-fantasy setting, with a 3D elevated camera, original art and synthesized sound.
 
-The current build is Phase 1 of that specification: a complete 1v1 match against AI on one lane, in an original gothic dark-fantasy setting with a 3D presentation. The [game design notes](docs/GAME_DESIGN.md) describe exactly what is implemented.
+You earn income, raise production buildings that send a unit down your lane every wave, and fight over shrines for extra income. The armies fight on their own. Your decisions are economy, army composition, placement and timing, and you win by destroying the enemy cathedral. Matches run 1v1, 2v2 or 3v3 with one lane per player, against AI or online.
 
-See [AGENTS.md](AGENTS.md) for rules, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design, [docs/ROADMAP.md](docs/ROADMAP.md) for what to build next.
+It is inspired by the StarCraft II Arcade map Colonial Line Wars, which is the reference for how the game should feel. Names, art, sounds and stats are all original.
+
+> **Work in progress.** This is an early, actively changing project. Balance, UI and features move constantly, and things will be rough or broken.
+
+## Run it
 
 ```bash
-npm install && npm run dev      # open http://localhost:5173 — play a 1v1 match against the AI
-npm test                        # sim determinism tests
+npm install
+npm run dev:all      # client on :5173 and match server on :8788
 ```
-The local client opens directly as a guest. See the [game client handoff](docs/handoff/FABLE.md#test-as-a-guest) for dev and production preview commands.
 
-Status: Phase 1 playable. One lane, two cathedrals, three shrines, six units in two tiers, production waves every 30 s, income, tithe (investment), research, an autopilot AI, win/lose and restart. All art, models and sound are original and generated in code; nothing is taken from StarCraft or any other game. Next: three lanes and 2v2/3v3 (Phase 2).
+Open http://localhost:5173 and play as a guest. Use `npm run dev` for the client alone (vs AI), `npm test` for the simulation tests, and `npm run check` for type check, tests and build.
 
-The first solo playtest targets [ChatGPT Sites](docs/DEPLOYMENT.md). For player accounts, see the [RGBoner sign-in flow](docs/AUTH.md). Claude, Codex, and other agents start with the same [AGENTS.md](AGENTS.md).
+## Where to look
 
-## Continue from Codex Remote
-
-In the ChatGPT mobile app, open Codex (called Remote in some versions), select the connected Mac, and look for **CLW**. The saved host project uses `/Users/alexandrupopa/Documents/projects/claude/CLW`. You can also continue this project's existing chat from the host's recent chats. The Mac needs to be awake, online, and running the signed-in desktop app. See [OpenAI's Remote connections guide](https://learn.chatgpt.com/docs/remote-connections).
-
-For authorized development sessions, use full filesystem access and approval policy `never` where available. This README does not set session permissions.
+- [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md): what is implemented today
+- [docs/UNITS.md](docs/UNITS.md): every unit, its ability and counters
+- [docs/ROADMAP.md](docs/ROADMAP.md): what is planned next
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how it is built
+- [AGENTS.md](AGENTS.md): rules for anyone (human or agent) changing the code
