@@ -165,7 +165,7 @@ describe("sim", () => {
     expect(s.beacons.map(b => b.owner)).toEqual([0, null, 1]);
     expect([towersOf(s, 0), towersOf(s, 1)]).toEqual([4, 4]); // two on the home shrine, two at the base
     const home = MAP.beaconX[2]!;
-    const homeTowers = (g: GameState, team: 0 | 1) => g.units.filter(u => u.type === "tower" && u.team === team && Math.abs(u.x - home) < MAP.captureRadius).length;
+    const homeTowers = (g: GameState, team: 0 | 1) => g.units.filter(u => u.type === MAP.shrineTower && u.team === team && Math.abs(u.x - home) < MAP.captureRadius).length;
     for (let i = 0; i < 14; i++) spawn(s, "dreadknight", 0, home - 20000, 2000 + i * 1500);
     let seenOneTower = false;
     for (let i = 0; i < 120 * TICK_RATE && homeTowers(s, 1) > 0; i++) {
@@ -175,16 +175,16 @@ describe("sim", () => {
     }
     expect(seenOneTower).toBe(true);
     expect(homeTowers(s, 1)).toBe(0);
-    expect(s.units.filter(u => u.team === 0 && u.type !== "tower").length).toBeLessThan(14); // towers fought back
+    expect(s.units.filter(u => u.team === 0 && !UNITS[u.type]!.structure).length).toBeLessThan(14); // towers fought back
     ticks(s, 5 * TICK_RATE);
     expect(s.beacons[2]!.owner).toBe(0);
   });
 
   it("an army must bring down the base towers before it reaches the cathedral", () => {
     const s = newGame({ teamSize: 1, seed: 1 });
-    const baseTowers = () => s.units.filter(u => u.type === "tower" && u.team === 1 && u.x > MAP.beaconX[2]! + MAP.captureRadius).length;
+    const baseTowers = () => s.units.filter(u => u.type === MAP.baseTower && u.team === 1 && u.x > MAP.beaconX[2]! + MAP.captureRadius).length;
     expect(baseTowers()).toBe(2);
-    for (let i = 0; i < 16; i++) spawn(s, "dreadknight", 0, MAP.beaconX[2]! + 20000, 1500 + i * 1400);
+    for (let i = 0; i < 24; i++) spawn(s, "dreadknight", 0, MAP.beaconX[2]! + 20000, 1500 + (i % 16) * 1400);
     for (let i = 0; i < 180 * TICK_RATE && s.teams[1].hqHp === RULES.hqHp; i++) step(s);
     expect(s.teams[1].hqHp).toBeLessThan(RULES.hqHp);
     expect(baseTowers()).toBe(0);
@@ -266,7 +266,8 @@ describe("sim", () => {
     expect([s.laneCount, s.players.length, s.beacons.length, s.keepers.length]).toEqual([3, 6, 9, 12]);
     expect(s.players.map(p => [p.team, p.lane])).toEqual([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]]);
     expect(s.teams[0].hqHp).toBe(3 * RULES.hqHp);
-    expect(s.units.filter(u => u.type === "tower").length).toBe(24);
+    expect(s.units.filter(u => UNITS[u.type]!.structure).length).toBe(24);
+    expect(s.units.filter(u => u.type === MAP.baseTower).length).toBe(12); // the two at the front of each building ground are bastions
     const sexton = s.keepers.find(k => k.owner === 0 && k.slot === 0)!, undertaker = s.keepers.find(k => k.owner === 0 && k.slot === 1)!;
     // build in an ally's lane: without his teleport the Sexton has to walk across the middle lane to get there
     step(s, [{ player: 0, cmd: { type: "build", keeper: 0, unit: "arbalester", col: 10, row: 10, lane: 2 } },

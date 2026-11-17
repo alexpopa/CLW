@@ -34,10 +34,10 @@ export const hqMax = (s: GameState): number => RULES.hqHp * s.laneCount;
 export const keeperOf = (s: GameState, player: PlayerId, slot: number): KeeperState | undefined => s.keepers.find(k => k.owner === player && k.slot === slot);
 /** Distance of the base towers from their team's own lane end. */
 export const baseTowerLocalX = (): number => MAP.zoneStart + MAP.zoneCols * MAP.cell + MAP.baseTowerAhead;
-/** Living guard towers of a team in a lane. */
+/** Living towers (guard towers and bastions) of a team in a lane. */
 export function towersOf(s: GameState, team: TeamId, lane = 0): number {
   let n = 0;
-  for (const u of s.units) if (u.type === "tower" && u.team === team && u.lane === lane) n++;
+  for (const u of s.units) if (UNITS[u.type]!.structure && u.team === team && u.lane === lane) n++;
   return n;
 }
 
@@ -125,8 +125,8 @@ export function createGame(cfg: GameConfig): GameState {
     // ...and two more guard the front of its building ground, so the cathedral has a last line of defence.
     const shrineLocal = MAP.beaconX[0]! + MAP.towerAhead, baseLocal = baseTowerLocalX();
     for (const team of [0, 1] as const)
-      for (const [local, ys] of [[baseLocal, MAP.baseTowerY], [shrineLocal, MAP.towerY]] as const) for (const y of ys)
-        addUnit(s, "tower", team === 0 ? 0 : n, team, lane, team === 0 ? local : MAP.laneLength - local, y);
+      for (const [local, ys, kind] of [[baseLocal, MAP.baseTowerY, MAP.baseTower], [shrineLocal, MAP.towerY, MAP.shrineTower]] as const) for (const y of ys)
+        addUnit(s, kind, team === 0 ? 0 : n, team, lane, team === 0 ? local : MAP.laneLength - local, y);
   }
   return s;
 }

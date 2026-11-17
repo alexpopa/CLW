@@ -20,6 +20,37 @@ const BUILDERS: Record<string, (t: Pal) => ModelDef> = {
     glow: merge([box(0.07, 0.6, 0.2, PAL.candle, 1.06, 1.7, 0), box(0.2, 0.6, 0.07, PAL.candle, 0, 1.7, 1.06), box(0.2, 0.6, 0.07, PAL.candle, 0, 1.7, -1.06)]),
     weapon: { pivot: [0, 4.5, 0], anim: "raise", geo: cyl(0.3, 0.2, 0.2, 6, PAL.ink, 0, 0, 0), glow: ball(0.26, t.glow, 0, 0.25, 0, 0) },
   }),
+  // Cathedral bastion: a square, buttressed keep twice the bulk of a guard tower, a corner turret at each angle, a tall slate spire
+  // with a gilded cross, lancet windows lit from within, and a great brazier of burning pitch on the wall-walk.
+  bastion: t => {
+    const corners = [[1, 1], [1, -1], [-1, 1], [-1, -1]] as const, R = 1.45;
+    return {
+      height: 9.4,
+      body: merge([
+        box(3.7, 0.6, 3.7, PAL.stoneLo, 0, 0.3, 0), box(3.3, 0.35, 3.3, PAL.stoneHi, 0, 0.75, 0),
+        box(2.9, 4.6, 2.9, PAL.stone, 0, 3.2, 0), box(3.0, 0.2, 3.0, t.lo, 0, 3.6, 0), box(3.25, 0.45, 3.25, PAL.stoneHi, 0, 5.7, 0),
+        // buttresses down the middle of each face
+        ...[0, 1, 2, 3].map(i => { const a = (i * Math.PI) / 2; return box(0.5, 3.2, 0.7, PAL.stoneLo, Math.cos(a) * 1.55, 2.1, Math.sin(a) * 1.55, { ry: -a }); }),
+        // crenels round the wall-walk
+        ...Array.from({ length: 12 }, (_, i) => { const side = Math.floor(i / 3), k = (i % 3) - 1, a = (side * Math.PI) / 2, c = Math.cos(a), sn = Math.sin(a);
+          return box(0.42, 0.55, 0.42, PAL.stoneHi, c * 1.48 - sn * k * 0.9, 6.2, sn * 1.48 + c * k * 0.9, { ry: -a }); }),
+        // corner turrets with little slate caps
+        ...corners.flatMap(([x, z]) => [cyl(0.5, 0.58, 5.2, 8, PAL.stone, x * R, 3.1, z * R), cyl(0.62, 0.52, 0.35, 8, PAL.stoneHi, x * R, 5.85, z * R), cyl(0, 0.6, 1.3, 8, PAL.roof, x * R, 6.65, z * R)]),
+        // the central spire and its cross
+        box(1.6, 0.9, 1.6, PAL.stone, 0, 6.35, 0), cyl(0, 1.05, 2.6, 4, PAL.roof, 0, 8.1, 0, { ry: Math.PI / 4 }),
+        box(0.08, 0.75, 0.08, PAL.gold, 0, 9.65, 0), box(0.42, 0.08, 0.08, PAL.gold, 0, 9.78, 0),
+        // the team's banners hung on two faces
+        box(0.06, 1.5, 0.75, t.main, 1.47, 4.4, 0.75), box(0.06, 1.5, 0.75, t.main, 1.47, 4.4, -0.75), box(0.75, 1.5, 0.06, t.main, 0.75, 4.4, 1.47), box(0.75, 1.5, 0.06, t.main, -0.75, 4.4, 1.47),
+        box(0.08, 0.12, 0.8, PAL.gold, 1.49, 5.2, 0.75), box(0.08, 0.12, 0.8, PAL.gold, 1.49, 5.2, -0.75), box(0.8, 0.12, 0.08, PAL.gold, 0.75, 5.2, 1.49), box(0.8, 0.12, 0.08, PAL.gold, -0.75, 5.2, 1.49),
+      ]),
+      glow: merge([
+        ...[0, 1, 2, 3].flatMap(i => { const a = (i * Math.PI) / 2, c = Math.cos(a), sn = Math.sin(a);
+          return [box(0.08, 0.95, 0.26, PAL.candle, c * 1.47 - sn * 0.75, 2.3, sn * 1.47 + c * 0.75, { ry: -a }), box(0.08, 0.95, 0.26, PAL.candle, c * 1.47 + sn * 0.75, 2.3, sn * 1.47 - c * 0.75, { ry: -a })]; }),
+        ...corners.map(([x, z]) => box(0.08, 0.5, 0.16, PAL.candle, x * (R + 0.5), 4.3, z * R, { ry: 0 })),
+      ]),
+      weapon: { pivot: [1.1, 6.4, 1.1], anim: "raise", geo: merge([cyl(0.42, 0.28, 0.28, 6, PAL.ink, 0, 0, 0), cyl(0.06, 0.06, 0.5, 4, PAL.ink, 0, -0.35, 0)]), glow: ball(0.38, t.glow, 0, 0.32, 0, 0) },
+    };
+  },
   arbalester: t => ({
     height: 2.6,
     body: merge([

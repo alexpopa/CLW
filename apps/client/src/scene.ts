@@ -49,7 +49,7 @@ const SHOTS: Record<string, { kind: Shot; color: number }> = {
   arbalester: { kind: "bolt", color: PAL.bone }, witchhunter: { kind: "gun", color: 0xfff1c9 }, hexbinder: { kind: "orb", color: PAL.storm },
   necromancer: { kind: "orb", color: PAL.venom }, lich: { kind: "orb", color: PAL.frost }, trebuchet: { kind: "stone", color: 0x55586a },
   zealot: { kind: "flame", color: 0xff7a1a }, wyrm: { kind: "flame", color: 0xff5a1f }, ballista: { kind: "stake", color: 0x8c93a6 },
-  cantor: { kind: "lightning", color: PAL.storm }, hq: { kind: "beam", color: 0 }, tower: { kind: "beam", color: 0 },
+  cantor: { kind: "lightning", color: PAL.storm }, hq: { kind: "beam", color: 0 }, tower: { kind: "beam", color: 0 }, bastion: { kind: "beam", color: 0 },
 };
 const MELEE: Record<string, number> = { titan: 0xffd27a, rider: 0xdfe6ff, ogre: 0xcdbf9f, countess: 0xff3b4f, shade: PAL.ghost, colossus: 0xcdbf9f, headsman: 0xffffff, gargoyle: 0xc8ccd8, hound: 0xe2d7bc };
 export const shotKind = (unit: string): Shot | "melee" => SHOTS[unit]?.kind ?? "melee";
@@ -560,11 +560,11 @@ export class Renderer {
         for (let i = 0; i < 4; i++) this.spark(to.x + rnd(0.6), 0.3 + Math.random() * 0.6, to.z + rnd(0.6), PAL.heal, 600 + Math.random() * 300, 0.45, 0.08, 0, 1.4, 0, 0, now);
       } else if (e.t === "death") {
         // taken by a Deadly Fog: the breath leaves him as a pale green wisp
-        if (e.unit !== "tower" && s.fogs.some(f => f.team !== e.team && f.lane === e.lane && (f.team === 0 ? e.x : MAP.laneLength - e.x) <= RULES.fogReach)) {
+        if (!UNITS[e.unit]?.structure && s.fogs.some(f => f.team !== e.team && f.lane === e.lane && (f.team === 0 ? e.x : MAP.laneLength - e.x) <= RULES.fogReach)) {
           this.spark(W(e.x), 1.2, Zy(e.y), 0x9dffb8, 700, 0.8, 3.2, 0, 1.2, 0, 0, now);
           for (let i = 0; i < 5; i++) this.spark(W(e.x) + rnd(0.7), 0.4 + Math.random(), Zy(e.y) + rnd(0.7), i % 2 ? 0x7dffa0 : 0xe9ffe8, 900 + Math.random() * 600, 0.45, 0.05, rnd(0.8), 2 + Math.random() * 2.5, rnd(0.8), 0, now);
         }
-        if (e.unit === "tower") for (let i = 0; i < 26; i++) this.spark(W(e.x) + rnd(2), 0.5 + Math.random() * 4, Zy(e.y) + rnd(2), i % 5 ? 0x6d6050 : 0xffb060, 900 + Math.random() * 700, 1.4, 4.5, rnd(5), 1 + Math.random() * 3, rnd(5), -4, now);
+        if (UNITS[e.unit]?.structure) for (let i = 0; i < (e.unit === MAP.baseTower ? 44 : 26); i++) this.spark(W(e.x) + rnd(2), 0.5 + Math.random() * 4, Zy(e.y) + rnd(2), i % 5 ? 0x6d6050 : 0xffb060, 900 + Math.random() * 700, 1.4, 4.5, rnd(5), 1 + Math.random() * 3, rnd(5), -4, now);
         else if (e.unit === "colossus") for (let i = 0; i < 18; i++) this.spark(W(e.x) + rnd(2.4), 0.4 + Math.random() * 3, Zy(e.y) + rnd(2.4), i % 3 ? 0xcdbf9f : TEAM[e.team].glow, 800 + Math.random() * 500, 1, 3, rnd(4), 1 + Math.random() * 2, rnd(4), -3, now);
         else for (let i = 0; i < 4; i++) this.spark(W(e.x) + rnd(0.6), 0.3, Zy(e.y) + rnd(0.6), e.unit === "skeleton" ? 0xb9ae93 : e.unit === "shade" ? PAL.ghost : 0x5d5348, 600 + Math.random() * 300, 0.6, 1.8, rnd(1.2), 1, rnd(1.2), 0, now);
       } else if (e.t === "capture") {

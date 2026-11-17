@@ -88,10 +88,10 @@ export function stream(a: Army, b: Army, maxMinutes = 10): StreamResult {
       if (cell) s.buildings.push({ id: s.nextId++, owner: team, team, lane: 0, ...cell, unit: id, readyTick: 0, produced: false });
     }
   }
-  const stone = 4 * UNITS.tower!.hp + RULES.hqHp;
+  const stone = 2 * (UNITS[MAP.shrineTower]!.hp + UNITS[MAP.baseTower]!.hp) + RULES.hqHp;
   const broken = (team: TeamId): number => { // how much of `team`'s stone is gone
     let left = s.teams[team].hqHp;
-    for (const u of s.units) if (u.team === team && u.type === "tower") left += u.hp;
+    for (const u of s.units) if (u.team === team && UNITS[u.type]!.structure) left += u.hp;
     return 1 - left / stone;
   };
   const limit = maxMinutes * 60 * TICK_RATE;

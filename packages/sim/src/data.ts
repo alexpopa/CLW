@@ -196,6 +196,12 @@ export const UNITS: Record<string, UnitDef> = {
   tower: U({ id: "tower", name: "Guard Tower", tier: 0, role: "ranged", structure: true,
     blurb: "Shoots attackers, who must stop and bring it down before they can pass.", ability: "Watchfire: strikes foes on the ground and in the air.",
     cost: 0, hp: 2400, armor: 2, damage: 24, interval: sec(0.6), range: 9 * UNIT, speed: 0, air: true }),
+  // Cathedral bastion: the two that guard the front of each building ground, the cathedral's last wall. Half again a guard tower's
+  // stone, thicker walls and a heavier shot, so a lane that breaks through still has to bring a real army to reach the doors.
+  bastion: U({ id: "bastion", name: "Cathedral Bastion", tier: 0, role: "ranged", structure: true,
+    blurb: "The cathedral's last wall. Attackers must stop and bring it down before they reach the chantries and the doors.",
+    ability: "Watchfire: strikes foes on the ground and in the air.",
+    cost: 0, hp: 3600, armor: 3, damage: 26, interval: sec(0.6), range: 10 * UNIT, speed: 0, air: true }),
 };
 /** Units a player can build, grouped by tier in hotkey order. */
 export const UNIT_ORDER = [
@@ -225,6 +231,8 @@ export const MAP = {
   hqRadius: 4 * UNIT,
   beaconX: [120 * UNIT, 240 * UNIT, 360 * UNIT], // 25% / 50% / 75%; first and last are the home shrines
   captureRadius: 5 * UNIT,   // along the lane
+  shrineTower: "tower",      // what guards the home shrine
+  baseTower: "bastion",      // what guards the front of the building ground: the cathedral's last wall
   towerAhead: 3 * UNIT,      // guard towers stand this far in front of their home shrine
   towerY: [7 * UNIT, 17 * UNIT],
   baseTowerAhead: 3 * UNIT,  // base towers stand this far in front of the building ground...

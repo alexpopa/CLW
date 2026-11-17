@@ -110,7 +110,8 @@ Opened by the Fourth Rite (1500 gold, 60 s). Only the Undertaker can raise these
 ### Not buildable
 
 - **Skeleton:** 90 health, 10 damage a second, melee. Raised by a Necromancer or left by a fallen Bone Colossus. Crumbles after 40 seconds. Skeletons are not worth anything to a Necromancer when they die (they cannot be raised again).
-- **Guard Tower:** 2,400 health, armor 2, 24 damage every 0.6 s, reach 9. Strikes ground and air. Four per side; see [GAME_DESIGN.md](GAME_DESIGN.md).
+- **Guard Tower:** 2,400 health, armor 2, 24 damage every 0.6 s, reach 9. Strikes ground and air. Two on each home shrine, per lane.
+- **Cathedral Bastion:** 3,600 health, armor 3, 26 damage every 0.6 s, reach 10. Strikes ground and air. Two at the front of each building ground, per lane: the cathedral's last wall. Eight Dreadknights that break a plain tower pair in under a minute die against a bastion pair; see [GAME_DESIGN.md](GAME_DESIGN.md).
 
 ## Tier IV and mercenaries
 

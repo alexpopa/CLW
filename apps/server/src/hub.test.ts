@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createGame, step, TICK_RATE } from "@lw/sim";
+import { createGame, step, TICK_RATE, UNITS } from "@lw/sim";
 import type { GameState } from "@lw/sim";
 import type { ServerMsg } from "@lw/protocol";
 import { guestSessions } from "./auth/guest";
@@ -55,7 +55,7 @@ describe("match server", () => {
     run(40 * TICK_RATE);
     expect(a.game.tick).toBe(40 * TICK_RATE);
     expect([...a.game.buildings].sort((x, y) => x.owner - y.owner).map(x => [x.owner, x.unit])).toEqual([[0, "arbalester"], [1, "oathguard"]]);
-    expect(a.game.units.filter(u => u.type !== "tower").length).toBe(2); // one wave from each side
+    expect(a.game.units.filter(u => !UNITS[u.type]!.structure).length).toBe(2); // one wave from each side
     expect(JSON.stringify(a.game)).toBe(JSON.stringify(b.game));
   });
 
