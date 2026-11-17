@@ -20,7 +20,7 @@ export interface HudActions {
   research(): void;
   storm(): void;                              // call the Storm of Wrath
   vultures(): void;                           // send the Ossuary Vultures down the Sexton's lane (no button on a desktop: 0)
-  fog(): void;                                // call the Deadly Fog down the lane in view
+  fog(): void;                                // call the Deadly Fog down the Sexton's lane
   teleport(): void;                           // arm the Sexton's teleport
   home(): void;                               // look at my own cathedral
   cancel(): void;                             // back out one step (what Esc does)
@@ -36,7 +36,6 @@ export interface HudActions {
   menu(): void;                               // leave any lobby and return to the title screen
 }
 export interface HudView { me: number; keeper: 0 | 1 | null; tier: number; selectedUnit: string | null; selectedBuilding: number | null; speed: number; paused: boolean;
-  fogLane: number;                            // the lane the Deadly Fog would roll down: the one in view
   teleport: boolean;                          // the Sexton's teleport is armed: the next click on friendly ground sends him there
   camRect: [number, number, number, number];  // the part of the field on screen, as fractions [x0, x1, z0, z1]
   names: string[] }                           // display name per seat (online), empty in solo play
@@ -443,6 +442,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
 
       const block = stormBlock(s, p), rest = p.stormReady - s.tick, strikes = RULES.stormTicks / RULES.stormInterval;
       const mine = s.storms.filter(q => q.team === p.team).length, theirs = s.storms.length - mine;
+      const sexton = s.keepers.find(q => q.owner === v.me && KEEPERS[q.slot].powers), fogLane = sexton?.lane ?? p.lane;
       set("stormC", String(RULES.stormCost));
       set("stormT", mine ? `Raging · ${mine > 1 ? `${mine} storms` : "the enemy burns"}` : block === "tier" ? "Sealed until The Third Rite" : rest > 0 ? `The sky rests · ${secs(rest)}s` : "Lightning on every enemy");
       $("stormBar").style.width = rest > 0 ? `${100 - (rest / RULES.stormCooldownTicks) * 100}%` : "0%";
@@ -451,7 +451,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
 
       const myFog = s.fogs.find(q => q.owner === v.me), fogLeft = myFog ? RULES.fogRollTicks + RULES.fogHoldTicks - (s.tick - myFog.from) : 0;
       const theirFog = s.fogs.some(q => q.team !== p.team), fogSecs = secs(RULES.fogRollTicks);
-      set("fogT", myFog ? (fogFront(s, myFog) < RULES.fogReach ? "Rolling out · nothing lives in it" : `Standing · ${secs(fogLeft)}s`) : p.fogUsed ? "Spent · it comes but once" : s.laneCount > 1 ? `Death down ${laneName(v.fogLane)}` : "Death rolls from your cathedral");
+      set("fogT", myFog ? (fogFront(s, myFog) < RULES.fogReach ? "Rolling out · nothing lives in it" : `Standing · ${secs(fogLeft)}s`) : p.fogUsed ? "Spent · it comes but once" : s.laneCount > 1 ? `Death down ${laneName(fogLane)}` : "Death rolls from your cathedral");
       $("fogBar").style.width = myFog ? `${Math.max(0, (fogLeft / (RULES.fogRollTicks + RULES.fogHoldTicks)) * 100)}%` : "0%";
       $("fog").classList.toggle("done", p.fogUsed && !myFog); $("fog").classList.toggle("rolling", !!myFog); $("fog").classList.toggle("ready", !p.fogUsed);
       root.classList.toggle("fogged", theirFog);
@@ -472,9 +472,9 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
         <p class="stats">It thins a swarm and softens the great; it will not win a battle alone. Storms called together strike together.</p>
         <p class="hint">${block === "tier" ? "Sealed until The Third Rite is complete." : `The sky rests ${secs(RULES.stormCooldownTicks)} seconds between your storms.`}</p>`);
       else if (hover === "fog") tip(`<h3>Deadly Fog<span class="num">Once</span></h3>
-        <p>A last resort. A killing fog pours out of your cathedral and rolls slowly down ${s.laneCount > 1 ? `<b>${laneName(v.fogLane)}</b>` : "the lane"}, as far as halfway between your shrine and the middle one. <b>Every enemy soldier it touches dies</b>, the greatest like the least, on the ground and in the air. Towers and cathedrals are spared.</p>
+        <p>A last resort. A killing fog pours out of your cathedral and rolls slowly down ${s.laneCount > 1 ? `<b>${laneName(fogLane)}</b>, the lane the Sexton stands in` : "the lane"}, as far as halfway between your shrine and the middle one. <b>Every enemy soldier it touches dies</b>, the greatest like the least, on the ground and in the air. Towers and cathedrals are spared.</p>
         <p class="stats">It takes ${fogSecs} seconds to roll out and stands ${secs(RULES.fogHoldTicks)} more; whatever marches into it meanwhile dies too. It costs nothing.</p>
-        <p class="hint">${p.fogUsed ? "You have called it. It will not come again this war." : `It comes once in the whole war: keep it for the hour the gates are about to fall.${s.laneCount > 1 ? " It rolls down the lane you are looking at." : ""}`}</p>`);
+        <p class="hint">${p.fogUsed ? "You have called it. It will not come again this war." : `It comes once in the whole war: keep it for the hour the gates are about to fall.${s.laneCount > 1 ? " Teleport the Sexton (T) to aim it at another lane." : ""}`}</p>`);
       else if (hover === "keeper0" || hover === "keeper1") {
         const slot = Number(hover.slice(6)), k = KEEPERS[slot]!, mine = s.keepers.find(q => q.owner === v.me && q.slot === slot);
         tip(`<h3>${k.name}<span class="num">${slot + 1}</span></h3><p>${k.blurb}</p>

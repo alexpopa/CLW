@@ -215,8 +215,8 @@ export const MERC_ORDER = ["gallowglass", "marksman", "fireeater", "ogre"] as co
 export const MAX_TIER = 4;
 /** Each player has two gravekeepers who do the building. Slot 0 is the Sexton, slot 1 the Undertaker. */
 export const KEEPERS = [
-  { id: "sexton", name: "Sexton", blurb: "Gravedigger of the parish. Raises chantries of the first three tiers, and can step through the grave to any ground his side holds.", minTier: 1, maxTier: 3, mercs: false, teleport: true },
-  { id: "undertaker", name: "Undertaker", blurb: "Keeps the ledger of the dead. Raises the great chantries of the fourth tier, which the Sexton cannot, and hires mercenaries.", minTier: 4, maxTier: 4, mercs: true, teleport: false },
+  { id: "sexton", name: "Sexton", blurb: "Gravedigger of the parish. Raises chantries of the first three tiers, and calls the vultures and the Deadly Fog down the lane he stands in.", minTier: 1, maxTier: 3, mercs: false, teleport: true, powers: true },
+  { id: "undertaker", name: "Undertaker", blurb: "Keeps the ledger of the dead. Raises the great chantries of the fourth tier, which the Sexton cannot, and hires mercenaries.", minTier: 4, maxTier: 4, mercs: true, teleport: false, powers: false },
 ] as const;
 export const unitsOfTier = (tier: number): string[] => UNIT_ORDER.filter(id => UNITS[id]!.tier === tier);
 

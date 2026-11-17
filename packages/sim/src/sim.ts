@@ -151,7 +151,7 @@ export function parseCommand(raw: unknown): Command | null {
   if (r.type === "hire") return typeof r.unit === "string" && Object.hasOwn(UNITS, r.unit) ? { type: "hire", unit: r.unit } : null;
   if (r.type === "storm") return { type: "storm" };
   if (r.type === "vultures") return { type: "vultures" };
-  if (r.type === "fog") return { type: "fog", ...lane };
+  if (r.type === "fog") return { type: "fog" };
   if (r.type === "sell") return int(r.buildingId) ? { type: "sell", buildingId: r.buildingId } : null;
   if (r.type === "invest") return { type: "invest", ...lane };
   if (r.type === "research") {
@@ -204,14 +204,14 @@ function applyCommand(s: GameState, player: PlayerId, c: Command): void {
     s.storms.push({ owner: player, team: me.team, from: s.tick, until: s.tick + RULES.stormTicks });
     s.events.push({ t: "storm", player, team: me.team });
   } else if (c.type === "vultures") {
-    const k = s.keepers.find(q => q.owner === player && KEEPERS[q.slot].teleport); // the Sexton: they fly where he stands
+    const k = s.keepers.find(q => q.owner === player && KEEPERS[q.slot].powers); // the Sexton: they fly where he stands
     if (!k || vultureBlock(s, me)) return;
     me.vultureReady = s.tick + RULES.vultureCooldownTicks;
     s.flights.push({ owner: player, team: me.team, lane: k.lane, x: me.team === 0 ? MAP.beaconX[0]! : MAP.laneLength - MAP.beaconX[0]!, cd: [0, RULES.vultureUrnTicks / 2] });
     s.events.push({ t: "vultures", player, team: me.team, lane: k.lane });
   } else if (c.type === "fog") {
-    const lane = c.lane ?? me.lane;
-    if (me.fogUsed || !Number.isInteger(lane) || lane < 0 || lane >= s.laneCount) return;
+    const lane = s.keepers.find(q => q.owner === player && KEEPERS[q.slot].powers)?.lane; // the Sexton: it rolls down the lane he stands in
+    if (me.fogUsed || lane === undefined) return;
     me.fogUsed = true;
     s.fogs.push({ owner: player, team: me.team, lane, from: s.tick });
     s.events.push({ t: "fog", player, team: me.team, lane });

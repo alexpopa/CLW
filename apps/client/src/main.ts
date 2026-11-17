@@ -40,7 +40,6 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   let mouseX = -1, mouseY = -1, mouseInside = false;
 
   const me = () => game.players[ME]!;
-  const fogLane = () => laneAt(view.camZ, view.lanes).lane; // the Deadly Fog rolls down the lane in the middle of the view
   const home = () => (me().team === 0 ? 0 : LANE);
   const send = (cmd: Command) => { if (!running || ended) return; if (online) net?.command(cmd); else pending.push(cmd); };
   const begin = (state: GameState, slot: number) => {
@@ -143,7 +142,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     fog() {
       if (!running) return;
       if (me().fogUsed) deny("The fog comes but once in a war");
-      else send({ type: "fog", lane: fogLane() });
+      else send({ type: "fog" });
     },
     teleport() { // arm the Sexton's teleport: he is chosen, and the next click on friendly ground (or on the map's ground) sends him
       if (!running) return;
@@ -368,7 +367,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     }
     if (selectedBuilding !== null && !game.buildings.some(b => b.id === selectedBuilding)) selectedBuilding = null;
     view.draw(game, { selectedKeeper, selectedUnit, hoverCell, selectedBuilding, me: ME }, paused || ended ? 1 : Math.min(1, acc / TICK_MS), now, dt);
-    if ((hudTurn = !hudTurn) || !touching) hud.update(game, { me: ME, keeper: selectedKeeper, tier: tierTab, selectedUnit, selectedBuilding, speed, paused, fogLane: fogLane(), teleport: teleporting, camRect: view.viewRect(), names: online ? names : [] });
+    if ((hudTurn = !hudTurn) || !touching) hud.update(game, { me: ME, keeper: selectedKeeper, tier: tierTab, selectedUnit, selectedBuilding, speed, paused, teleport: teleporting, camRect: view.viewRect(), names: online ? names : [] });
   };
   requestAnimationFrame(frame);
 

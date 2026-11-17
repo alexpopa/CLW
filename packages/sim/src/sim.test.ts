@@ -363,7 +363,8 @@ describe("sim", () => {
     const beyond = addUnit(s, "oathguard", 2, 1, 1, 470000, 12000), other = addUnit(s, "titan", 2, 1, 0, 60000, 12000);
     const mine = addUnit(s, "titan", 0, 0, 1, 50000, 3000), tower = addUnit(s, "tower", 2, 1, 1, 70000, 20000);
     const alive = (u: { id: number }) => s.units.some(q => q.id === u.id);
-    step(s, [{ player: 0, cmd: { type: "fog", lane: 1 } }, { player: 0, cmd: { type: "fog", lane: 0 } }]); // the second call finds it spent
+    step(s, [{ player: 0, cmd: { type: "teleport", keeper: 0, x: 30000, y: 5000, lane: 1 } }]); // it rolls down the lane the Sexton stands in
+    step(s, [{ player: 0, cmd: { type: "fog" } }, { player: 0, cmd: { type: "fog" } }]); // the second call finds it spent
     expect([s.fogs.length, s.fogs[0]!.lane, s.players[0]!.fogUsed, s.players[0]!.credits]).toEqual([1, 1, true, RULES.startCredits]);
     expect(alive(near)).toBe(true);                         // it has not reached him yet
     ticks(s, Math.ceil((RULES.fogRollTicks * 60000) / RULES.fogReach) + 2);
@@ -376,8 +377,7 @@ describe("sim", () => {
     expect(s.fogs.length).toBe(0);
     step(s, [{ player: 0, cmd: { type: "fog" } }, { player: 2, cmd: { type: "fog" } }]);   // the enemy still has his own: it rolls from his end
     expect(s.fogs.map(f => [f.team, f.lane])).toEqual([[1, 0]]);
-    expect(parseCommand({ type: "fog", lane: 1, junk: 1 })).toEqual({ type: "fog", lane: 1 });
-    expect(parseCommand({ type: "fog", lane: 1.5 })).toBeNull();
+    expect(parseCommand({ type: "fog", lane: 1, junk: 1 })).toEqual({ type: "fog" });
   });
   it("the Ossuary Vultures fly the Sexton's lane from shrine to shrine without stopping, bomb the ground as they pass, need tier II and rest", () => {
     const s = createGame({ teamSize: 2, seed: 1 });
