@@ -288,6 +288,14 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .seat.open{cursor:pointer;background:rgba(12,11,15,.55);border-style:dashed;border-color:#3a3445;box-shadow:none}
 .seat.open::before{opacity:.35}.seat.open .who{color:#6d6577;font-style:italic;font-size:15px}.seat.open .tag{opacity:0;transition:opacity .12s}
 .seat.open:hover{border-color:var(--gold-dim);background:rgba(40,34,22,.6)}.seat.open:hover .tag{opacity:1;color:var(--gold)}.seat.open:hover .who{color:var(--dim)}
+.council{margin:18px auto 0;max-width:620px;text-align:left;border:1px solid var(--edge);background:rgba(8,7,11,.72);box-shadow:0 0 0 1px #000}
+.council .log{height:132px;overflow-y:auto;padding:8px 12px;font-size:15px;line-height:1.35;user-select:text;-webkit-user-select:text;scrollbar-width:thin;scrollbar-color:#3b3644 transparent}
+.council .line{margin:1px 0;color:#d8cfb8;word-wrap:break-word}
+.council .line b{font:600 12px var(--display);letter-spacing:.06em;margin-right:2px}
+.council .line.t0 b{color:#8fb6f5}.council .line.t1 b{color:#ef8f84}.council .line.sys{font-style:italic;color:var(--dim);font-size:14px}
+.council form{display:flex;border-top:1px solid var(--edge)}
+.council input{flex:1;min-width:0;height:38px;border:0!important;background:transparent!important;width:auto!important;font-size:15.5px!important}
+.council .ghost{height:38px;border:0;border-left:1px solid var(--edge)}
 .lobby .note{min-height:20px;margin:10px 0 4px;font-style:italic;color:#d98a7c}
 .lobby .row{gap:12px}
 #lbGo.march{height:46px;padding:0 34px;font:700 13px var(--display);letter-spacing:.22em;text-transform:uppercase;color:#17130a;background:linear-gradient(#ecd08a,#b08a34);
@@ -299,4 +307,5 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 @media (max-width:700px),(max-height:520px){
   .panel.lobby h1{font-size:42px}.lbcode b{font-size:26px}
   .hosts{grid-template-columns:1fr;gap:10px}.hosts .vs{display:none}
+  .council .log{height:96px}
 }

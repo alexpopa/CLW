@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createGame, step, TICK_RATE, UNITS } from "@lw/sim";
 import type { GameState } from "@lw/sim";
+import { CHAT_MAX } from "@lw/protocol";
 import type { ServerMsg } from "@lw/protocol";
 import { guestSessions } from "./auth/guest";
 import { Hub } from "./hub";
@@ -140,6 +141,25 @@ describe("match server", () => {
     expect(solo.game.laneCount).toBe(3);
   });
 
+  it("lobby chat reaches everyone in the lobby as plain, trimmed text, is rate limited, and rejects excess messages", async () => {
+    const { hub } = setup();
+    const [a, b, x] = [player(hub), player(hub), player(hub)];
+    for (const [p, name] of [[a, "Ann"], [b, "Bo"], [x, "Xan"]] as const) await p.say({ t: "hello", sessionToken: `guest:${name}` });
+    await a.say({ t: "createLobby", settings: { teamSize: 2, aiFill: false } });
+    await b.say({ t: "joinLobby", lobbyId: a.last("lobby")!.lobbyId });
+    await x.say({ t: "createLobby", settings: { teamSize: 1, aiFill: false } }); // another lobby hears nothing
+    await b.say({ t: "chat", text: "  hold the\nmiddle\u0007 lane  " });
+    expect(a.last("chat")).toEqual({ t: "chat", slot: 2, name: "Bo", text: "hold the middle lane" });
+    expect(b.last("chat")!.text).toBe("hold the middle lane");
+    expect(x.last("chat")).toBeUndefined();
+    await b.say({ t: "chat", text: "y".repeat(500) });
+    expect(a.last("chat")!.text.length).toBe(CHAT_MAX);
+    for (const junk of [{ t: "chat" }, { t: "chat", text: 5 }, { t: "chat", text: "   " }]) await b.say(junk);
+    expect(a.got.filter(m => m.t === "chat").length).toBe(2);
+    for (let i = 0; i < 6; i++) await b.say({ t: "chat", text: `spam ${i}` });
+    expect(b.last("error")!.code).toBe("slow");
+    expect(a.got.filter(m => m.t === "chat").length).toBe(2 + 3); // five in five seconds, then nothing
+  });
   it("passes the host to a remaining player without changing their seat", async () => {
     const { hub } = setup();
     const [a, b] = [player(hub), player(hub)];

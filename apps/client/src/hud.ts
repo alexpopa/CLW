@@ -1,6 +1,6 @@
-import { seatOf } from "@lw/protocol";
+import { CHAT_MAX, seatOf } from "@lw/protocol";
 import type { UserIdentity } from "@lw/protocol";
-import type { LobbyView } from "./net";
+import type { ChatLine, LobbyView } from "./net";
 import "@fontsource/cinzel/400.css";
 import "@fontsource/cinzel/600.css";
 import "@fontsource/cinzel/700.css";
@@ -37,6 +37,7 @@ export interface HudActions {
   startOnlineNow(): void;                     // host: begin the match; the autopilot takes the empty seats
   takeSeat(slot: number): void;               // lobby: move to that empty seat (a side and a lane)
   setReady(ready: boolean): void;             // lobby: tell the host you are ready, or not yet
+  say(text: string): void;                    // lobby: one line of chat
   menu(): void;                               // leave any lobby and return to the title screen
 }
 export interface HudView { me: number; keeper: 0 | 1 | null; tier: number; selectedUnit: string | null; selectedBuilding: number | null; speed: number; paused: boolean;
@@ -127,7 +128,23 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   <div id="toast"></div>
   <div id="overlay"></div>`;
 
+  // The lobby on screen and this session's chat. Nothing is kept once the lobby is left.
   let lobby: LobbyView | null = null;
+  const chat: { team: 0 | 1 | -1; name: string; text: string }[] = [];
+  const drawChat = () => {
+    const log = document.getElementById("lbLog");
+    if (!log) return;
+    const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
+    log.replaceChildren(...(chat.length ? chat : [{ team: -1 as const, name: "", text: "The council is quiet. Say something." }]).map(l => {
+      const row = document.createElement("div");
+      row.className = l.team < 0 ? "line sys" : `line t${l.team}`;
+      if (l.name) { const who = document.createElement("b"); who.textContent = l.name; row.append(who, " "); }
+      row.append(l.text);
+      return row;
+    }));
+    if (stick) log.scrollTop = log.scrollHeight;
+  };
+  const note = (text: string) => { chat.push({ team: -1, name: "", text }); drawChat(); };
 
   let hover: string | null = null; // unit id, "invest", "research" or "keeper0" / "keeper1" (a mouse only: fingers do not hover)
   let peek: string | null = null;  // touch: the card whose notes are open, waiting for a second tap to study or hire it
@@ -245,7 +262,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
     },
     clearAccount(): void { account = undefined; },
     showStart(notice?: string, user?: UserIdentity): void {
-      lobby = null;
+      lobby = null; chat.length = 0;
       if (user) account = user;
       user = account;
       const render = ++menuRender;
@@ -345,28 +362,39 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
     },
     /** Connecting to the server, before there is a lobby to show. */
     showConnecting(status: string): void {
-      lobby = null;
+      lobby = null; chat.length = 0;
       $("overlay").className = "show";
       $("overlay").innerHTML = `<div class="panel"><h1>Gravemarch</h1><div class="sub">${esc(status)}</div><div class="orn"></div>
         <p>One moment.</p><div class="row"><button id="olCancel" class="ghost">Cancel</button></div></div>`;
       $("olCancel").onclick = () => act.menu();
     },
-    /** The war council: both hosts seat by seat, lane by lane, and the host's button to begin. */
+    /** The war council: both hosts seat by seat, lane by lane, a chat, and the host's button to begin. */
     showLobby(view: LobbyView): void {
       const before = lobby;
       lobby = view;
       if (!before || before.lobbyId !== view.lobbyId || !$("lobby")) {
+        chat.length = 0;
         $("overlay").className = "show";
         $("overlay").innerHTML = `<div class="panel lobby" id="lobby">
           <h1>Gravemarch</h1><div class="sub" id="lbSub"></div><div class="orn"></div>
           <div class="lbcode"><span>Match code</span><b id="lbCode"></b><button id="lbCopy" class="ghost" title="Copy the code">Copy</button></div>
           <div class="hosts">${[0, 1].map(team => `<section class="host t${team}"><h3>${HOSTS[team]}</h3><div class="seats" id="lbTeam${team}"></div></section>`).join(`<div class="vs">vs</div>`)}</div>
+          <div class="council">
+            <div class="log" id="lbLog" aria-live="polite"></div>
+            <form id="lbSay" autocomplete="off"><input id="lbText" maxlength="${CHAT_MAX}" placeholder="Speak to the council…" spellcheck="false"><button class="ghost">Send</button></form>
+          </div>
           <div class="note" id="lbNote"></div>
           <div class="row"><button id="lbGo"></button><button id="olCancel" class="ghost">Leave</button></div>
           <p class="lbhint">Click an empty seat to take it. Each seat is one lane; empty seats are played by the autopilot.</p>
         </div>`;
         $("olCancel").onclick = () => act.menu();
         $("lbCopy").onclick = () => { void navigator.clipboard?.writeText(view.lobbyId).then(() => { $("lbCopy").textContent = "Copied"; }, () => undefined); };
+        $("lbSay").onsubmit = e => {
+          e.preventDefault();
+          const input = $<HTMLInputElement>("lbText"), text = input.value.trim();
+          if (text) act.say(text);
+          input.value = "";
+        };
         for (const team of [0, 1]) $(`lbTeam${team}`).onclick = e => {
           const seat = (e.target as HTMLElement).closest<HTMLElement>("[data-seat]");
           if (seat && seat.classList.contains("open")) act.takeSeat(Number(seat.dataset.seat));
@@ -376,6 +404,14 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
           if (v.host === v.yourSlot) act.startOnlineNow();
           else { const me = v.slots[v.yourSlot]; act.setReady(!(me && me !== "ai" && me.ready)); }
         };
+        drawChat();
+      } else if (before) {
+        // Say who came and went, in the log: the server only sends the seats.
+        const names = (v: LobbyView) => new Map(v.slots.flatMap(q => (q && q !== "ai" ? [[q.user.userId, q.user.displayName] as const] : [])));
+        const was = names(before), now = names(view);
+        for (const [id, name] of now) if (!was.has(id)) note(`${name} joins the council`);
+        for (const [id, name] of was) if (!now.has(id)) note(`${name} has left`);
+        if (before.host !== view.host && view.slots[view.host] && view.slots[view.host] !== "ai") note(`${(view.slots[view.host] as { user: UserIdentity }).user.displayName} now leads the council`);
       }
       const n = view.settings.teamSize, seated = view.slots.filter(Boolean).length, iHost = view.host === view.yourSlot;
       set("lbSub", `${n}v${n} · ${seated} of ${view.slots.length} seats taken`);
@@ -400,6 +436,11 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
         go.textContent = ready ? "Ready · click to wait" : "I am ready";
       }
       set("lbNote", "");
+    },
+    lobbyChat(line: ChatLine): void {
+      chat.push({ team: lobby ? seatOf(line.slot, lobby.settings.teamSize).team : 0, name: line.name, text: line.text });
+      if (chat.length > 200) chat.shift();
+      drawChat();
     },
     lobbyNote(message: string): void { if ($("lbNote")) set("lbNote", message); else this.toast(message); },
     showEnd(won: boolean, s: GameState, online = false): void {

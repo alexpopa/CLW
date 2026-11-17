@@ -2,6 +2,7 @@ import type { ClientMsg, ServerMsg } from "@lw/protocol";
 
 /** The lobby as the server last described it. */
 export type LobbyView = Extract<ServerMsg, { t: "lobby" }>;
+export type ChatLine = Extract<ServerMsg, { t: "chat" }>;
 import type { Command, GameConfig, TimedCommand } from "@lw/sim";
 
 /**
@@ -10,6 +11,7 @@ import type { Command, GameConfig, TimedCommand } from "@lw/sim";
  */
 export interface NetHandlers {
   lobby(view: LobbyView): void;                                // the lobby changed: seats, readiness, host
+  chat(line: ChatLine): void;                                  // someone in the lobby spoke
   start(config: GameConfig, slot: number, names: string[]): void;
   tick(tick: number, cmds: TimedCommand[]): void;
   left(slot: number): void;
@@ -48,6 +50,7 @@ export class Net {
       try { m = JSON.parse(String(e.data)) as ServerMsg; } catch { return; }
       if (m.t === "welcome") this.send(first);
       else if (m.t === "lobby") on.lobby(m);
+      else if (m.t === "chat") on.chat(m);
       else if (m.t === "gameStart") on.start(m.config, m.yourSlot, m.names);
       else if (m.t === "tick") on.tick(m.tick, m.cmds);
       else if (m.t === "playerLeft") on.left(m.slot);
@@ -61,6 +64,7 @@ export class Net {
   startNow(): void { this.send({ t: "start" }); }
   seat(slot: number): void { this.send({ t: "seat", slot }); }
   ready(ready: boolean): void { this.send({ t: "ready", ready }); }
+  chat(text: string): void { this.send({ t: "chat", text }); }
   /** Leave quietly: no `closed` callback. */
   close(): void { this.done = true; this.ws.close(); }
 }

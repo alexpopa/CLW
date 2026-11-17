@@ -69,6 +69,8 @@ Controls: 1 selects the Sexton and 2 the Undertaker (or click them); T arms the 
 ## Online play
 The title screen offers "Host a match" and "Join" next to the solo game, for the team size chosen there. The host gets a four-letter code. Players initially alternate sides (the first joiner is an opponent, the next an ally), then can take any empty team/lane seat in the war council. Every guest must mark themselves ready before the host can begin, even when all seats are occupied. Empty seats become autopilots. If the host leaves the lobby, the first remaining player becomes host without changing seats. Online play uses verified RGBoner accounts; local development supports guest display names (see [Auth](AUTH.md)).
 
+Lobby chat is plain text shared only with current lobby members, limited to 200 characters and five messages per player per five seconds. The server stores no chat history; the client keeps up to 200 received messages while in the lobby and clears them when leaving. Joining, leaving, and host changes appear as local council notices.
+
 The match server (`apps/server`) owns the match: it applies each player's commands, runs the autopilot for any empty seat, and sends every client the exact commands of each tick to replay on its own copy of the sim. A player who leaves is replaced by the autopilot. Pause and game speed are solo-only. Not yet: reconnecting to a match in progress, spectators, rankings.
 
 ## Not in this build

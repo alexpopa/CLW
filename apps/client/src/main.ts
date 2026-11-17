@@ -69,6 +69,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     if (!credentials) { hud.clearAccount(); hud.showStart("Sign in to play online."); return; }
     const mine: Net = net = new Net(credentials, code ? { t: "joinLobby", lobbyId: code } : { t: "createLobby", settings: { teamSize: size, aiFill: false } }, {
       lobby: view => { inLobby = true; hud.showLobby(view); },
+      chat: line => { hud.lobbyChat(line); sound.play("click"); },
       start: (config, slot, who) => {
         inLobby = false; online = true; names = who; begin(createGame(config), slot);
         const foes = game.players.filter(p => p.team !== me().team).map(p => who[p.id] ?? "a stranger");
@@ -172,6 +173,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     startOnlineNow() { net?.startNow(); },
     takeSeat(slot) { net?.seat(slot); sound.play("click"); },
     setReady(ready) { net?.ready(ready); sound.play("click"); },
+    say(text) { net?.chat(text); },
     menu() { connectionAttempt++; quitOnline(); running = false; hud.showStart(); },
   }, hostedAccounts);
   addEventListener("resize", () => view.resize());

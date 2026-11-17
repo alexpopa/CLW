@@ -1,5 +1,6 @@
 import { createGame, parseCommand, simpleAI, step, TICK_RATE } from "@lw/sim";
 import type { Command, GameConfig, GameState, PlayerId, TimedCommand } from "@lw/sim";
+import { CHAT_MAX } from "@lw/protocol";
 import type { LobbySettings, ServerMsg, UserIdentity } from "@lw/protocol";
 import type { SessionStore } from "./auth/types";
 
@@ -17,8 +18,10 @@ const MAX_QUEUED = 16;         // commands one player may queue between two tick
 const MAX_LOBBIES = 200;
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ"; // no I, L or O: codes are read aloud
 const AUTOPILOT = "Autopilot";
+const CHAT_BURST = 5;          // chat lines one player may send...
+const CHAT_WINDOW_MS = 5000;   // ...within this many milliseconds
 
-interface Client { conn: Conn; user: UserIdentity | null; lobby: Lobby | null; slot: PlayerId; ready: boolean; busy: Promise<void> }
+interface Client { conn: Conn; user: UserIdentity | null; lobby: Lobby | null; slot: PlayerId; ready: boolean; said: number[]; busy: Promise<void> }
 interface Match { state: GameState; startedAt: number; queued: Command[][]; ai: Set<PlayerId> }
 /** A lobby: the host picks the size, players pick their seats, mark themselves ready and talk; the host begins. */
 interface Lobby { id: string; settings: LobbySettings; seats: (Client | null)[]; host: Client; match: Match | null }
@@ -37,7 +40,7 @@ export class Hub {
 
   /** Register a connection. Feed it parsed JSON messages; call onClose when the socket goes away. */
   connect(conn: Conn): { onMessage(raw: unknown): void; onClose(): void } {
-    const c: Client = { conn, user: null, lobby: null, slot: 0, ready: false, busy: Promise.resolve() };
+    const c: Client = { conn, user: null, lobby: null, slot: 0, ready: false, said: [], busy: Promise.resolve() };
     return {
       // Messages from one client are handled strictly in order, even though sign-in is asynchronous.
       onMessage: raw => { c.busy = c.busy.then(() => this.handle(c, raw)).catch(() => this.fail(c, "internal", "Something went wrong")); },
@@ -96,6 +99,17 @@ export class Hub {
       if (!lobby || lobby.match || c === lobby.host) return; // the host is ready by beginning
       c.ready = m.ready === true;
       this.sendLobby(lobby);
+    } else if (m.t === "chat") {
+      const lobby = c.lobby;
+      if (!lobby || lobby.match || typeof m.text !== "string") return;
+      // Plain text only: control characters and runs of whitespace collapse, and the line is cut to length. Nothing is kept.
+      const text = m.text.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, CHAT_MAX);
+      if (!text) return;
+      const now = this.now();
+      c.said = c.said.filter(t => now - t < CHAT_WINDOW_MS);
+      if (c.said.length >= CHAT_BURST) return this.fail(c, "slow", "Slow down a little");
+      c.said.push(now);
+      for (const member of this.members(lobby)) member.conn.send({ t: "chat", slot: c.slot, name: c.user.displayName, text });
     } else if (m.t === "start") {
       const lobby = c.lobby;
       if (!lobby || lobby.match || c !== lobby.host) return;
