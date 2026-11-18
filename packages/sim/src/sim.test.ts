@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addUnit, createGame as newGame, parseCommand, UNIT_RESEARCH, step, towersOf, simpleAI, incomeOf, cellCenter, hqX, INVEST, CHANTRY_HP, chantryHp, sellRefund, MAP, RESEARCH, RULES, TICK_RATE, UNITS, AI } from "./index";
+import { addUnit, baseTowerLocalX, vultureRoute, createGame as newGame, parseCommand, UNIT_RESEARCH, step, towersOf, simpleAI, incomeOf, cellCenter, hqX, INVEST, CHANTRY_HP, chantryHp, sellRefund, MAP, RESEARCH, RULES, TICK_RATE, UNITS, AI } from "./index";
 import type { GameConfig, GameState, TimedCommand } from "./index";
 
 /** Most tests want an empty lane: no guard towers. */
@@ -381,7 +381,7 @@ describe("sim", () => {
     expect(s.fogs.map(f => [f.team, f.lane])).toEqual([[1, 0]]);
     expect(parseCommand({ type: "fog", lane: 1, junk: 1 })).toEqual({ type: "fog" });
   });
-  it("the Ossuary Vultures fly the Sexton's lane from shrine to shrine without stopping, bomb the ground as they pass, need tier II and rest", () => {
+  it("the Ossuary Vultures fly the Sexton's lane from his cathedral to the enemy's base towers without stopping, bomb the ground as they pass, need tier II and rest", () => {
     const s = createGame({ teamSize: 2, seed: 1 });
     const send = (player: number) => step(s, [{ player, cmd: { type: "vultures" } }]);
     send(0);
@@ -391,22 +391,28 @@ describe("sim", () => {
     step(s, [{ player: 0, cmd: { type: "teleport", keeper: 0, x: 30000, y: 12000, lane: 1 } }]); // the Sexton steps into his ally's lane
     const [a, b] = [addUnit(s, "titan", 2, 1, 1, 300000, 7000), addUnit(s, "titan", 2, 1, 1, 302000, 8000)]; // side by side: one urn catches both
     const wings = addUnit(s, "wyrm", 3, 1, 1, 300000, 7500), other = addUnit(s, "titan", 2, 1, 0, 300000, 7000);
+    addUnit(s, "titan", 2, 1, 1, 30000, 12000);            // one who broke into the building ground, behind the base towers
     send(0); send(0);                                      // the second call finds them resting
-    expect(s.flights.map(f => [f.lane, f.x])).toEqual([[1, MAP.beaconX[0]! + 2 * RULES.vultureSpeed]]); // one flight, two ticks on its way
+    expect(s.flights.map(f => [f.lane, f.x])).toEqual([[1, hqX(0) + 2 * RULES.vultureSpeed]]); // one flight, two ticks out of the cathedral
     expect([p.credits, p.vultureReady > s.tick]).toEqual([RULES.startCredits, true]); // they cost nothing
     let urns = 0, bursts = 0, lastX = 0, steady = true;
+    const dropped: number[] = [];
     while (s.flights.length) {
       lastX = s.flights[0]!.x;
       step(s);
       if (s.flights.length && s.flights[0]!.x !== lastX + RULES.vultureSpeed) steady = false;
+      for (const e of s.events) if (e.t === "urn") dropped.push(e.x2);
       urns += s.events.filter(e => e.t === "urn").length; bursts += s.events.filter(e => e.t === "burst").length;
     }
     ticks(s, RULES.vultureFallTicks + 1);
     bursts += s.events.filter(e => e.t === "burst").length;
     expect(steady).toBe(true);                             // they never slow for a fight
-    expect(lastX + RULES.vultureSpeed).toBeGreaterThanOrEqual(MAP.laneLength - MAP.beaconX[0]!); // gone at the enemy's home shrine
+    expect(lastX + RULES.vultureSpeed).toBeGreaterThanOrEqual(vultureRoute(0).to);   // gone at the enemy's base towers...
+    expect(lastX).toBeLessThan(vultureRoute(0).to);
+    expect(vultureRoute(0).to).toBe(MAP.laneLength - baseTowerLocalX());             // ...short of his building ground
+    expect(Math.min(...dropped)).toBeLessThan(baseTowerLocalX());                    // the intruder in our ground is struck
     expect(urns).toBeGreaterThanOrEqual(2);
-    expect(urns).toBeLessThanOrEqual(2 * (Math.ceil((2 * RULES.vultureSight) / RULES.vultureSpeed / RULES.vultureUrnTicks) + 1)); // a bird waits between urns
+    expect(urns).toBeLessThanOrEqual(2 * 2 * (Math.ceil((2 * RULES.vultureSight) / RULES.vultureSpeed / RULES.vultureUrnTicks) + 1)); // a bird waits between urns (two groups of prey)
     const full = UNITS.titan!.hp;
     expect(a.hp).toBeLessThanOrEqual(full - RULES.vultureDamage);   // through armor, and to all within the blast
     expect(b.hp).toBeLessThanOrEqual(full - RULES.vultureDamage);

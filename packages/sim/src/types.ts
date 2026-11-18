@@ -61,8 +61,8 @@ export interface StormState { owner: PlayerId; team: TeamId; from: number; until
  */
 export interface FogState { owner: PlayerId; team: TeamId; lane: number; from: number }
 /**
- * A flight of Ossuary Vultures of `team` over `lane`: two birds abreast at `x`, flying from their own home shrine to the
- * enemy's and gone when they reach it. They are not units: nothing can strike them. `cd` is each bird's wait before its next urn.
+ * A flight of Ossuary Vultures of `team` over `lane`: two birds abreast at `x`, flying from their own cathedral to the
+ * enemy's base towers and gone when they reach them (see `vultureRoute`). They are not units: nothing can strike them. `cd` is each bird's wait before its next urn.
  */
 export interface FlightState { owner: PlayerId; team: TeamId; lane: number; x: number; cd: [number, number] }
 /** A skull urn in the air: it bursts at (`x`, `y`) of `lane` at tick `at`, on the enemies of `team`. */

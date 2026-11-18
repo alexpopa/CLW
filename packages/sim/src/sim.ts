@@ -34,6 +34,12 @@ export const hqMax = (s: GameState): number => RULES.hqHp * s.laneCount;
 export const keeperOf = (s: GameState, player: PlayerId, slot: number): KeeperState | undefined => s.keepers.find(k => k.owner === player && k.slot === slot);
 /** Distance of the base towers from their team's own lane end. */
 export const baseTowerLocalX = (): number => MAP.zoneStart + MAP.zoneCols * MAP.cell + MAP.baseTowerAhead;
+/**
+ * Where a team's Ossuary Vultures rise and where they are gone: from its own cathedral, so they guard its building
+ * ground too, to the enemy's base towers, so they never fly over the enemy's chantries.
+ */
+export const vultureRoute = (team: TeamId): { from: number; to: number } =>
+  team === 0 ? { from: hqX(0), to: MAP.laneLength - baseTowerLocalX() } : { from: hqX(1), to: baseTowerLocalX() };
 /** Living towers (guard towers and bastions) of a team in a lane. */
 export function towersOf(s: GameState, team: TeamId, lane = 0): number {
   let n = 0;
@@ -207,7 +213,7 @@ function applyCommand(s: GameState, player: PlayerId, c: Command): void {
     const k = s.keepers.find(q => q.owner === player && KEEPERS[q.slot].powers); // the Sexton: they fly where he stands
     if (!k || vultureBlock(s, me)) return;
     me.vultureReady = s.tick + RULES.vultureCooldownTicks;
-    s.flights.push({ owner: player, team: me.team, lane: k.lane, x: me.team === 0 ? MAP.beaconX[0]! : MAP.laneLength - MAP.beaconX[0]!, cd: [0, RULES.vultureUrnTicks / 2] });
+    s.flights.push({ owner: player, team: me.team, lane: k.lane, x: vultureRoute(me.team).from, cd: [0, RULES.vultureUrnTicks / 2] });
     s.events.push({ t: "vultures", player, team: me.team, lane: k.lane });
   } else if (c.type === "fog") {
     const lane = s.keepers.find(q => q.owner === player && KEEPERS[q.slot].powers)?.lane; // the Sexton: it rolls down the lane he stands in
@@ -375,7 +381,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
       s.events.push({ t: "urn", owner: f.owner, bird, team: f.team, lane: f.lane, x1: f.x, y1: y, x2: prey.x, y2: prey.y });
     }
   }
-  s.flights = s.flights.filter(f => (f.team === 0 ? f.x < MAP.laneLength - MAP.beaconX[0]! : f.x > MAP.beaconX[0]!));
+  s.flights = s.flights.filter(f => (f.team === 0 ? f.x < vultureRoute(0).to : f.x > vultureRoute(1).to));
   for (const urn of s.urns) {
     if (s.tick < urn.at) continue;
     for (const u of s.units)

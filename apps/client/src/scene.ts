@@ -3,7 +3,7 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { KEEPERS, MAP, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, canPlan, cellCenter, chantryHp, hqMax, hqX } from "@lw/sim";
+import { KEEPERS, MAP, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, canPlan, cellCenter, chantryHp, hqMax, hqX, vultureRoute } from "@lw/sim";
 import type { GameState, SimEvent, TeamId } from "@lw/sim";
 import { PAL, TEAM, ball, box, cyl, cathedralModel, chantryModel, chapelModel, cloisterModel, curtainModel, fenceModel, graveyardModel, merge, precinctModel, shrineModel, unitModel, wholeModel } from "./models";
 import type { Gait, ModelDef, Part } from "./models";
@@ -706,8 +706,8 @@ export class Renderer {
           for (let k = 0; k < 5; k++) this.spark(to.x, 0.3, to.z, tint, 380 + Math.random() * 200, 0.6, 0.1, rnd(7), 2 + Math.random() * 3, rnd(7), -9, now);
         }
       } else if (e.t === "vultures") {
-        // they rise out of the home shrine in a swirl of ghost-fire and grave dust
-        const x = W(e.team === 0 ? MAP.beaconX[0]! : MAP.laneLength - MAP.beaconX[0]!);
+        // they rise out of the cathedral in a swirl of ghost-fire and grave dust
+        const x = W(vultureRoute(e.team).from);
         for (const y of RULES.vultureY) for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; this.spark(x + Math.cos(a) * 1.4, 0.4 + i * 0.5, Zy(y) + Math.sin(a) * 1.4, i % 3 ? PAL.ghost : 0xe2d7bc, 700 + i * 60, 0.7, 0.1, Math.cos(a + 1.6) * 2, 3 + Math.random() * 2, Math.sin(a + 1.6) * 2, 0, now); }
       } else if (e.t === "urn") {
         // the bird opens its claws: the urn tumbles down trailing ghost-fire

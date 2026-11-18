@@ -287,8 +287,9 @@ export const RULES = {
   // stands for `fogHoldTicks` and lifts. Every enemy soldier it covers dies, whatever it is; towers and cathedrals do not.
   fogReach: 180 * UNIT, fogRollTicks: sec(18), fogHoldTicks: sec(5),
   // The Ossuary Vultures: any player who has opened `vultureTier` may send them, free, then waits `vultureCooldownTicks`.
-  // Two birds fly abreast (at `vultureY` across the lane) down the lane his Sexton stands in, from his side's home shrine
-  // to the enemy's, at `vultureSpeed`, and are gone. They never stop and cannot be struck. Each lets a skull urn fall on
+  // Two birds fly abreast (at `vultureY` across the lane) down the lane his Sexton stands in, from his own cathedral (so
+  // they also strike foes who broke into his building ground) to the enemy's base towers (never over the enemy's
+  // chantries), at `vultureSpeed`, and are gone. They never stop and cannot be struck. Each lets a skull urn fall on
   // the nearest enemy ground soldier within `vultureSight`, at most one per `vultureUrnTicks`; the urn lands
   // `vultureFallTicks` later where he stood and deals `vultureDamage`, through armor, to every enemy ground soldier
   // within `vultureRadius`. Flyers, towers and cathedrals are spared.
