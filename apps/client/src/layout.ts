@@ -1,4 +1,4 @@
-import { LANE_WIDTH, MAP } from "@lw/sim";
+import { LANE_WIDTH, MAP, courtDepth } from "@lw/sim";
 
 /**
  * How the lanes of a match are laid out in the world (presentation only; the sim knows lanes by index).
@@ -7,7 +7,7 @@ import { LANE_WIDTH, MAP } from "@lw/sim";
  */
 export const LANE_LEN = MAP.laneLength / 1000;
 export const LANE_W = LANE_WIDTH / 1000;
-export const LANE_GAP = 8;
+export const LANE_GAP = MAP.laneGap / 1000;
 export const LANE_PITCH = LANE_W + LANE_GAP;
 /** World z of a lane's far edge. */
 export const laneZ = (lane: number): number => lane * LANE_PITCH;
@@ -20,3 +20,5 @@ export function laneAt(z: number, lanes: number): { lane: number; y: number } {
 }
 /** The battlefield's extent across the lanes, with a margin, for the minimap: [far z, near z]. */
 export const fieldZ = (lanes: number): [number, number] => [-LANE_GAP / 2, laneZ(lanes - 1) + LANE_W + LANE_GAP / 2];
+/** The battlefield's extent along the lanes: [team 0's end, team 1's end]. Team games add a cathedral court behind each end. */
+export const fieldX = (lanes: number): [number, number] => [-courtDepth(lanes) / 1000, LANE_LEN + courtDepth(lanes) / 1000];

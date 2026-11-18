@@ -3,11 +3,11 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { KEEPERS, MAP, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, canPlan, cellCenter, chantryHp, hqMax, hqX, vultureRoute } from "@lw/sim";
+import { KEEPERS, MAP, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, canPlan, cellCenter, chantryHp, courtDepth, courtOf, hqBox, hqMax, vultureRoute } from "@lw/sim";
 import type { GameState, SimEvent, TeamId } from "@lw/sim";
-import { PAL, TEAM, ball, box, cyl, cathedralModel, chantryModel, chapelModel, cloisterModel, curtainModel, fenceModel, graveyardModel, merge, precinctModel, shrineModel, unitModel, wholeModel } from "./models";
+import { PAL, TEAM, ball, box, cyl, cathedralModel, chantryModel, cloisterModel, curtainModel, fenceModel, graveyardModel, merge, precinctModel, shrineModel, unitModel, wholeModel } from "./models";
 import type { Gait, ModelDef, Part } from "./models";
-import { LANE_GAP, LANE_LEN, LANE_PITCH, LANE_W, fieldZ, laneAt, laneZ, midZ } from "./layout";
+import { LANE_GAP, LANE_LEN, LANE_PITCH, LANE_W, fieldX, fieldZ, laneAt, laneZ, midZ } from "./layout";
 import { blobTexture, courtyardTile, glowTexture, groundTile, runeTexture } from "./textures";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
@@ -366,7 +366,8 @@ export class Renderer {
     const fenceNear = this.mesh(fenceModel(-40, LANE_LEN + 40, 0), this.lit); fenceNear.position.z = nearEdge + 5.2; s.add(fenceNear);
     const zoneEnd = W(MAP.zoneStart + MAP.zoneCols * MAP.cell) + 6; // dividers stop short of the building grounds, where the keepers cross
     for (let l = 0; l < n; l++) {
-      const graves = this.mesh(graveyardModel(l === 0 ? -30 : zoneEnd, l === 0 ? LANE_LEN + 30 : LANE_LEN - zoneEnd, LANE_W + 1.2), this.lit); graves.position.z = LZ(l); s.add(graves);
+      const outer = n === 1 ? 30 : -W(MAP.zoneStart); // in team games the graves stop at the cathedral courts
+      const graves = this.mesh(graveyardModel(l === 0 ? -outer : zoneEnd, l === 0 ? LANE_LEN + outer : LANE_LEN - zoneEnd, LANE_W + 1.2), this.lit); graves.position.z = LZ(l); s.add(graves);
       if (l === n - 1) continue;
       const z = LZ(l) + LANE_W + LANE_GAP / 2;
       const fence = this.mesh(fenceModel(zoneEnd, LANE_LEN - zoneEnd, 0), this.lit); fence.position.z = z; s.add(fence);
@@ -382,9 +383,10 @@ export class Renderer {
     // lamp posts: warm pools of light along the kerbs (every lane edge when there is one lane, the strips between and outside when there are more)
     const lamps: THREE.BufferGeometry[] = [], flames: THREE.BufferGeometry[] = [], pools: THREE.BufferGeometry[] = [];
     const rows = n === 1 ? [-1, LANE_W + 1] : [-1, ...Array.from({ length: n - 1 }, (_, l) => LZ(l) + LANE_W + LANE_GAP / 2 + 1.2), nearEdge + 1];
-    const step = n === 1 ? 76 : 96;
+    const step = n === 1 ? 76 : 96, court = courtDepth(n);
     rows.forEach((z, r) => {
-      for (let x = 32 + (r % 2) * (step / 2); x <= LANE_LEN - 30; x += step) {
+      const outerRow = n > 1 && (r === 0 || r === rows.length - 1), first = outerRow ? -W(court) + 6 : 32, last = outerRow ? LANE_LEN + W(court) - 6 : LANE_LEN - 30;
+      for (let x = first + (r % 2) * (step / 2); x <= last; x += step) {
         lamps.push(box(0.5, 0.4, 0.5, PAL.stoneLo, x, 0.2, z), box(0.16, 3.6, 0.16, PAL.ink, x, 2, z), box(0.7, 0.1, 0.7, PAL.ink, x, 3.8, z), box(0.5, 0.1, 0.5, PAL.ink, x, 4.5, z));
         flames.push(box(0.36, 0.56, 0.36, PAL.candle, x, 4.15, z));
         if (this.lite) pools.push(this.pool(x, z, 19)); // the pool of light the lamp would cast, painted on the ground
@@ -394,37 +396,49 @@ export class Renderer {
     s.add(this.mesh(merge(lamps), this.lit), new THREE.Mesh(merge(flames), this.glow));
     if (pools.length) s.add(new THREE.Mesh(mergeGeometries(pools), this.poolMat(0xffb060, 0.5)));
 
-    // one cathedral per side, standing behind all of its lanes and growing with their number
-    this.hqScale = 1 + 0.25 * (n - 1);
+    // one cathedral per side. In 1v1 it closes the end of the lane, its front toward the camera, in the wall of its close.
+    // In team games it stands in a walled court behind all of the side's building grounds, across the middle of its
+    // lanes and facing them: an army that breaks through any lane crosses its ground into the court and turns to it.
+    this.hqScale = n === 1 ? 1 : Math.min((2 * MAP.court.hqRx) / 1000 / 17.6, (2 * MAP.court.hqRy) / 1000 / 11.2); // the model fills the sim's box
     for (const team of [0, 1] as const) {
-      const c = cathedralModel(team), g = new THREE.Group();
+      const c = cathedralModel(team), g = new THREE.Group(), hq = hqBox(n, team);
       const glow = new THREE.Mesh(c.glow, this.glow.clone());
       g.add(this.mesh(c.lit, this.lit), glow); this.hqGlow[team] = glow;
       if (this.lite) { const pool = new THREE.Mesh(this.pool(0, 12, 30), this.poolMat(TEAM[team].glow, 0.42)); g.add(pool); }
       else { const lamp = new THREE.PointLight(TEAM[team].glow, 60, 34, 1.6); lamp.position.set(0, 6, 12); g.add(lamp); }
       g.scale.setScalar(this.hqScale);
-      g.position.set(W(hqX(team)) + (team === 0 ? -1 : 1) * 5.5 * (this.hqScale - 1), 0, mid); s.add(g);
+      if (n === 1) g.position.set(W(hq.x), 0, mid);
+      else { g.position.set(W(hq.x), 0, hq.y / 1000); g.rotation.y = team === 0 ? Math.PI / 2 : -Math.PI / 2; }
+      s.add(g);
     }
 
-    // the cathedral close: a curtain wall across the back of every lane with the cathedral standing in it. A lane that
-    // ends beside the cathedral rather than at it ends at a chapel of the close, so every army has something of it to storm.
-    const closeX = W(MAP.hqOffset), nave = 9.4 * this.hqScale;
-    for (const team of [0, 1] as const) {
-      const x = team === 0 ? closeX : LANE_LEN - closeX;
-      for (const [z0, z1] of [[-0.9, mid - nave], [mid + nave, nearEdge + 0.9]] as const) {
-        if (z1 - z0 < 1.5) continue;
-        const wall = this.mesh(curtainModel(z0, z1), this.lit); wall.position.x = x; s.add(wall);
+    const zoneLen = W(MAP.zoneCols * MAP.cell);
+    if (n === 1) {
+      // the cathedral close: a curtain wall across the back of the lane with the cathedral standing in it
+      const closeX = W(MAP.hqOffset), nave = 9.4 * this.hqScale;
+      for (const team of [0, 1] as const) {
+        const x = team === 0 ? closeX : LANE_LEN - closeX;
+        for (const [z0, z1] of [[-0.9, mid - nave], [mid + nave, nearEdge + 0.9]] as const) {
+          if (z1 - z0 < 1.5) continue;
+          const wall = this.mesh(curtainModel(z0, z1), this.lit); wall.position.x = x; s.add(wall);
+        }
       }
-      for (let l = 0; l < n; l++) {
-        if (Math.abs(LZ(l) + MID_Z - mid) < nave) continue; // this lane runs up to the cathedral itself
-        const c = chapelModel(team), g = new THREE.Group();
-        g.add(this.mesh(c.lit, this.lit), new THREE.Mesh(c.glow, this.glow));
-        g.position.set(x, 0, LZ(l) + MID_Z); g.scale.x = team === 0 ? 1 : -1; s.add(g);
+    } else {
+      // the cathedral courts: paved yards from the rear of the building grounds back to a curtain wall, across every lane
+      // and the graveyard strips between them
+      const depth = W(court) + W(MAP.zoneStart), z0 = -0.9, z1 = nearEdge + 0.9, courtTex = new THREE.CanvasTexture(courtyardTile(40, 12));
+      courtTex.wrapS = courtTex.wrapT = THREE.RepeatWrapping; courtTex.repeat.set(depth / 12, (z1 - z0) / 12); courtTex.colorSpace = THREE.SRGBColorSpace; courtTex.anisotropy = 8;
+      const courtMat = new THREE.MeshStandardMaterial({ map: courtTex, color: 0xb8b0a4, roughness: 0.9, metalness: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+      for (const team of [0, 1] as const) {
+        const back = team === 0 ? -W(court) : LANE_LEN + W(court), front = team === 0 ? W(MAP.zoneStart) : LANE_LEN - W(MAP.zoneStart);
+        const yard = new THREE.Mesh(new THREE.PlaneGeometry(depth, z1 - z0), courtMat);
+        yard.rotation.x = -Math.PI / 2; yard.position.set((back + front) / 2, 0.02, (z0 + z1) / 2); yard.receiveShadow = true; s.add(yard);
+        const wall = this.mesh(curtainModel(z0, z1), this.lit); wall.position.x = back + (team === 0 ? -0.5 : 0.5); s.add(wall);
       }
     }
 
-    // building ground: a paved precinct that runs from the cathedral steps to the base towers in every lane, walled along its sides, with a gate toward each neighbouring lane
-    const zoneLen = W(MAP.zoneCols * MAP.cell), back = W(MAP.zoneStart - MAP.hqOffset), yardLen = zoneLen + back + 0.6, yardTex = new THREE.CanvasTexture(courtyardTile(40, 12));
+    // building ground: a paved precinct that runs from the cathedral steps (1v1) or the court (team games) to the base towers in every lane, walled along its sides, with a gate toward each neighbouring lane
+    const back = n === 1 ? W(MAP.zoneStart - MAP.hqOffset) : 0, yardLen = zoneLen + back + 0.6, yardTex = new THREE.CanvasTexture(courtyardTile(40, 12));
     yardTex.wrapS = yardTex.wrapT = THREE.RepeatWrapping; yardTex.repeat.set(yardLen / 12, (LANE_W + 1.2) / 12); yardTex.colorSpace = THREE.SRGBColorSpace; yardTex.anisotropy = 8;
     const yardMat = new THREE.MeshStandardMaterial({ map: yardTex, roughness: 0.9, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     for (let l = 0; l < n; l++) for (const team of [0, 1] as const) {
@@ -487,19 +501,20 @@ export class Renderer {
     const hw = this.halfWidth() - 9;
     if (!Number.isFinite(hw)) return; // the canvas has no size yet (a hidden or just-opened window)
     if (!Number.isFinite(this.camX)) this.camX = 0;
-    this.camX = hw * 2 >= LANE_LEN ? LANE_LEN / 2 : Math.max(hw, Math.min(LANE_LEN - hw, this.camX));
+    const [x0, x1] = fieldX(this.lanes);
+    this.camX = hw * 2 >= x1 - x0 ? (x0 + x1) / 2 : Math.max(x0 + hw, Math.min(x1 - hw, this.camX));
     this.camZ = Math.max(MID_Z, Math.min(LZ(this.lanes - 1) + MID_Z, this.camZ));
   }
   /** World units per screen pixel along the lanes (for drag scrolling). */
   unitsPerPixel(): number { return (this.halfWidth() * 2) / this.renderer.domElement.clientWidth; }
   /** The stretch of battlefield on screen, as fractions of the whole field [x0, x1, z0, z1], for the minimap. */
   viewRect(): [number, number, number, number] {
-    const hw = this.halfWidth(), [f0, f1] = fieldZ(this.lanes), frac = (z: number) => Math.max(0, Math.min(1, (z - f0) / (f1 - f0)));
+    const hw = this.halfWidth(), [f0, f1] = fieldZ(this.lanes), [x0, x1] = fieldX(this.lanes), frac = (z: number) => Math.max(0, Math.min(1, (z - f0) / (f1 - f0)));
     const top = this.groundAt(0, 1)?.z ?? this.camZ - 20, bottom = this.groundAt(0, -1)?.z ?? this.camZ + 20;
-    return [Math.max(0, (this.camX - hw) / LANE_LEN), Math.min(1, (this.camX + hw) / LANE_LEN), frac(top), frac(bottom)];
+    return [Math.max(0, (this.camX - hw - x0) / (x1 - x0)), Math.min(1, (this.camX + hw - x0) / (x1 - x0)), frac(top), frac(bottom)];
   }
   /** Centre the camera on a point of the minimap (fractions of the whole field). */
-  panTo(fx: number, fz: number): void { const [f0, f1] = fieldZ(this.lanes); this.camX = fx * LANE_LEN; this.camZ = f0 + fz * (f1 - f0); this.clampCam(); }
+  panTo(fx: number, fz: number): void { const [f0, f1] = fieldZ(this.lanes), [x0, x1] = fieldX(this.lanes); this.camX = x0 + fx * (x1 - x0); this.camZ = f0 + fz * (f1 - f0); this.clampCam(); }
   /** Centre the camera on a lane position. */
   lookAt(lane: number, x: number): void { this.camX = x; this.camZ = LZ(lane) + MID_Z; this.clampCam(); }
 
@@ -582,14 +597,26 @@ export class Renderer {
     geo.setAttribute("position", new THREE.Float32BufferAttribute([x0, 0, z0, x0, 0, z1, x1, 0, z0, x1, 0, z1], 3)); geo.setIndex([0, 1, 2, 2, 1, 3]);
     const view: FogView = { g, front: { value: 0 }, time: { value: 0 }, fade: { value: 0 }, mote: 0 };
     const sheets = !this.lite && this.ladder[this.quality]!.bloom ? 4 : 2; // fewer on a phone
-    for (let i = 0; i < sheets; i++) {
-      const m = new THREE.Mesh(geo, new THREE.ShaderMaterial({
-        vertexShader: FOG_VERT, fragmentShader: FOG_FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide,
-        uniforms: { uFront: view.front, uTime: view.time, uFade: view.fade, uLayer: { value: i }, uWidth: { value: LANE_W }, uTint: { value: new THREE.Color(TEAM[team].glow) } },
-      }));
-      m.position.y = 0.5 + (i * 3.3) / Math.max(1, sheets - 1); m.renderOrder = 5 + i; m.frustumCulled = false; g.add(m);
+    const bank = (parent: THREE.Group, shape: THREE.BufferGeometry, front: { value: number }, width: number) => {
+      for (let i = 0; i < sheets; i++) {
+        const m = new THREE.Mesh(shape, new THREE.ShaderMaterial({
+          vertexShader: FOG_VERT, fragmentShader: FOG_FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+          uniforms: { uFront: front, uTime: view.time, uFade: view.fade, uLayer: { value: i }, uWidth: { value: width }, uTint: { value: new THREE.Color(TEAM[team].glow) } },
+        }));
+        m.position.y = 0.5 + (i * 3.3) / Math.max(1, sheets - 1); m.renderOrder = 5 + i; m.frustumCulled = false; parent.add(m);
+      }
+    };
+    const down = new THREE.Group(); // down the lane, from the lane end
+    bank(down, geo, view.front, LANE_W);
+    down.position.set(team === 0 ? 0 : LANE_LEN, 0, LZ(lane)); down.scale.x = team === 0 ? 1 : -1; g.add(down);
+    const court = W(courtDepth(this.lanes));
+    if (court > 0) { // team games: it pours out of the cathedral and fills the whole court at once
+      const depth = court + W(MAP.zoneStart), width = LZ(this.lanes - 1) + LANE_W, yard = new THREE.BufferGeometry(), held = new THREE.Group();
+      yard.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, -3, 0, 0, width + 3, depth + 2, 0, -3, depth + 2, 0, width + 3], 3)); yard.setIndex([0, 1, 2, 2, 1, 3]);
+      bank(held, yard, { value: depth + 30 }, width);
+      held.position.set(team === 0 ? -court : LANE_LEN + court, 0, 0); held.scale.x = team === 0 ? 1 : -1; g.add(held);
     }
-    g.position.set(team === 0 ? 0 : LANE_LEN, 0, LZ(lane)); g.scale.x = team === 0 ? 1 : -1; this.scene.add(g);
+    this.scene.add(g);
     return view;
   }
   private dropFog(f: FogView): void {
@@ -677,7 +704,10 @@ export class Renderer {
           for (let i = 1; i <= 4; i++) this.spark(from.x + dir.x * i * 3, to.y, from.z + dir.z * i * 3, 0xdfe6ff, 200 + i * 40, 0.5, 0.1, 0, 0, 0, 0, now);
         } else if (kind === "lightning") lightning(from, to, color);
         else if (kind === "beam") {
-          const hq = e.unit === "hq"; if (hq) from.set(W(e.x1), 8 * this.hqScale, midZ(this.lanes) + 8.4 * this.hqScale); else from.y = 4.9;
+          const hq = e.unit === "hq";
+          if (hq && this.lanes === 1) from.set(W(e.x1), 8 * this.hqScale, midZ(this.lanes) + 8.4 * this.hqScale);
+          else if (hq) from.set(W(e.x1) + (e.team === 0 ? 1 : -1) * 7 * this.hqScale, 12 * this.hqScale, Zy(e.y1)); // from between its towers, which face the lanes
+          else from.y = 4.9;
           this.shoot(new THREE.Mesh(this.rod(hq ? 0.09 : 0.06, 5), bright(TEAM[e.team].glow)), from, to, now, hq ? 200 : 180, 0, true);
           this.spark(to.x, to.y, to.z, TEAM[e.team].glow, hq ? 260 : 200, hq ? 1.2 : 0.6, hq ? 3 : 1.5, 0, 0, 0, 0, now);
         } else {
@@ -736,7 +766,7 @@ export class Renderer {
         }
       } else if (e.t === "vultures") {
         // they rise out of the cathedral in a swirl of ghost-fire and grave dust
-        const x = W(vultureRoute(e.team).from);
+        const x = W(vultureRoute(e.team, this.lanes).from);
         for (const y of RULES.vultureY) for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; this.spark(x + Math.cos(a) * 1.4, 0.4 + i * 0.5, Zy(y) + Math.sin(a) * 1.4, i % 3 ? PAL.ghost : 0xe2d7bc, 700 + i * 60, 0.7, 0.1, Math.cos(a + 1.6) * 2, 3 + Math.random() * 2, Math.sin(a + 1.6) * 2, 0, now); }
       } else if (e.t === "urn") {
         // the bird opens its claws: the urn tumbles down trailing ghost-fire
@@ -769,7 +799,7 @@ export class Renderer {
         for (let i = 0; i < 4; i++) this.spark(to.x + rnd(0.6), 0.3 + Math.random() * 0.6, to.z + rnd(0.6), PAL.heal, 600 + Math.random() * 300, 0.45, 0.08, 0, 1.4, 0, 0, now);
       } else if (e.t === "death") {
         // taken by a Deadly Fog: the breath leaves him as a pale green wisp
-        if (!UNITS[e.unit]?.structure && s.fogs.some(f => f.team !== e.team && f.lane === e.lane && (f.team === 0 ? e.x : MAP.laneLength - e.x) <= RULES.fogReach)) {
+        if (!UNITS[e.unit]?.structure && s.fogs.some(f => f.team !== e.team && ((f.lane === e.lane && (f.team === 0 ? e.x : MAP.laneLength - e.x) <= RULES.fogReach) || courtOf(s.laneCount, e.x) === f.team))) {
           this.spark(W(e.x), 1.2, Zy(e.y), 0x9dffb8, 700, 0.8, 3.2, 0, 1.2, 0, 0, now);
           for (let i = 0; i < 5; i++) this.spark(W(e.x) + rnd(0.7), 0.4 + Math.random(), Zy(e.y) + rnd(0.7), i % 2 ? 0x7dffa0 : 0xe9ffe8, 900 + Math.random() * 600, 0.45, 0.05, rnd(0.8), 2 + Math.random() * 2.5, rnd(0.8), 0, now);
         }
@@ -1015,7 +1045,8 @@ export class Renderer {
     this.hqGlow.forEach((g, team) => { // glass dims as the cathedral falls
       const hp = s.teams[team as TeamId].hqHp / hqMax(s);
       (g.material as THREE.MeshBasicMaterial).color.setScalar((0.5 + 1.3 * hp) * (0.94 + Math.sin(now * 0.004 + team) * 0.06));
-      if (hp < 0.6 && Math.random() < (0.6 - hp) * 0.5) this.spark(W(hqX(team as TeamId)) + (Math.random() - 0.5) * 8, (9 + Math.random() * 6) * this.hqScale, midZ(this.lanes) + (Math.random() - 0.5) * 12 * this.hqScale, hp < 0.3 ? 0xff6a1a : 0x4a4038, 1400, 2, 6, 0, 3, 0, 0, now);
+      const hq = hqBox(this.lanes, team as TeamId), [ax, az] = this.lanes === 1 ? [8, 12] : [12, 8]; // the model lies across the lanes in team games
+      if (hp < 0.6 && Math.random() < (0.6 - hp) * 0.5) this.spark(W(hq.x) + (Math.random() - 0.5) * ax * this.hqScale, (9 + Math.random() * 6) * this.hqScale, (this.lanes === 1 ? midZ(this.lanes) : hq.y / 1000) + (Math.random() - 0.5) * az * this.hqScale, hp < 0.3 ? 0xff6a1a : 0x4a4038, 1400, 2, 6, 0, 3, 0, 0, now);
     });
 
     // placement and selection markers
@@ -1096,14 +1127,14 @@ export class Renderer {
       c.fillStyle = "rgba(8,7,11,0.85)"; c.fillRect(x - w / 2 - 1, y - 1, w + 2, 6);
       c.fillStyle = b.team === myTeam ? "#8fd18a" : "#e2685c"; c.fillRect(x - w / 2, y, (w * b.hp) / max, 4);
     }
-    // the cathedral's health, always shown: over the cathedral itself and over each chapel of its close (they are one building, with one life)
-    const full = RULES.hqHp * s.laneCount, mid = midZ(this.lanes), nave = 9.4 * this.hqScale;
+    // the cathedral's health, always shown, over its towers
+    const full = hqMax(s), mid = midZ(this.lanes);
     c.font = "600 11px Cinzel, serif"; c.textAlign = "center";
     for (const team of [0, 1] as const) {
-      const hp = s.teams[team].hqHp, spots: [number, number][] = [[mid + 7 * this.hqScale, 22 * this.hqScale]];
-      for (let l = 0; l < this.lanes; l++) if (Math.abs(LZ(l) + MID_Z - mid) >= nave) spots.push([LZ(l) + MID_Z, 12.5]);
-      for (const [z, up] of spots) {
-        p.set(W(hqX(team)), up, z).project(this.camera);
+      const hp = s.teams[team].hqHp, hq = hqBox(this.lanes, team);
+      const spots: [number, number, number][] = this.lanes === 1 ? [[W(hq.x), mid + 7 * this.hqScale, 22 * this.hqScale]] : [[W(hq.x) + (team === 0 ? 7 : -7) * this.hqScale, hq.y / 1000, 22 * this.hqScale]];
+      for (const [x3, z, up] of spots) {
+        p.set(x3, up, z).project(this.camera);
         const x = (p.x * 0.5 + 0.5) * cw, y = Math.max(74, (-p.y * 0.5 + 0.5) * ch), w = 150;
         if (x < -w || x > cw + w || p.z > 1) continue;
         c.fillStyle = "rgba(8,7,11,0.88)"; c.fillRect(x - w / 2 - 2, y - 2, w + 4, 11);

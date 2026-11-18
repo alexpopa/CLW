@@ -244,8 +244,8 @@ export const MAP = {
   footprint: 2,              // a building covers footprint x footprint cells, so neighbours can be staggered
   zoneCols: 36, zoneRows: 24, // laneWidth = zoneRows * cell; room for 216 buildings
   zoneStart: 16 * UNIT,      // distance from the team's own lane end to the rear of its zone: the ground begins at the cathedral steps
-  hqOffset: 8 * UNIT,        // HQ centre distance from the lane end
-  hqRadius: 4 * UNIT,
+  hqOffset: 8 * UNIT,        // 1v1: the cathedral's centre distance from the lane end (it spans the lane's width)
+  hqRadius: 4 * UNIT,        // 1v1: half its length along the lane
   beaconX: [120 * UNIT, 240 * UNIT, 360 * UNIT], // 25% / 50% / 75%; first and last are the home shrines
   captureRadius: 5 * UNIT,   // along the lane
   shrineTower: "tower",      // what guards the home shrine
@@ -254,8 +254,21 @@ export const MAP = {
   towerY: [7 * UNIT, 17 * UNIT],
   baseTowerAhead: 3 * UNIT,  // base towers stand this far in front of the building ground...
   baseTowerY: [3 * UNIT, 21 * UNIT], // ...near the top and bottom edges of the lane
+  laneGap: 8 * UNIT,         // the strip of graveyard between two neighbouring lanes
+  // Team games (two or three lanes): each side has ONE cathedral, standing in a walled court behind all of its building
+  // grounds (owner decision). An army that breaks through its lane crosses that lane's ground into the court and turns
+  // toward the cathedral, which stands across the middle of the side's lanes (behind the middle lane in 3v3, between
+  // the two in 2v2). Distances along the lane are from the team's own lane end; the court reaches `depth` behind it.
+  court: {
+    depth: 30 * UNIT,        // the court's back wall, this far behind the lane ends (its front is the rear of the grounds)
+    hqX: -13 * UNIT,         // the cathedral's centre along the lanes
+    hqRx: 12 * UNIT,         // half its length along the lanes: its front stands 1 unit behind the lane ends
+    hqRy: 8 * UNIT,          // half its breadth across the lanes
+  },
 };
 export const LANE_WIDTH = MAP.zoneRows * MAP.cell;
+/** Distance from one lane's far edge to the next one's: a lane and the graveyard strip beside it. */
+export const LANE_PITCH = LANE_WIDTH + MAP.laneGap;
 
 /**
  * Lane investment (the tithe): each level costs `cost` and adds `bonus` income per controlled beacon in that lane.
@@ -321,7 +334,7 @@ export const RULES = {
   unitSpacing: 750,               // units push apart when closer than this
   separationStep: 60,             // max push per tick, per unit
   healerHoldRange: 9 * UNIT,      // healers stop advancing when an enemy is this close
-  hqHp: 4500,                     // per lane: a cathedral besieged from three lanes has three times this
+  hqHp: 4500,                     // per lane: the one cathedral of a side with three lanes has three times this
   hqDamage: 18, hqInterval: sec(0.75), hqRange: 10 * UNIT, // weak defensive gun
   overtimeTick: sec(25 * 60),     // sudden death: HQ guns shut down and HQs take extra damage
   overtimeHqDamageMult: 3,

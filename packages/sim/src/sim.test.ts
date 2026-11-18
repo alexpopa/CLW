@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addUnit, baseTowerLocalX, vultureRoute, createGame as newGame, parseCommand, UNIT_RESEARCH, step, towersOf, simpleAI, incomeOf, cellCenter, hqX, INVEST, CHANTRY_HP, chantryHp, sellRefund, MAP, RESEARCH, RULES, TICK_RATE, UNITS, AI } from "./index";
+import { addUnit, baseTowerLocalX, vultureRoute, createGame as newGame, parseCommand, UNIT_RESEARCH, step, towersOf, simpleAI, incomeOf, cellCenter, courtOf, hqBox, hqX, worldY, INVEST, CHANTRY_HP, chantryHp, sellRefund, MAP, RESEARCH, RULES, TICK_RATE, UNITS, AI } from "./index";
 import type { GameConfig, GameState, TimedCommand } from "./index";
 
 /** Most tests want an empty lane: no guard towers. */
@@ -294,6 +294,51 @@ describe("sim", () => {
     expect(s.units.some(u => u.type === "arbalester" && u.owner === 0 && u.lane === 2)).toBe(true);
   });
 
+  it("team games: one cathedral in a court behind the lanes, which armies cross their lane's ground to reach and then turn to", () => {
+    // where it stands: across the middle of the side's lanes, behind them; 1v1 keeps it at the end of the lane
+    expect(hqBox(3, 0).y).toBe(worldY(1, 12000));                                 // behind the middle lane
+    expect(hqBox(2, 0).y).toBe((worldY(0, 24000) + worldY(1, 0)) / 2);            // between the two lanes
+    expect(hqBox(3, 1).x).toBe(MAP.laneLength - hqBox(3, 0).x);
+    expect(hqBox(3, 0).x + hqBox(3, 0).rx).toBeLessThan(0);                       // behind the lane ends
+    expect(hqBox(1, 0)).toMatchObject({ x: MAP.hqOffset, y: 12000 });
+    expect([courtOf(1, 0), courtOf(3, 1000), courtOf(3, MAP.zoneStart), courtOf(3, MAP.laneLength - 1000)]).toEqual([-1, 0, -1, 1]);
+
+    /** Ticks until a team-1 army of `n` Dreadknights, set down in `lane` just in front of team 0's building ground, first harms the cathedral. */
+    const siege = (lane: number, n = 4) => {
+      const s = createGame({ teamSize: 3, seed: 1 });
+      const army = Array.from({ length: n }, (_, i) => addUnit(s, "dreadknight", 3 + lane, 1, lane, baseTowerLocalX() + 4000, 6000 + i * 4000));
+      let t = 0;
+      for (; t < 120 * TICK_RATE && s.teams[0].hqHp === 3 * RULES.hqHp; t++) step(s);
+      return { s, army, t };
+    };
+    const outer = siege(0), middle = siege(1), far = siege(2);
+    for (const run of [outer, middle, far]) expect(run.s.teams[0].hqHp).toBeLessThan(3 * RULES.hqHp);
+    expect(middle.t).toBeLessThan(outer.t);                          // the middle lane runs straight at it
+    expect(Math.abs(outer.t - far.t)).toBeLessThanOrEqual(1);        // the outer two are mirror images
+    // the outer army turned in the court: it strikes from the cathedral's flank, off its own lane's band
+    const h = hqBox(3, 0);
+    expect(outer.army.some(u => courtOf(3, u.x) === 0 && Math.abs(worldY(u.lane, u.y) - h.y) < h.ry + UNITS.dreadknight!.range + 2000)).toBe(true);
+    expect(outer.army.some(u => u.lane === 1)).toBe(true);             // in the court it belongs to the lane nearest it
+
+    // reaching the end of an outer lane is not reaching the cathedral
+    const s = createGame({ teamSize: 3, seed: 1 });
+    const lone = addUnit(s, "dreadknight", 3, 1, 0, 1000, 12000);
+    step(s);
+    expect(s.teams[0].hqHp).toBe(3 * RULES.hqHp);
+    expect(worldY(lone.lane, lone.y)).toBeGreaterThan(12000);           // it has turned toward the cathedral
+    // the cathedral's gun only reaches into the court: a foe on an outer lane's ground is out of its reach
+    const onGround = addUnit(s, "zealot", 3, 1, 0, MAP.zoneStart + 2000, 12000);
+    for (let i = 0; i < 5 * TICK_RATE; i++) step(s);
+    expect(onGround.hp).toBe(UNITS.zealot!.hp);
+    // the Deadly Fog pours out of the cathedral: every foe in the court dies, whatever lane he came by
+    const sexton = s.keepers.find(k => k.owner === 0 && k.slot === 0)!;
+    expect(sexton.lane).toBe(0);
+    const inCourt = [addUnit(s, "titan", 3, 1, 2, 4000, 12000), addUnit(s, "titan", 3, 1, 1, -5000, 2000)];
+    step(s, [{ player: 0, cmd: { type: "fog" } }]);
+    step(s);
+    for (const u of inCourt) expect(s.units).not.toContain(u);
+  });
+
   it("a 3v3 of autopilots plays to a finish", () => {
     const s = newGame({ teamSize: 3, seed: 5, aiSlots: [0, 1, 2, 3, 4, 5] });
     for (let i = 0; i < 45 * 60 * TICK_RATE && s.winner === null; i++) {
@@ -393,7 +438,7 @@ describe("sim", () => {
     const wings = addUnit(s, "wyrm", 3, 1, 1, 300000, 7500), other = addUnit(s, "titan", 2, 1, 0, 300000, 7000);
     addUnit(s, "titan", 2, 1, 1, 30000, 12000);            // one who broke into the building ground, behind the base towers
     send(0); send(0);                                      // the second call finds them resting
-    expect(s.flights.map(f => [f.lane, f.x])).toEqual([[1, hqX(0) + 2 * RULES.vultureSpeed]]); // one flight, two ticks out of the cathedral
+    expect(s.flights.map(f => [f.lane, f.x])).toEqual([[1, hqX(0, s.laneCount) + 2 * RULES.vultureSpeed]]); // one flight, two ticks out of the cathedral
     expect([p.credits, p.vultureReady > s.tick]).toEqual([RULES.startCredits, true]); // they cost nothing
     let urns = 0, bursts = 0, lastX = 0, steady = true;
     const dropped: number[] = [];

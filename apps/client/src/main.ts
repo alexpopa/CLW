@@ -1,7 +1,7 @@
 import { AI, canPlan, createGame, isUnlocked, researchOffer, simpleAI, step, stormBlock, vultureBlock, INVEST, KEEPERS, MAP, RULES, TICK_RATE, UNITS } from "@lw/sim";
 import type { Command, GameState, TimedCommand } from "@lw/sim";
 import { Renderer } from "./scene";
-import { fieldZ, laneAt } from "./layout";
+import { fieldX, fieldZ, laneAt } from "./layout";
 import { RITE, TAB_KEYS, cardByKey, createHud } from "./hud";
 import { Sound } from "./audio";
 import { hostedAccounts, matchCredentials, Net } from "./net";
@@ -183,7 +183,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     toggleMute() { return sound.toggleMute(); },
     panTo(fx, fz) {
       view.panTo(fx, fz);
-      if (teleporting) { const [f0, f1] = fieldZ(view.lanes); teleportTo({ x: fx * MAP.laneLength, ...laneAt(f0 + fz * (f1 - f0), view.lanes) }); } // aiming on the map works too
+      if (teleporting) { const [f0, f1] = fieldZ(view.lanes), [x0, x1] = fieldX(view.lanes); teleportTo({ x: Math.round((x0 + fx * (x1 - x0)) * 1000), ...laneAt(f0 + fz * (f1 - f0), view.lanes) }); } // aiming on the map works too
     },
     start(size) {
       sound.start(); quitOnline();
