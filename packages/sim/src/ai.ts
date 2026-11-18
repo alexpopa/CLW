@@ -1,6 +1,6 @@
 import { AI, INVEST, KEEPERS, MAP, MERC_ORDER, RULES, UNITS, UNIT_ORDER } from "./data";
-import { beaconsHeld, canPlan, hqMax, hqX, isUnlocked, researchOffer, stormBlock, vultureBlock } from "./sim";
-import type { Command, GameState, PlayerId } from "./types";
+import { beaconsHeld, canPlan, courtOf, hqMax, isUnlocked, researchOffer, stormBlock, vultureBlock } from "./sim";
+import type { Command, GameState, PlayerId, UnitState } from "./types";
 
 const F = MAP.footprint;
 const SLOT_COLS = Math.floor(MAP.zoneCols / F);
@@ -69,9 +69,10 @@ export function simpleAI(s: GameState, me: PlayerId): Command[] {
   }
 
   // Threatened = enemies have pushed past our nearest beacon. Spend on army, not on the future.
-  const myHq = hqX(p.team);
-  const threatLine = Math.abs(MAP.beaconX[0]! - MAP.hqOffset);
-  const threatened = s.units.some(u => u.team !== p.team && u.lane === p.lane && Math.abs(u.x - myHq) < threatLine);
+  // How far a foe is from our lane ends; anyone in our cathedral court (team games) is at the gates, whatever lane it came by.
+  const home = (u: UnitState): number => (p.team === 0 ? u.x : MAP.laneLength - u.x);
+  const atGates = (u: UnitState): boolean => courtOf(s.laneCount, u.x) === p.team;
+  const threatened = s.units.some(u => u.team !== p.team && ((u.lane === p.lane && home(u) < MAP.beaconX[0]!) || atGates(u)));
   if (threatened && s.tick >= p.mercReady) { // buy time: the dearest band it can pay for and still add a chantry
     const band = [...MERC_ORDER].reverse().find(id => p.credits >= UNITS[id]!.cost + AI.mercReserve);
     if (band) return [{ type: "hire", unit: band }];
@@ -79,7 +80,7 @@ export function simpleAI(s: GameState, me: PlayerId): Command[] {
   // The fog: its one last resort, kept for a host at the gates or a cathedral in danger.
   const fogLane = s.keepers.find(k => k.owner === me && KEEPERS[k.slot].powers)?.lane;
   if (!p.fogUsed && fogLane !== undefined) {
-    const near = s.units.filter(u => u.team !== p.team && u.lane === fogLane && !UNITS[u.type]!.structure && Math.abs(u.x - myHq) < RULES.fogReach - MAP.hqOffset).length;
+    const near = s.units.filter(u => u.team !== p.team && !UNITS[u.type]!.structure && ((u.lane === fogLane && home(u) < RULES.fogReach) || atGates(u))).length;
     if (near >= AI.fogMinFoes || (near > 0 && s.teams[p.team].hqHp * 100 < hqMax(s) * AI.fogHqPct)) return [{ type: "fog" }];
   }
   // The vultures: free, so they fly whenever a few foes walk the lane its Sexton stands in.

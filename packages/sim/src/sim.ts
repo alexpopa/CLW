@@ -1,10 +1,45 @@
 import { Rng } from "./rng";
-import { AI, CHANTRY_HP, INVEST, KEEPERS, LANE_WIDTH, MAP, RESEARCH, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH } from "./data";
+import { AI, CHANTRY_HP, INVEST, KEEPERS, LANE_PITCH, LANE_WIDTH, MAP, RESEARCH, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH } from "./data";
 import type { UnitDef } from "./data";
 import type { BuildingState, Command, FogState, GameConfig, GameState, KeeperState, PlayerId, PlayerState, TeamId, TimedCommand, UnitState } from "./types";
 
 // ---- geometry helpers (shared with the client) ----
-export const hqX = (team: TeamId): number => (team === 0 ? MAP.hqOffset : MAP.laneLength - MAP.hqOffset);
+// Positions are lane-local: x along the lanes (0 = team 0's lane end), y across the lane (0..LANE_WIDTH). Lanes lie
+// LANE_PITCH apart, so lane-local y in `lane` is world y `lane * LANE_PITCH + y` (see `worldY`). Only in a team
+// game's cathedral court, where the lanes open into one yard, does anything stand off its lane's band.
+
+/** World y (across every lane of the match) of lane-local y in `lane`. */
+export const worldY = (lane: number, y: number): number => lane * LANE_PITCH + y;
+/** The lane whose band a world y lies in, or the nearer one in a graveyard strip between two. */
+export const laneAtY = (laneCount: number, wy: number): number => Math.max(0, Math.min(laneCount - 1, Math.floor((wy + MAP.laneGap / 2) / LANE_PITCH)));
+/** How far behind its lane ends a side's cathedral court reaches: none in 1v1, where the cathedral closes the lane. */
+export const courtDepth = (laneCount: number): number => (laneCount > 1 ? MAP.court.depth : 0);
+/**
+ * Which side's cathedral court x lies in, or -1. In a team game a court is everything behind the rear of a side's
+ * building grounds, across all of its lanes. A 1v1 match has none: its cathedral spans the end of the one lane.
+ */
+export function courtOf(laneCount: number, x: number): TeamId | -1 {
+  if (laneCount <= 1) return -1;
+  return x < MAP.zoneStart ? 0 : x > MAP.laneLength - MAP.zoneStart ? 1 : -1;
+}
+/** A side's cathedral: a box centred on (x, world y), reaching rx along the lanes and ry across them. */
+export interface HqBox { x: number; y: number; rx: number; ry: number }
+export function hqBox(laneCount: number, team: TeamId): HqBox {
+  if (laneCount <= 1) return { x: team === 0 ? MAP.hqOffset : MAP.laneLength - MAP.hqOffset, y: LANE_WIDTH / 2, rx: MAP.hqRadius, ry: LANE_WIDTH / 2 };
+  const c = MAP.court;
+  return { x: team === 0 ? c.hqX : MAP.laneLength - c.hqX, y: (worldY(laneCount - 1, 0) + LANE_WIDTH) / 2, rx: c.hqRx, ry: c.hqRy };
+}
+/** The cathedral's centre along the lanes. */
+export const hqX = (team: TeamId, laneCount = 1): number => hqBox(laneCount, team).x;
+/**
+ * How far (x, world y) is from the cathedral's walls, and the nearest point of them. While the point is level with the
+ * cathedral (across the lanes or along them) only the distance on the other axis counts, and it is negative inside.
+ */
+export function hqReach(h: HqBox, x: number, wy: number): { d: number; x: number; y: number } {
+  const ex = Math.abs(x - h.x) - h.rx, ey = Math.abs(wy - h.y) - h.ry;
+  const nx = Math.max(h.x - h.rx, Math.min(h.x + h.rx, x)), ny = Math.max(h.y - h.ry, Math.min(h.y + h.ry, wy));
+  return { d: ey <= 0 ? ex : ex <= 0 ? ey : Math.floor(Math.sqrt(ex * ex + ey * ey)), x: nx, y: ny };
+}
 /** Centre of a building whose rear-top grid cell is (col,row). Col 0 is the rear column (nearest the team's own HQ). */
 export function cellCenter(team: TeamId, col: number, row: number): { x: number; y: number } {
   const half = (MAP.footprint * MAP.cell) / 2;
@@ -38,8 +73,8 @@ export const baseTowerLocalX = (): number => MAP.zoneStart + MAP.zoneCols * MAP.
  * Where a team's Ossuary Vultures rise and where they are gone: from its own cathedral, so they guard its building
  * ground too, to the enemy's base towers, so they never fly over the enemy's chantries.
  */
-export const vultureRoute = (team: TeamId): { from: number; to: number } =>
-  team === 0 ? { from: hqX(0), to: MAP.laneLength - baseTowerLocalX() } : { from: hqX(1), to: baseTowerLocalX() };
+export const vultureRoute = (team: TeamId, laneCount = 1): { from: number; to: number } =>
+  team === 0 ? { from: hqX(0, laneCount), to: MAP.laneLength - baseTowerLocalX() } : { from: hqX(1, laneCount), to: baseTowerLocalX() };
 /** Living towers (guard towers and bastions) of a team in a lane. */
 export function towersOf(s: GameState, team: TeamId, lane = 0): number {
   let n = 0;
@@ -214,7 +249,7 @@ function applyCommand(s: GameState, player: PlayerId, c: Command): void {
     const k = s.keepers.find(q => q.owner === player && KEEPERS[q.slot].powers); // the Sexton: they fly where he stands
     if (!k || vultureBlock(s, me)) return;
     me.vultureReady = s.tick + RULES.vultureCooldownTicks;
-    s.flights.push({ owner: player, team: me.team, lane: k.lane, x: vultureRoute(me.team).from, cd: [0, RULES.vultureUrnTicks / 2] });
+    s.flights.push({ owner: player, team: me.team, lane: k.lane, x: vultureRoute(me.team, s.laneCount).from, cd: [0, RULES.vultureUrnTicks / 2] });
     s.events.push({ t: "vultures", player, team: me.team, lane: k.lane });
   } else if (c.type === "fog") {
     const lane = s.keepers.find(q => q.owner === player && KEEPERS[q.slot].powers)?.lane; // the Sexton: it rolls down the lane he stands in
@@ -249,8 +284,29 @@ const dist = (ax: number, ay: number, bx: number, by: number): number => {
   return Math.floor(Math.sqrt(dx * dx + dy * dy));
 };
 const isStructure = (u: UnitState): boolean => UNITS[u.type]!.structure === true;
+/** World y of a unit (see `worldY`). */
+const wy = (u: UnitState): number => worldY(u.lane, u.y);
+/** Distance between two units, across lanes too (they only ever meet across lanes in a cathedral court). */
+const apart = (a: UnitState, b: UnitState): number => dist(a.x, wy(a), b.x, wy(b));
 /** How far `o` is for noticing it. A structure is noticed by distance along the lane only, so nobody slips past it. */
-const noticeDist = (u: UnitState, o: UnitState): number => (isStructure(o) ? Math.abs(u.x - o.x) : dist(u.x, u.y, o.x, o.y));
+const noticeDist = (u: UnitState, o: UnitState): number => (isStructure(o) ? Math.abs(u.x - o.x) : apart(u, o));
+/**
+ * Keep a unit on walkable ground: its lane's band, or anywhere in a cathedral court, which spans all of a side's lanes
+ * and the graveyard strips between them. A unit in a court belongs to the lane nearest it, so it is that lane's again
+ * when it walks out, and it leaves only through the open rear of a building ground. `fromX` is where it stood before.
+ */
+function settle(s: GameState, u: UnitState, fromX: number): void {
+  const n = s.laneCount, court = courtOf(n, u.x), was = courtOf(n, fromX);
+  if (court < 0 && was < 0) { u.y = Math.max(500, Math.min(LANE_WIDTH - 500, u.y)); return; }
+  if (court < 0) {
+    if (u.y >= 500 && u.y <= LANE_WIDTH - 500) return;
+    u.x = was === 0 ? MAP.zoneStart - 1 : MAP.laneLength - MAP.zoneStart + 1; // a wall: it slides along the rear until level with the ground
+  }
+  const back = courtDepth(n) - 500;
+  u.x = Math.max(-back, Math.min(MAP.laneLength + back, u.x));
+  const y = Math.max(500, Math.min(worldY(n - 1, LANE_WIDTH) - 500, wy(u))), lane = laneAtY(n, y);
+  u.lane = lane; u.y = y - worldY(lane, 0);
+}
 /** Offsets for units that appear together (a pack, a collapsing colossus); x is mirrored for team 1 so both sides match. */
 const SCATTER = [[-450, -450], [450, 450], [-450, 450], [450, -450]] as const;
 
@@ -260,7 +316,11 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
   s.events = [];
   for (const { player, cmd } of commands) applyCommand(s, player, cmd);
 
-  const overtime = s.tick >= RULES.overtimeTick;
+  const overtime = s.tick >= RULES.overtimeTick, lanes = s.laneCount;
+  /** Units meet in their own lane, or anywhere in the same cathedral court, whatever lane they came by. */
+  const together = (a: UnitState, b: UnitState): boolean => a.lane === b.lane || (lanes > 1 && courtOf(lanes, a.x) >= 0 && courtOf(lanes, a.x) === courtOf(lanes, b.x));
+  /** Lane-local y in `lane` of a world y. */
+  const inLane = (lane: number, y: number): number => y - worldY(lane, 0);
   const byId = new Map<number, UnitState>();
   for (const u of s.units) byId.set(u.id, u);
 
@@ -270,8 +330,8 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
     const d = UNITS[a.type]!;
     if (!d.aura && !d.reveal && !d.dread) continue;
     for (const o of s.units) {
-      if (o === a || o.lane !== a.lane) continue;
-      const far = dist(a.x, a.y, o.x, o.y);
+      if (o === a || !together(a, o)) continue;
+      const far = apart(a, o);
       if (d.aura && o.team === a.team && !isStructure(o) && far <= d.aura.radius) {
         auraArmor.set(o, Math.max(auraArmor.get(o) ?? 0, d.aura.armor));
         auraRegen.set(o, Math.max(auraRegen.get(o) ?? 0, d.aura.regen));
@@ -315,7 +375,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
     if (vd.structure) return; // stone neither burns nor slows
     if (def.blight) { const until = s.tick + def.blight; afflict.push(() => { v.blightUntil = Math.max(v.blightUntil, until); }); }
     if (vd.steadfast) return; // stone skin: no curse, fire or blow moves it
-    if (def.knock && !vd.flying) { const push = u.team === 0 ? def.knock : -def.knock; afflict.push(() => { v.x = Math.max(0, Math.min(MAP.laneLength, v.x + push)); }); }
+    if (def.knock && !vd.flying) { const push = u.team === 0 ? def.knock : -def.knock, back = courtDepth(lanes); afflict.push(() => { const x = v.x; v.x = Math.max(-back, Math.min(MAP.laneLength + back, v.x + push)); settle(s, v, x); }); }
     if (def.slow) { const { pct, ticks } = def.slow; afflict.push(() => {
       v.slowPct = s.tick < v.slowUntil ? Math.max(v.slowPct, pct) : pct; v.slowUntil = Math.max(v.slowUntil, s.tick + ticks); }); }
     if (def.dot) { const { dmg: burn, ticks } = def.dot; afflict.push(() => {
@@ -332,20 +392,20 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
       base += Math.trunc((base * def.ramp.pct * u.ramp) / 100);
     }
     u.lastHit = target.id;
-    s.events.push({ t: "shot", id: u.id, unit: u.type, team: u.team, to: target.id, lane: u.lane, x1: u.x, y1: u.y, x2: target.x, y2: target.y });
+    s.events.push({ t: "shot", id: u.id, unit: u.type, team: u.team, to: target.id, lane: u.lane, x1: u.x, y1: u.y, x2: target.x, y2: inLane(u.lane, wy(target)) });
     if (def.line) {
       // Everything within `width` of the segment that starts at the attacker and runs `length` through the target.
-      const dx = target.x - u.x, dy = target.y - u.y, len = Math.max(1, dist(u.x, u.y, target.x, target.y));
+      const dx = target.x - u.x, dy = wy(target) - wy(u), len = Math.max(1, apart(u, target));
       for (const o of s.units) {
-        if (o.team === u.team || o.lane !== u.lane || !canHit(def, o)) continue;
-        const ox = o.x - u.x, oy = o.y - u.y, along = Math.trunc((ox * dx + oy * dy) / len), across = Math.abs(Math.trunc((ox * dy - oy * dx) / len));
+        if (o.team === u.team || !together(u, o) || !canHit(def, o)) continue;
+        const ox = o.x - u.x, oy = wy(o) - wy(u), along = Math.trunc((ox * dx + oy * dy) / len), across = Math.abs(Math.trunc((ox * dy - oy * dx) / len));
         if (o === target || (along >= 0 && along <= def.line.length && across <= def.line.width)) hit(u, def, o, base, charged);
       }
     } else if (def.splash > 0) {
       for (const o of s.units)
-        if (o.team !== u.team && o.lane === u.lane && canHit(def, o) && dist(o.x, o.y, target.x, target.y) <= def.splash) hit(u, def, o, base, charged);
+        if (o.team !== u.team && together(u, o) && canHit(def, o) && apart(o, target) <= def.splash) hit(u, def, o, base, charged);
     } else hit(u, def, target, base, charged);
-    if (def.field) s.fires.push({ team: u.team, lane: u.lane, x: target.x, y: target.y, radius: def.field.radius, dmg: def.field.dmg, from: s.tick, until: s.tick + def.field.ticks });
+    if (def.field) s.fires.push({ team: u.team, lane: target.lane, x: target.x, y: target.y, radius: def.field.radius, dmg: def.field.dmg, from: s.tick, until: s.tick + def.field.ticks });
     if (def.chain) {
       const struck = new Set<UnitState>([target]);
       let from = target, force = base;
@@ -353,13 +413,13 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
         force = Math.trunc((force * (100 - def.chain.falloff)) / 100);
         let next: UnitState | undefined, nextD = def.chain.radius + 1;
         for (const o of s.units) {
-          if (o.team === u.team || o.lane !== u.lane || struck.has(o) || !canHit(def, o)) continue;
-          const d = dist(from.x, from.y, o.x, o.y);
+          if (o.team === u.team || !together(u, o) || struck.has(o) || !canHit(def, o)) continue;
+          const d = apart(from, o);
           if (d < nextD) { next = o; nextD = d; }
         }
         if (!next) break;
         hit(u, def, next, force);
-        s.events.push({ t: "arc", team: u.team, from: from.id, to: next.id, lane: u.lane, x1: from.x, y1: from.y, x2: next.x, y2: next.y });
+        s.events.push({ t: "arc", team: u.team, from: from.id, to: next.id, lane: u.lane, x1: from.x, y1: inLane(u.lane, wy(from)), x2: next.x, y2: inLane(u.lane, wy(next)) });
         struck.add(next); from = next;
       }
     }
@@ -371,7 +431,8 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
     if (s.tick === f.from || (s.tick - f.from) % TICK_RATE !== 0) continue;
     for (const u of s.units) {
       const d = UNITS[u.type]!;
-      if (u.team !== f.team && u.lane === f.lane && !d.structure && !d.flying && !d.steadfast && dist(u.x, u.y, f.x, f.y) <= f.radius) change(u, -f.dmg);
+      if (u.team === f.team || d.structure || d.flying || d.steadfast) continue;
+      if ((u.lane === f.lane || (courtOf(lanes, u.x) >= 0 && courtOf(lanes, u.x) === courtOf(lanes, f.x))) && dist(u.x, wy(u), f.x, worldY(f.lane, f.y)) <= f.radius) change(u, -f.dmg);
     }
   }
 
@@ -403,7 +464,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
       s.events.push({ t: "urn", owner: f.owner, bird, team: f.team, lane: f.lane, x1: f.x, y1: y, x2: prey.x, y2: prey.y });
     }
   }
-  s.flights = s.flights.filter(f => (f.team === 0 ? f.x < vultureRoute(0).to : f.x > vultureRoute(1).to));
+  s.flights = s.flights.filter(f => (f.team === 0 ? f.x < vultureRoute(0, s.laneCount).to : f.x > vultureRoute(1, s.laneCount).to));
   for (const urn of s.urns) {
     if (s.tick < urn.at) continue;
     for (const u of s.units)
@@ -417,7 +478,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
   for (const f of s.fogs) {
     const front = fogFront(s, f);
     for (const u of s.units)
-      if (u.team !== f.team && u.lane === f.lane && !isStructure(u) && (f.team === 0 ? u.x : MAP.laneLength - u.x) <= front) change(u, -u.hp);
+      if (u.team !== f.team && !isStructure(u) && ((u.lane === f.lane && (f.team === 0 ? u.x : MAP.laneLength - u.x) <= front) || courtOf(lanes, u.x) === f.team)) change(u, -u.hp);
   }
 
   for (const u of s.units) {
@@ -445,7 +506,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
       if (!canHit(def, o)) return -1;
       const od = UNITS[o.type]!;
       if (od.veil || def.minRange) {
-        const real = dist(u.x, u.y, o.x, o.y);
+        const real = apart(u, o);
         if (od.veil && real > od.veil && !revealed.has(o)) return -1;
         if (def.minRange && real < def.minRange) return -2;
       }
@@ -455,14 +516,14 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
     let nearestEnemy: UnitState | undefined, nearestEnemyD = Infinity, threatD = Infinity, tooClose = false;
     let patient: UnitState | undefined, patientD = Infinity;
     for (const o of s.units) {
-      if (o.lane !== u.lane || o === u) continue;
+      if (o === u || !together(u, o)) continue;
       if (o.team !== u.team) {
         if (def.damage === 0) { threatD = Math.min(threatD, noticeDist(u, o)); continue; }
         const d = reach(o);
         if (d === -2) tooClose = true;
         else if (d >= 0 && d < nearestEnemyD) { nearestEnemy = o; nearestEnemyD = d; }
       } else if (def.heal > 0 && !isStructure(o) && o.hp < UNITS[o.type]!.hp && !blighted(o)) {
-        const d = dist(u.x, u.y, o.x, o.y);
+        const d = apart(u, o);
         if (d < patientD) { patient = o; patientD = d; }
       }
     }
@@ -475,18 +536,27 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
       moves.push([u, mx, my]);
     };
     const advance = () => { moves.push([u, dir * speed, 0]); };
+    /**
+     * On toward the enemy cathedral, to `keep` from its walls: straight down the lane, and in its court straight at the
+     * nearest part of it, however far across the lanes that is. `at` is where the cathedral stands from here.
+     */
+    const marchOn = (at: { d: number; x: number; y: number }, keep: number) => {
+      if (courtOf(lanes, u.x) !== enemyTeam) advance();
+      else moveToward(at.x, inLane(u.lane, at.y), dist(u.x, wy(u), at.x, at.y), at.d - keep);
+    };
+    const enemyHq = hqReach(hqBox(lanes, enemyTeam), u.x, wy(u));
 
     if (def.damage === 0) { // support: mend if it can, and keep behind the fighting
       if (def.structure) continue;
       const within = def.range + RULES.acquirePad;
       if (patient && patientD <= within) {
-        if (patientD > def.range) moveToward(patient.x, patient.y, patientD, patientD - def.range);
+        if (patientD > def.range) moveToward(patient.x, inLane(u.lane, wy(patient)), patientD, patientD - def.range);
         else if (u.cooldown === 0) {
           change(patient, def.heal);
           rearm();
-          s.events.push({ t: "heal", id: u.id, team: u.team, lane: u.lane, x1: u.x, y1: u.y, x2: patient.x, y2: patient.y });
+          s.events.push({ t: "heal", id: u.id, team: u.team, lane: u.lane, x1: u.x, y1: u.y, x2: patient.x, y2: inLane(u.lane, wy(patient)) });
         }
-      } else if (threatD > RULES.healerHoldRange && Math.abs(u.x - hqX(enemyTeam)) > RULES.healerHoldRange) advance();
+      } else if (threatD > RULES.healerHoldRange && enemyHq.d > RULES.healerHoldRange - MAP.hqRadius) marchOn(enemyHq, RULES.healerHoldRange - MAP.hqRadius);
       continue;
     }
 
@@ -495,11 +565,11 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
     let target = u.target ? byId.get(u.target) : undefined;
     if (target) { const d = reach(target); if (d < 0 || d > acquire) target = undefined; }
     if (!target) target = nearestEnemyD <= acquire ? nearestEnemy : undefined;
-    const targetD = target ? dist(u.x, u.y, target.x, target.y) : Infinity;
+    const targetD = target ? apart(u, target) : Infinity;
     u.target = target ? target.id : 0;
 
     if (target) {
-      if (targetD > def.range) moveToward(target.x, target.y, targetD, targetD - def.range);
+      if (targetD > def.range) moveToward(target.x, inLane(u.lane, wy(target)), targetD, targetD - def.range);
       else if (u.cooldown === 0) { rearm(); strike(u, def, target); }
     } else if (tooClose) {
       // A war engine with the enemy under its nose can only wait for help.
@@ -511,8 +581,6 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
         const c = cellCenter(b.team, b.col, b.row), d = Math.max(0, dist(u.x, u.y, c.x, c.y) - footHalf);
         if (d < chantryD) { chantry = b; chantryD = d; cx = c.x; cy = c.y; }
       }
-      // The HQ spans the lane width, so only distance along the lane matters.
-      const hx = hqX(enemyTeam);
       if (chantry) {
         if (chantryD > def.range) moveToward(cx, cy, chantryD + footHalf, chantryD - def.range);
         else if (u.cooldown === 0) {
@@ -520,18 +588,18 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
           razing.set(chantry, (razing.get(chantry) ?? 0) + def.damage + Math.trunc((def.damage * (def.bonus?.structure ?? 0)) / 100));
           s.events.push({ t: "shot", id: u.id, unit: u.type, team: u.team, to: 0, chantry: chantry.id, lane: u.lane, x1: u.x, y1: u.y, x2: cx, y2: cy });
         }
-      } else if (Math.abs(u.x - hx) - MAP.hqRadius <= def.range) {
+      } else if (enemyHq.d <= def.range) {
         if (u.cooldown === 0) {
           rearm();
           const dmg = def.damage + Math.trunc((def.damage * (def.bonus?.structure ?? 0)) / 100);
           hqDamage[enemyTeam] += dmg * (overtime ? RULES.overtimeHqDamageMult : 1);
-          s.events.push({ t: "shot", id: u.id, unit: u.type, team: u.team, to: 0, lane: u.lane, x1: u.x, y1: u.y, x2: hx, y2: u.y });
+          s.events.push({ t: "shot", id: u.id, unit: u.type, team: u.team, to: 0, lane: u.lane, x1: u.x, y1: u.y, x2: hqX(enemyTeam, lanes), y2: inLane(u.lane, enemyHq.y) });
         }
-      } else advance();
+      } else marchOn(enemyHq, def.range);
     }
   }
   for (const apply of afflict) apply();
-  for (const [u, dx, dy] of moves) { u.x += dx; u.y = Math.max(500, Math.min(LANE_WIDTH - 500, u.y + dy)); }
+  for (const [u, dx, dy] of moves) { const x = u.x; u.x += dx; u.y += dy; settle(s, u, x); }
 
   // Chantries take what was dealt to them; one brought to nothing is razed, and its owner gets nothing back.
   if (razing.size > 0) {
@@ -577,12 +645,12 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
   }
 
   // Units keep a little room around themselves, so lines form instead of one stacked blob. Flyers only crowd flyers.
-  const room = RULES.unitSpacing;
+  const room = RULES.unitSpacing, before = lanes > 1 ? s.units.map(u => u.x) : null;
   for (let i = 0; i < s.units.length; i++) {
     const a = s.units[i]!, aFlies = UNITS[a.type]!.flying === true;
     for (let j = i + 1; j < s.units.length; j++) {
-      const b = s.units[j]!, dx = b.x - a.x, dy = b.y - a.y;
-      if (a.team !== b.team || a.lane !== b.lane || isStructure(a) || isStructure(b) || Math.abs(dx) >= room || Math.abs(dy) >= room) continue;
+      const b = s.units[j]!, dx = b.x - a.x, dy = wy(b) - wy(a);
+      if (a.team !== b.team || !together(a, b) || isStructure(a) || isStructure(b) || Math.abs(dx) >= room || Math.abs(dy) >= room) continue;
       if (aFlies !== (UNITS[b.type]!.flying === true)) continue;
       const d = dist(a.x, a.y, b.x, b.y);
       if (d >= room) continue;
@@ -591,23 +659,24 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
       a.x -= px; a.y -= py; b.x += px; b.y += py;
     }
   }
-  for (const u of s.units) if (!isStructure(u)) u.y = Math.max(500, Math.min(LANE_WIDTH - 500, u.y));
+  s.units.forEach((u, i) => { if (!isStructure(u)) settle(s, u, before ? before[i]! : u.x); });
 
   // Headquarters guns: shoot the nearest enemy in range.
   for (const team of [0, 1] as const) {
     const hq = s.teams[team];
     if (hq.hqCooldown > 0) hq.hqCooldown--;
     if (overtime || hq.hqCooldown > 0) continue;
-    const hx = hqX(team);
-    let best: UnitState | undefined, bestD = RULES.hqRange + MAP.hqRadius;
+    const h = hqBox(lanes, team);
+    let best: UnitState | undefined, bestD = RULES.hqRange;
     for (const u of s.units) {
-      const d = Math.abs(u.x - hx);
-      if (u.team !== team && d <= bestD) { best = u; bestD = d; }
+      if (u.team === team) continue;
+      const d = hqReach(h, u.x, wy(u)).d;
+      if (d <= bestD) { best = u; bestD = d; }
     }
     if (best) {
       change(best, -Math.max(1, RULES.hqDamage - UNITS[best.type]!.armor));
       hq.hqCooldown = RULES.hqInterval;
-      s.events.push({ t: "shot", id: 0, unit: "hq", team, to: best.id, lane: best.lane, x1: hx, y1: LANE_WIDTH / 2, x2: best.x, y2: best.y });
+      s.events.push({ t: "shot", id: 0, unit: "hq", team, to: best.id, lane: best.lane, x1: h.x, y1: inLane(best.lane, h.y), x2: best.x, y2: best.y });
     }
   }
 
@@ -635,12 +704,13 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
       if (def.martyr) { // Martyrdom: its blood mends the living around it (never the blighted)
         const { heal, radius } = def.martyr;
         for (const o of s.units)
-          if (o.team === u.team && o.lane === u.lane && !isStructure(o) && !blighted(o) && dist(o.x, o.y, u.x, u.y) <= radius) o.hp = Math.min(UNITS[o.type]!.hp, o.hp + heal);
+          if (o.team === u.team && together(u, o) && !isStructure(o) && !blighted(o) && apart(o, u) <= radius) o.hp = Math.min(UNITS[o.type]!.hp, o.hp + heal);
         s.events.push({ t: "martyr", team: u.team, lane: u.lane, x: u.x, y: u.y, radius });
       }
       if (def.spawnOnDeath) for (let i = 0; i < def.spawnOnDeath.count; i++) {
         const [ox, oy] = SCATTER[i % SCATTER.length]!;
-        addUnit(s, def.spawnOnDeath.unit, u.owner, u.team, u.lane, u.x + (u.team === 0 ? ox : -ox), Math.max(500, Math.min(LANE_WIDTH - 500, u.y + oy)));
+        const piece = addUnit(s, def.spawnOnDeath.unit, u.owner, u.team, u.lane, u.x + (u.team === 0 ? ox : -ox), u.y + oy);
+        settle(s, piece, u.x);
       }
     }
     // Raise Dead: nearest ready necromancer first, whatever order the dead fell in; at equal distance an enemy's corpse comes first.
@@ -650,8 +720,8 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
       if (def.structure || def.summoned || def.flying) continue; // nothing to raise
       for (const n of s.units) {
         const raise = UNITS[n.type]!.raise;
-        if (!raise || n.abilityCd > 0 || n.lane !== u.lane) continue;
-        const d = dist(n.x, n.y, u.x, u.y);
+        if (!raise || n.abilityCd > 0 || !together(n, u)) continue;
+        const d = apart(n, u);
         if (d <= raise.radius) claims.push({ corpse: u, by: n, d });
       }
     }

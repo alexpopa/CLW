@@ -10,10 +10,10 @@ import "@fontsource/im-fell-english/400.css";
 import "@fontsource/im-fell-english/400-italic.css";
 import "@fontsource/unifrakturcook/700.css";
 import "./hud.css";
-import { AI, INVEST, KEEPERS, RESEARCH, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, hqMax, hqX, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, chantryHp, fogFront, stormBlock, unitsOfTier } from "@lw/sim";
+import { AI, INVEST, KEEPERS, RESEARCH, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, courtDepth, hqBox, hqMax, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, chantryHp, fogFront, stormBlock, unitsOfTier } from "@lw/sim";
 import type { GameState, PlayerState } from "@lw/sim";
 import { TEAM } from "./models";
-import { LANE_GAP, LANE_PITCH, LANE_W, fieldZ } from "./layout";
+import { LANE_GAP, LANE_PITCH, LANE_W, fieldX, fieldZ } from "./layout";
 import { profile } from "./device";
 import type { Profile } from "./device";
 
@@ -301,24 +301,33 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
     if (mini.width !== Math.round(w * dpr) || mini.height !== Math.round(h * dpr)) { mini.width = Math.round(w * dpr); mini.height = Math.round(h * dpr); }
     const c = mini.getContext("2d")!;
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const X = (x: number) => (x / MAP.laneLength) * w, Z = (lane: number, y: number) => ((lane * LANE_PITCH + y / 1000 - f0) / depth) * h;
+    const [fx0, fx1] = fieldX(s.laneCount), L = (len: number) => (len / 1000 / (fx1 - fx0)) * w, X = (x: number) => L(x - fx0 * 1000), Z = (lane: number, y: number) => ((lane * LANE_PITCH + y / 1000 - f0) / depth) * h;
     const col = (team: number) => TEAM[team as 0 | 1].css, me = s.players[v.me]!;
     c.fillStyle = "#0a090e"; c.fillRect(0, 0, w, h);
-    const zw = MAP.zoneCols * MAP.cell, laneH = (LANE_W / depth) * h;
+    const zw = MAP.zoneCols * MAP.cell, laneH = (LANE_W / depth) * h, court = courtDepth(s.laneCount);
+    if (court) { // the cathedral courts behind the lane ends, across every lane
+      const top = Z(0, 0), all = Z(s.laneCount - 1, LANE_WIDTH) - top;
+      c.fillStyle = "#1b1a22"; c.fillRect(X(-court), top, L(court + MAP.zoneStart), all); c.fillRect(X(MAP.laneLength - MAP.zoneStart), top, L(court + MAP.zoneStart), all);
+    }
     for (let l = 0; l < s.laneCount; l++) {
       const top = Z(l, 0);
       c.fillStyle = l === me.lane ? "#24222e" : "#1b1a22"; c.fillRect(0, top, w, laneH);
-      for (const team of [0, 1] as const) { c.globalAlpha = 0.25; c.fillStyle = col(team); c.fillRect(X(team === 0 ? MAP.zoneStart : MAP.laneLength - MAP.zoneStart - zw), top, X(zw), laneH); }
+      for (const team of [0, 1] as const) { c.globalAlpha = 0.25; c.fillStyle = col(team); c.fillRect(X(team === 0 ? MAP.zoneStart : MAP.laneLength - MAP.zoneStart - zw), top, L(zw), laneH); }
       c.globalAlpha = 1;
     }
-    for (const team of [0, 1] as const) { c.fillStyle = col(team); c.fillRect(X(hqX(team)) - 4, (LANE_GAP / 2 / depth) * h, 8, h - (LANE_GAP / depth) * h); }
+    for (const team of [0, 1] as const) { // the cathedral: one for each side, however many lanes it closes
+      const hq = hqBox(s.laneCount, team), bw = Math.max(8, L(2 * hq.rx));
+      c.fillStyle = col(team); c.fillRect(X(hq.x) - bw / 2, Math.max(Z(0, hq.y - hq.ry), (LANE_GAP / 2 / depth) * h), bw, Math.min(Z(0, hq.y + hq.ry), h - (LANE_GAP / 2 / depth) * h) - Math.max(Z(0, hq.y - hq.ry), (LANE_GAP / 2 / depth) * h));
+    }
     for (const b of s.beacons) {
       c.fillStyle = b.owner === null ? "#8a8474" : col(b.owner);
       c.save(); c.translate(X(b.x), Z(b.lane, LANE_WIDTH / 2)); c.rotate(Math.PI / 4); c.fillRect(-4, -4, 8, 8); c.restore();
     }
     for (const f of s.fogs) { // the bank itself, as far as it has rolled
       const front = fogFront(s, f), x = f.team === 0 ? 0 : MAP.laneLength - front;
-      c.globalAlpha = 0.45; c.fillStyle = "#7dffa0"; c.fillRect(X(x), Z(f.lane, 0), X(front), laneH); c.globalAlpha = 1;
+      c.globalAlpha = 0.45; c.fillStyle = "#7dffa0"; c.fillRect(X(x), Z(f.lane, 0), L(front), laneH);
+      if (court) c.fillRect(X(f.team === 0 ? -court : MAP.laneLength - MAP.zoneStart), Z(0, 0), L(court + MAP.zoneStart), Z(s.laneCount - 1, LANE_WIDTH) - Z(0, 0)); // it fills the court
+      c.globalAlpha = 1;
     }
     for (const u of s.units) {
       c.fillStyle = col(u.team);
