@@ -96,7 +96,7 @@ describe("match server", () => {
     await a.say({ t: "joinLobby", lobbyId: "ZZZZ" });
     expect(a.last("error")!.code).toBe("notFound");
     await a.say({ t: "createLobby", settings: { teamSize: 1, aiFill: true } });
-    expect(a.last("gameStart")).toMatchObject({ yourSlot: 0, names: ["Wanderer", "Autopilot"] });
+    expect(a.last("gameStart")).toMatchObject({ yourSlot: 0, names: ["Wanderer", "Easy autopilot"] });
     expect(a.last("gameStart")!.config.aiSlots).toEqual([1]);
     for (const junk of [null, 7, "x", {}, { t: "cmd" }, { t: "cmd", cmd: { type: "win" } }]) await a.say(junk);
     run(10);
@@ -122,12 +122,12 @@ describe("match server", () => {
     await d.say({ t: "seat", slot: 9 });                     // no such seat: ignored
     await d.say({ t: "leave" }); await c.say({ t: "seat", slot: 3 }); await b.say({ t: "seat", slot: 1 });
     await d.say({ t: "joinLobby", lobbyId: code });
-    expect(a.last("lobby")!.slots.map(q => (q && q !== "ai" ? q.user.displayName : null))).toEqual(["Ann", "Bo", "Di", "Cy"]);
+    expect(a.last("lobby")!.slots.map(q => (q && "user" in q ? q.user.displayName : null))).toEqual(["Ann", "Bo", "Di", "Cy"]);
     // only the host moves others, and moving into a taken seat swaps the two
     await b.say({ t: "seat", from: 3, slot: 0 });
     expect(b.last("error")!.code).toBe("host");
     await a.say({ t: "seat", from: 3, slot: 1 });            // Cy <-> Bo
-    expect(a.last("lobby")!.slots.map(q => (q && q !== "ai" ? q.user.displayName : null))).toEqual(["Ann", "Cy", "Di", "Bo"]);
+    expect(a.last("lobby")!.slots.map(q => (q && "user" in q ? q.user.displayName : null))).toEqual(["Ann", "Cy", "Di", "Bo"]);
     expect(c.last("lobby")!.yourSlot).toBe(1);
     await a.say({ t: "seat", slot: 3 });                     // the host swaps themself too, and stays host
     expect(a.last("lobby")).toMatchObject({ yourSlot: 3, host: 3 });
@@ -149,6 +149,36 @@ describe("match server", () => {
     await solo.say({ t: "start" });
     expect(solo.last("gameStart")!.config).toMatchObject({ teamSize: 3, aiSlots: [1, 2, 3, 4, 5] });
     expect(solo.game.laneCount).toBe(3);
+  });
+
+  it("the host seats autopilots at a difficulty per seat, moves them like players, and nobody else may", async () => {
+    const { hub } = setup();
+    const [a, b, c] = [player(hub), player(hub), player(hub)];
+    for (const [p, name] of [[a, "Ann"], [b, "Bo"], [c, "Cy"]] as const) await p.say({ t: "hello", sessionToken: `guest:${name}` });
+    await a.say({ t: "createLobby", settings: { teamSize: 2, aiFill: false } });
+    const code = a.last("lobby")!.lobbyId;
+    await a.say({ t: "bot", slot: 2, level: 2 });            // a Hard autopilot on the enemy's first lane
+    await a.say({ t: "bot", slot: 3, level: 1 });            // and a Medium one on their second
+    await a.say({ t: "bot", slot: 0, level: 1 });            // not over a player
+    expect(a.last("error")!.code).toBe("taken");
+    await a.say({ t: "bot", slot: 1, level: 9 });            // no such difficulty: ignored
+    expect(a.last("lobby")!.slots).toEqual([expect.objectContaining({ ready: true }), null, { ai: 2 }, { ai: 1 }]);
+    await b.say({ t: "joinLobby", lobbyId: code });          // only the open seat is free
+    expect(b.last("lobby")!.yourSlot).toBe(1);
+    await c.say({ t: "joinLobby", lobbyId: code });
+    expect(c.last("error")!.code).toBe("full");
+    await b.say({ t: "bot", slot: 2, level: 0 });            // only the host sets autopilots...
+    await b.say({ t: "seat", slot: 2 });                     // ...and a guest may not take a seat one holds
+    expect(b.last("error")!.code).toBe("taken");
+    await b.say({ t: "seat", from: 3, slot: 2 });
+    expect(b.last("error")!.code).toBe("host");
+    await a.say({ t: "seat", from: 1, slot: 2 });            // the host swaps Bo with the Hard autopilot
+    expect(a.last("lobby")!.slots.map(q => (q && "user" in q ? q.user.displayName : q))).toEqual(["Ann", { ai: 2 }, "Bo", { ai: 1 }]);
+    await a.say({ t: "bot", slot: 3, level: null });         // open the last seat again: it plays Easy if nobody comes
+    await b.say({ t: "ready", ready: true });
+    await a.say({ t: "start" });
+    expect(a.last("gameStart")).toMatchObject({ config: { aiSlots: [1, 3], aiLevels: [0, 2, 0, 0] }, names: ["Ann", "Hard autopilot", "Bo", "Easy autopilot"] });
+    expect(a.game.players.map(p => p.aiLevel)).toEqual([0, 2, 0, 0]);
   });
 
   it("lobby chat reaches everyone in the lobby as plain, trimmed text, is rate limited, and rejects excess messages", async () => {

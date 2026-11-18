@@ -1,7 +1,7 @@
-import { createGame, parseCommand, simpleAI, step, TICK_RATE } from "@lw/sim";
+import { AI, createGame, parseCommand, simpleAI, step, TICK_RATE } from "@lw/sim";
 import type { Command, GameConfig, GameState, PlayerId, TimedCommand } from "@lw/sim";
 import { CHAT_MAX } from "@lw/protocol";
-import type { LobbySettings, ServerMsg, UserIdentity } from "@lw/protocol";
+import type { LobbySeat, LobbySettings, ServerMsg, UserIdentity } from "@lw/protocol";
 import type { SessionStore } from "./auth/types";
 
 /**
@@ -23,8 +23,12 @@ const CHAT_WINDOW_MS = 5000;   // ...within this many milliseconds
 
 interface Client { conn: Conn; user: UserIdentity | null; lobby: Lobby | null; slot: PlayerId; ready: boolean; said: number[]; busy: Promise<void> }
 interface Match { state: GameState; startedAt: number; queued: Command[][]; ai: Set<PlayerId> }
-/** A lobby: the host picks the size, players pick their seats, mark themselves ready and talk; the host begins. */
-interface Lobby { id: string; settings: LobbySettings; seats: (Client | null)[]; host: Client; match: Match | null }
+/** An autopilot the host has seated, at a difficulty (index into AI.levels). */
+interface Bot { ai: number }
+/** A lobby: the host picks the size, seats autopilots, players pick their seats, mark themselves ready and talk; the host begins. */
+interface Lobby { id: string; settings: LobbySettings; seats: (Client | Bot | null)[]; host: Client; match: Match | null }
+const isBot = (q: Client | Bot | null | undefined): q is Bot => !!q && "ai" in q;
+const isLevel = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < AI.levels.length;
 
 export interface HubOptions { random?: (n: number) => number; now?: () => number }
 
@@ -79,13 +83,13 @@ export class Hub {
       if (c.lobby) return this.fail(c, "busy", "You are already in a match");
       const lobby = typeof m.lobbyId === "string" ? this.lobbies.get(m.lobbyId.trim().toUpperCase()) : undefined;
       if (!lobby) return this.fail(c, "notFound", "No match with that code");
-      if (c.user.provider === "rgboner" && lobby.seats.some(seat => seat?.user?.userId === c.user?.userId)) {
+      if (c.user.provider === "rgboner" && this.members(lobby).some(seat => seat.user?.userId === c.user?.userId)) {
         return this.fail(c, "sameAccount", "Join using a different RGBoner account");
       }
       // Fill the two sides evenly: an opponent first, then an ally, and so on.
       const n = lobby.settings.teamSize, order = Array.from({ length: n * 2 }, (_, i) => (i % 2 ? Math.floor(i / 2) + n : i / 2));
       const slot = lobby.match ? -1 : order.find(i => lobby.seats[i] === null) ?? -1;
-      if (slot < 0) return this.fail(c, "full", "That match has already begun");
+      if (slot < 0) return this.fail(c, "full", lobby.match ? "That match has already begun" : "Every seat is taken: ask the host to open one");
       lobby.seats[slot] = c; c.lobby = lobby; c.slot = slot; c.ready = false;
       this.sendLobby(lobby);
     } else if (m.t === "seat") {
@@ -98,9 +102,18 @@ export class Hub {
       if (!mover) return;
       if (mover !== c && !lead) return this.fail(c, "host", "Only the host can move other players");
       if (there && !lead) return this.fail(c, "taken", "That seat is taken");
-      // the host may put anyone anywhere; a taken seat trades places
-      lobby.seats[to] = mover; mover.slot = to;
-      lobby.seats[from] = there; if (there) there.slot = from;
+      // the host may put anyone anywhere, autopilots too; a taken seat trades places
+      lobby.seats[to] = mover; if (!isBot(mover)) mover.slot = to;
+      lobby.seats[from] = there; if (there && !isBot(there)) there.slot = from;
+      this.sendLobby(lobby);
+    } else if (m.t === "bot") {
+      const lobby = c.lobby, slot = m.slot;
+      if (!lobby || lobby.match || c !== lobby.host) return;
+      if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot >= lobby.seats.length) return;
+      const q = lobby.seats[slot];
+      if (q && !isBot(q)) return this.fail(c, "taken", "A player holds that seat");
+      if (m.level !== null && !isLevel(m.level)) return;
+      lobby.seats[slot] = m.level === null ? null : { ai: m.level };
       this.sendLobby(lobby);
     } else if (m.t === "ready") {
       const lobby = c.lobby;
@@ -131,19 +144,21 @@ export class Hub {
     }
   }
 
-  private members(lobby: Lobby): Client[] { return lobby.seats.filter((s): s is Client => s !== null); }
+  private members(lobby: Lobby): Client[] { return lobby.seats.filter((s): s is Client => s !== null && !isBot(s)); }
 
   private sendLobby(lobby: Lobby): void {
-    const slots = lobby.seats.map(s => (s ? { user: s.user!, ready: s === lobby.host || s.ready } : null));
+    const slots = lobby.seats.map((s): LobbySeat => (isBot(s) ? { ai: s.ai } : s ? { user: s.user!, ready: s === lobby.host || s.ready } : null));
     for (const m of this.members(lobby)) m.conn.send({ t: "lobby", lobbyId: lobby.id, settings: lobby.settings, yourSlot: m.slot, host: lobby.host.slot, slots });
   }
 
   private startMatch(lobby: Lobby): void {
+    // Every seat no player holds is an autopilot: at the host's chosen difficulty, or Easy for a seat left open.
     const ai = new Set<PlayerId>();
-    lobby.seats.forEach((s, i) => { if (!s) ai.add(i); });
-    const config: GameConfig = { teamSize: lobby.settings.teamSize, seed: 1 + this.random(0x7ffffffe), aiSlots: [...ai] };
+    lobby.seats.forEach((s, i) => { if (!s || isBot(s)) ai.add(i); });
+    const aiLevels = lobby.seats.map(s => (isBot(s) ? s.ai : 0));
+    const config: GameConfig = { teamSize: lobby.settings.teamSize, seed: 1 + this.random(0x7ffffffe), aiSlots: [...ai], aiLevels };
     lobby.match = { state: createGame(config), startedAt: this.now(), queued: lobby.seats.map(() => []), ai };
-    const names = lobby.seats.map(s => s?.user?.displayName ?? AUTOPILOT);
+    const names = lobby.seats.map((s, i) => (s && !isBot(s) ? s.user!.displayName : `${AI.levels[aiLevels[i]!]!.name} ${AUTOPILOT.toLowerCase()}`));
     for (const m of this.members(lobby)) m.conn.send({ t: "gameStart", config, yourSlot: m.slot, names });
   }
 

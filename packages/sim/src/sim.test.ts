@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addUnit, createGame as newGame, parseCommand, UNIT_RESEARCH, step, towersOf, simpleAI, incomeOf, cellCenter, hqX, INVEST, CHANTRY_HP, chantryHp, sellRefund, MAP, RESEARCH, RULES, TICK_RATE, UNITS } from "./index";
+import { addUnit, createGame as newGame, parseCommand, UNIT_RESEARCH, step, towersOf, simpleAI, incomeOf, cellCenter, hqX, INVEST, CHANTRY_HP, chantryHp, sellRefund, MAP, RESEARCH, RULES, TICK_RATE, UNITS, AI } from "./index";
 import type { GameConfig, GameState, TimedCommand } from "./index";
 
 /** Most tests want an empty lane: no guard towers. */
@@ -463,5 +463,12 @@ describe("sim", () => {
     ticks(s, 3 * TICK_RATE);
     expect(b.hp).toBeLessThan(UNITS.arbalester!.hp);
     expect(a.hp).toBe(UNITS.oathguard!.hp);
+  });
+  it("autopilot difficulty: clamped to the known levels, and only the autopilot is granted the tithe bonus", () => {
+    const s = createGame({ teamSize: 1, seed: 1, aiSlots: [1], aiLevels: [0, 99] });
+    expect(s.players.map(p => p.aiLevel)).toEqual([0, AI.levels.length - 1]);
+    const bonus = AI.levels[s.players[1]!.aiLevel]!.tithePct;
+    expect(incomeOf(s, 1)).toBe(Math.floor((incomeOf(s, 0) * (100 + bonus)) / 100));
+    expect(createGame({ teamSize: 1, seed: 1, aiSlots: [1] }).players[1]!.aiLevel).toBe(0);
   });
 });

@@ -28,6 +28,7 @@ npm run test:accounts # Worker sign-in contract (Node 22.13+)
 npm run balance      # equal-gold matchup table for every unit (add "-- 4000 mixed" for escorted armies)
 npm run balance:lane # lane tuner: every unit in a standing army on the real lane, in parallel (slow)
 npm run balance:ai   # whole autopilot-vs-autopilot matches, win rate per AI profile
+npm run balance:levels # one AI difficulty against another ("-- 24 1 0" = 24 matches, Medium vs Easy)
 ```
 (If `npx` is missing in your shell, use `./node_modules/.bin/<tool>`.)
 

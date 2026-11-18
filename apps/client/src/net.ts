@@ -64,6 +64,7 @@ export class Net {
   startNow(): void { this.send({ t: "start" }); }
   seat(slot: number, from?: number): void { this.send(from === undefined ? { t: "seat", slot } : { t: "seat", slot, from }); }
   ready(ready: boolean): void { this.send({ t: "ready", ready }); }
+  bot(slot: number, level: number | null): void { this.send({ t: "bot", slot, level }); }
   chat(text: string): void { this.send({ t: "chat", text }); }
   /** Leave quietly: no `closed` callback. */
   close(): void { this.done = true; this.ws.close(); }

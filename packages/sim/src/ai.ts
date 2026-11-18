@@ -40,7 +40,8 @@ export function aiProfile(s: GameState, me: PlayerId): number {
  */
 export function simpleAI(s: GameState, me: PlayerId): Command[] {
   const p = s.players[me]!;
-  if (s.tick % AI.thinkTicks !== (me * 7) % AI.thinkTicks) return [];
+  const level = AI.levels[p.aiLevel] ?? AI.levels[0]!;
+  if (s.tick % level.thinkTicks !== (me * 7) % level.thinkTicks) return [];
   const keepers = s.keepers.filter(k => k.owner === me), queued = keepers.flatMap(k => k.jobs);
   // What it owns or has already ordered counts the same when deciding what to add next.
   const mine = [...s.buildings.filter(b => b.owner === me), ...queued];
@@ -94,10 +95,10 @@ export function simpleAI(s: GameState, me: PlayerId): Command[] {
     const done = p.unlocked.length - UNIT_ORDER.filter(id => UNITS[id]!.free).length + (p.tier - 1);
     const next = profile.tech.find(t => (typeof t === "number" ? t > p.tier : !isUnlocked(p, t)));
     const offer = next === undefined ? null : researchOffer(p, typeof next === "number" ? undefined : next);
-    if (offer && !p.research && mine.length >= AI.researchAtBuildings + Math.floor((AI.buildingsPer2Research * done) / 2))
+    if (offer && !p.research && mine.length >= level.researchAtBuildings + Math.floor((level.buildingsPer2Research * done) / 2))
       return p.credits >= offer.cost ? [{ type: "research", ...(offer.unit ? { unit: offer.unit } : {}) }] : []; // save up
-    const level = p.invest[p.lane] ?? 0;
-    if (beaconsHeld(s, p.team, p.lane) >= AI.investMinBeacons && mine.length >= AI.investBuildingsPerLevel * (level + 1))
+    const invested = p.invest[p.lane] ?? 0;
+    if (beaconsHeld(s, p.team, p.lane) >= AI.investMinBeacons && mine.length >= AI.investBuildingsPerLevel * (invested + 1))
       return p.credits >= INVEST.cost ? [{ type: "invest" }] : [];
   }
   return want ? build(want) : [];

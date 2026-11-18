@@ -1,6 +1,8 @@
 import { CHAT_MAX, seatOf } from "@lw/protocol";
 import type { UserIdentity } from "@lw/protocol";
 import type { ChatLine, LobbyView } from "./net";
+/** The war council on screen: a server lobby, or a solo match being arranged on this device (`local`: no code, no chat, nobody to wait for). */
+export type CouncilView = LobbyView & { local?: boolean };
 import "@fontsource/cinzel/400.css";
 import "@fontsource/cinzel/600.css";
 import "@fontsource/cinzel/700.css";
@@ -8,7 +10,7 @@ import "@fontsource/im-fell-english/400.css";
 import "@fontsource/im-fell-english/400-italic.css";
 import "@fontsource/unifrakturcook/700.css";
 import "./hud.css";
-import { INVEST, KEEPERS, RESEARCH, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, hqMax, hqX, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, chantryHp, fogFront, stormBlock, unitsOfTier } from "@lw/sim";
+import { AI, INVEST, KEEPERS, RESEARCH, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH, beaconsHeld, hqMax, hqX, incomeOf, investBonus, isUnlocked, researchOffer, sellRefund, chantryHp, fogFront, stormBlock, unitsOfTier } from "@lw/sim";
 import type { GameState, PlayerState } from "@lw/sim";
 import { TEAM } from "./models";
 import { LANE_GAP, LANE_PITCH, LANE_W, fieldZ } from "./layout";
@@ -31,11 +33,12 @@ export interface HudActions {
   togglePause(): void;
   toggleMute(): boolean;
   panTo(fx: number, fz: number): void;        // centre the camera on this point of the minimap (fractions of the whole field)
-  start(size?: 1 | 2 | 3): void;              // solo match: the autopilot fills every other seat (no size = the same as last time)
+  start(size?: 1 | 2 | 3): void;              // solo: open the council at that size; with none, march again at once with the same seats
   hostOnline(name: string, size: 1 | 2 | 3): void;
   joinOnline(name: string, code: string): void;
-  startOnlineNow(): void;                     // host: begin the match; the autopilot takes the empty seats
+  beginMatch(): void;                         // host: begin the match from the council
   takeSeat(slot: number, from?: number): void; // lobby: move to that empty seat; the host may move anyone (`from`), swapping if taken
+  setBot(slot: number, level: number | null): void; // lobby, host: an autopilot at that difficulty in that seat, or open it (null)
   setReady(ready: boolean): void;             // lobby: tell the host you are ready, or not yet
   say(text: string): void;                    // lobby: one line of chat
   menu(): void;                               // leave any lobby and return to the title screen
@@ -48,6 +51,8 @@ export interface HudView { me: number; keeper: 0 | 1 | null; tier: number; selec
 /** Text from other players goes into markup only through this. */
 const esc = (s: string): string => s.replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
 const HOSTS = ["The Azure Host", "The Crimson Host"];
+/** One line per autopilot difficulty (AI.levels), for the council's seat menu. */
+const AI_BLURB = ["Studies too soon and fields a thin host.", "Builds first, then studies. Same gold as you.", `Medium's craft, quicker, with ${AI.levels[2]?.tithePct ?? 0}% more gold.`];
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 const secs = (ticks: number) => Math.ceil(ticks / TICK_RATE);
 const ROMAN = ["", "I", "II", "III", "IV"];
@@ -129,7 +134,7 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   <div id="overlay"></div>`;
 
   // The lobby on screen and this session's chat. Nothing is kept once the lobby is left.
-  let lobby: LobbyView | null = null;
+  let lobby: CouncilView | null = null;
   const chat: { team: 0 | 1 | -1; name: string; text: string }[] = [];
   const drawChat = () => {
     const log = document.getElementById("lbLog");
@@ -145,21 +150,54 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
     if (stick) log.scrollTop = log.scrollHeight;
   };
   const note = (text: string) => { chat.push({ team: -1, name: "", text }); drawChat(); };
-  let picked: number | null = null; // the host has picked up this seat's player, to place them elsewhere
+  let picked: number | null = null; // the host has picked up this seat's player or autopilot, to place them elsewhere
   const drawSeats = () => {
     const view = lobby;
     if (!view || !document.getElementById("lbTeam0")) return;
     const n = view.settings.teamSize, lead = view.host === view.yourSlot;
+    const seat = (slot: number, cls: string, body: string, drag: boolean) =>
+      `<div class="seat ${cls}${picked === slot ? " picked" : picked !== null ? " target" : ""}" role="button" tabindex="0" data-seat="${slot}"${drag ? ' draggable="true"' : ""}>${body}</div>`;
+    // The difficulty of an autopilot seat: the host's opens a little menu, everyone else just reads it.
+    const level = (slot: number, ai: number | null) => {
+      const name = ai === null ? "Open" : AI.levels[ai]?.name ?? "Easy", cls = `lvl l${ai ?? "open"}`;
+      return lead ? `<button class="${cls}" data-lvl="${slot}" aria-haspopup="menu" aria-label="${ai === null ? "Open seat" : `${name} autopilot`}: choose who plays this seat">${name}<i>▾</i></button>` : `<span class="${cls}">${name}</span>`;
+    };
     for (const team of [0, 1] as const) {
       $(`lbTeam${team}`).innerHTML = view.slots.map((q, slot) => ({ q, slot })).filter(({ slot }) => seatOf(slot, n).team === team).map(({ q, slot }) => {
         const lane = `<span class="lane">${n > 1 ? `Lane ${ROMAN[seatOf(slot, n).lane + 1]}` : "The lane"}</span>`;
-        if (!q || q === "ai") return `<button class="seat open${picked !== null ? " target" : ""}" data-seat="${slot}">${lane}<span class="who">Empty seat</span><span class="tag">${picked !== null ? "Place here" : "Take seat"}</span></button>`;
-        const mine = slot === view.yourSlot, host = slot === view.host, up = picked === slot;
-        const tag = up ? `<span class="tag lead">Moving…</span>` : picked !== null ? `<span class="tag lead">Swap</span>`
-          : `<span class="tag ${host ? "lead" : q.ready ? "ready" : "wait"}">${host ? "Host" : q.ready ? "Ready" : "Not ready"}</span>`;
-        return `<div class="seat${mine ? " mine" : ""}${lead ? " movable" : ""}${up ? " picked" : ""}${picked !== null && !up ? " target" : ""}" data-seat="${slot}"${lead ? ' draggable="true"' : ""}>${lane}<span class="who">${esc(q.user.displayName)}${mine ? " <i>(you)</i>" : ""}</span>${tag}</div>`;
+        const moving = picked === slot ? `<span class="tag lead">Moving…</span>` : picked !== null ? `<span class="tag lead">${q ? "Swap" : "Place here"}</span>` : null;
+        if (!q) return seat(slot, "open", `${lane}<span class="who">Open seat</span>${moving ?? (lead ? level(slot, null) : `<span class="tag">Take seat</span>`)}`, false);
+        if ("ai" in q) return seat(slot, `bot${lead ? " movable" : ""}`, `${lane}<span class="who">Autopilot</span>${moving ?? level(slot, q.ai)}`, lead);
+        const mine = slot === view.yourSlot, host = slot === view.host;
+        const tag = moving ?? (view.local ? `<span class="tag lead">You</span>` : `<span class="tag ${host ? "lead" : q.ready ? "ready" : "wait"}">${host ? "Host" : q.ready ? "Ready" : "Not ready"}</span>`);
+        return seat(slot, `${mine ? "mine" : ""}${lead ? " movable" : ""}`, `${lane}<span class="who">${esc(q.user.displayName)}${mine && !view.local ? " <i>(you)</i>" : ""}</span>${tag}`, lead);
       }).join("");
     }
+  };
+  /** The host's menu for one seat: who plays it. Online a seat may also stay open for a player to join. */
+  const levelMenu = (anchor: HTMLElement, slot: number) => {
+    const v = lobby, old = document.getElementById("lbMenu");
+    old?.remove();
+    if (!v || old?.dataset.seat === String(slot)) return; // a second click closes it
+    const q = v.slots[slot], now = !q ? null : "ai" in q ? q.ai : undefined;
+    const menu = document.createElement("div");
+    menu.id = "lbMenu"; menu.className = "lvmenu"; menu.setAttribute("role", "menu"); menu.dataset.seat = String(slot);
+    const opts: [number | null, string, string][] = [
+      ...(v.local ? [] : [[null, "Open", "Leave it for a player to join. Easy if nobody comes."] as [null, string, string]]),
+      ...AI.levels.map((l, i) => [i, l.name, AI_BLURB[i] ?? ""] as [number, string, string]),
+    ];
+    menu.innerHTML = opts.map(([lv, name, blurb]) => `<button role="menuitemradio" aria-checked="${lv === now}" class="l${lv ?? "open"}${lv === now ? " on" : ""}" data-level="${lv ?? ""}"><b>${name}</b><small>${blurb}</small></button>`).join("");
+    const panel = $("lobby"), a = anchor.getBoundingClientRect(), p = panel.getBoundingClientRect();
+    menu.style.top = `${a.bottom - p.top + panel.scrollTop + 4}px`;
+    menu.style.right = `${Math.max(8, p.right - a.right)}px`;
+    menu.onclick = e => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-level]");
+      if (!b) return;
+      menu.remove();
+      act.setBot(slot, b.dataset.level === "" ? null : Number(b.dataset.level));
+    };
+    panel.append(menu);
+    menu.querySelector<HTMLButtonElement>(".on, button")?.focus();
   };
 
   let hover: string | null = null; // unit id, "invest", "research" or "keeper0" / "keeper1" (a mouse only: fingers do not hover)
@@ -384,37 +422,47 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
         <p>One moment.</p><div class="row"><button id="olCancel" class="ghost">Cancel</button></div></div>`;
       $("olCancel").onclick = () => act.menu();
     },
-    /** The war council: both hosts seat by seat, lane by lane, a chat, and the host's button to begin. */
-    showLobby(view: LobbyView): void {
+    /** The war council: both hosts seat by seat, lane by lane, a chat, and the host's button to begin. A solo council is the same, without code or chat. */
+    showLobby(view: CouncilView): void {
       const before = lobby;
       lobby = view;
-      if (!before || before.lobbyId !== view.lobbyId || !$("lobby")) {
-        chat.length = 0;
+      document.getElementById("lbMenu")?.remove();
+      if (!before || before.lobbyId !== view.lobbyId || !!before.local !== !!view.local || !$("lobby")) {
+        chat.length = 0; picked = null;
         $("overlay").className = "show";
-        $("overlay").innerHTML = `<div class="panel lobby" id="lobby">
+        $("overlay").innerHTML = `<div class="panel lobby${view.local ? " local" : ""}" id="lobby">
           <h1>Gravemarch</h1><div class="sub" id="lbSub"></div><div class="orn"></div>
-          <div class="lbcode"><span>Match code</span><b id="lbCode"></b><button id="lbCopy" class="ghost" title="Copy the code">Copy</button></div>
+          ${view.local ? "" : `<div class="lbcode"><span>Match code</span><b id="lbCode"></b><button id="lbCopy" class="ghost" title="Copy the code">Copy</button></div>`}
           <div class="hosts">${[0, 1].map(team => `<section class="host t${team}"><h3>${HOSTS[team]}</h3><div class="seats" id="lbTeam${team}"></div></section>`).join(`<div class="vs">vs</div>`)}</div>
-          <div class="council">
+          ${view.local ? "" : `<div class="council">
             <div class="log" id="lbLog" aria-live="polite"></div>
             <form id="lbSay" autocomplete="off"><input id="lbText" maxlength="${CHAT_MAX}" placeholder="Speak to the council…" spellcheck="false"><button class="ghost">Send</button></form>
-          </div>
+          </div>`}
           <div class="note" id="lbNote"></div>
-          <div class="row"><button id="lbGo"></button><button id="olCancel" class="ghost">Leave</button></div>
+          <div class="row"><button id="lbGo"></button><button id="olCancel" class="ghost">${view.local ? "Back" : "Leave"}</button></div>
           <p class="lbhint" id="lbHint"></p>
         </div>`;
         $("olCancel").onclick = () => act.menu();
-        $("lbCopy").onclick = () => { void navigator.clipboard?.writeText(view.lobbyId).then(() => { $("lbCopy").textContent = "Copied"; }, () => undefined); };
-        $("lbSay").onsubmit = e => {
-          e.preventDefault();
-          const input = $<HTMLInputElement>("lbText"), text = input.value.trim();
-          if (text) act.say(text);
-          input.value = "";
-        };
-        // Seats: anyone clicks an empty seat to take it. The host also arranges the council: drag a player onto a seat,
-        // or click a player and then a seat; a taken seat swaps the two.
-        const hosts = root.querySelector<HTMLElement>(".hosts")!, seatAt = (e: Event) => (e.target as HTMLElement).closest<HTMLElement>("[data-seat]");
+        if (!view.local) {
+          $("lbCopy").onclick = () => { void navigator.clipboard?.writeText(view.lobbyId).then(() => { $("lbCopy").textContent = "Copied"; }, () => undefined); };
+          $("lbSay").onsubmit = e => {
+            e.preventDefault();
+            const input = $<HTMLInputElement>("lbText"), text = input.value.trim();
+            if (text) act.say(text);
+            input.value = "";
+          };
+        }
+        // Seats: anyone clicks an open seat to take it. The host also arranges the council: drag a player or an autopilot
+        // onto a seat, or click one and then a seat; a taken seat swaps the two. The host's difficulty button picks who plays a seat.
+        const panel = $("lobby"), hosts = panel.querySelector<HTMLElement>(".hosts")!, seatAt = (e: Event) => (e.target as HTMLElement).closest<HTMLElement>("[data-seat]");
+        panel.addEventListener("click", e => { // a click anywhere outside the seat menu closes it
+          const m = document.getElementById("lbMenu");
+          if (m && !m.contains(e.target as Node) && !(e.target as HTMLElement).closest("[data-lvl]")) m.remove();
+        });
+        panel.addEventListener("keydown", e => { if (e.key === "Escape") { document.getElementById("lbMenu")?.remove(); if (picked !== null) { picked = null; drawSeats(); } } });
         hosts.onclick = e => {
+          const lvl = (e.target as HTMLElement).closest<HTMLElement>("[data-lvl]");
+          if (lvl) { levelMenu(lvl, Number(lvl.dataset.lvl)); return; }
           const el = seatAt(e), v = lobby;
           if (!el || !v) return;
           const slot = Number(el.dataset.seat), filled = !el.classList.contains("open");
@@ -423,42 +471,46 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
           const from = picked; picked = null;
           if (from === slot) drawSeats(); else act.takeSeat(slot, from);
         };
-        hosts.ondragstart = e => { const el = seatAt(e); if (el && e.dataTransfer) { picked = Number(el.dataset.seat); e.dataTransfer.setData("text/plain", el.dataset.seat!); e.dataTransfer.effectAllowed = "move"; } };
+        hosts.onkeydown = e => { if ((e.key === "Enter" || e.key === " ") && (e.target as HTMLElement).matches("[data-seat]")) { e.preventDefault(); (e.target as HTMLElement).click(); } };
+        hosts.ondragstart = e => { const el = seatAt(e); if (el && e.dataTransfer) { document.getElementById("lbMenu")?.remove(); picked = Number(el.dataset.seat); e.dataTransfer.setData("text/plain", el.dataset.seat!); e.dataTransfer.effectAllowed = "move"; } };
         hosts.ondragover = e => { const el = seatAt(e); if (el && picked !== null) { e.preventDefault(); hosts.querySelectorAll(".over").forEach(q => q.classList.remove("over")); el.classList.add("over"); } };
         hosts.ondragleave = e => { seatAt(e)?.classList.remove("over"); };
         hosts.ondrop = e => { e.preventDefault(); const el = seatAt(e), from = picked; picked = null; if (el && from !== null && Number(el.dataset.seat) !== from) act.takeSeat(Number(el.dataset.seat), from); else drawSeats(); };
         hosts.ondragend = () => { hosts.querySelectorAll(".over").forEach(q => q.classList.remove("over")); if (picked !== null) { picked = null; drawSeats(); } };
         $("lbGo").onclick = () => {
           const v = lobby!;
-          if (v.host === v.yourSlot) act.startOnlineNow();
-          else { const me = v.slots[v.yourSlot]; act.setReady(!(me && me !== "ai" && me.ready)); }
+          if (v.host === v.yourSlot) act.beginMatch();
+          else { const me = v.slots[v.yourSlot]; act.setReady(!(me && "user" in me && me.ready)); }
         };
         drawChat();
-      } else if (before) {
+      } else if (before && !view.local) {
         // Say who came and went, in the log: the server only sends the seats.
-        const names = (v: LobbyView) => new Map(v.slots.flatMap(q => (q && q !== "ai" ? [[q.user.userId, q.user.displayName] as const] : [])));
+        const names = (v: LobbyView) => new Map(v.slots.flatMap(q => (q && "user" in q ? [[q.user.userId, q.user.displayName] as const] : [])));
         const was = names(before), now = names(view);
         for (const [id, name] of now) if (!was.has(id)) note(`${name} joins the council`);
         for (const [id, name] of was) if (!now.has(id)) note(`${name} has left`);
-        const leader = (v: LobbyView) => { const q = v.slots[v.host]; return q && q !== "ai" ? q.user : null; };
+        const leader = (v: LobbyView) => { const q = v.slots[v.host]; return q && "user" in q ? q.user : null; };
         const was0 = leader(before), now0 = leader(view); // by who, not by seat: the host moving is not news
         if (now0 && was0?.userId !== now0.userId) note(`${now0.displayName} now leads the council`);
       }
-      const n = view.settings.teamSize, seated = view.slots.filter(Boolean).length, iHost = view.host === view.yourSlot;
-      set("lbSub", `${n}v${n} · ${seated} of ${view.slots.length} seats taken`);
-      set("lbCode", view.lobbyId);
+      const n = view.settings.teamSize, iHost = view.host === view.yourSlot;
+      const people = view.slots.filter(q => q && "user" in q).length, bots = view.slots.filter(q => q && "ai" in q).length, open = view.slots.length - people - bots;
+      set("lbSub", view.local ? `${n}v${n} · ${n === 1 ? "one lane" : `${n} lanes`} · against the autopilot`
+        : `${n}v${n} · ${people} ${people === 1 ? "player" : "players"}${bots ? ` · ${bots} ${bots === 1 ? "autopilot" : "autopilots"}` : ""}${open ? ` · ${open} open` : ""}`);
+      if (!view.local) set("lbCode", view.lobbyId);
       if (picked !== null && !view.slots[picked]) picked = null;
       if (view.host !== view.yourSlot) picked = null;
       drawSeats();
-      set("lbHint", iHost ? "Drag a player to a seat, or click a player and then a seat: a taken seat swaps them. Empty seats are played by the autopilot."
-        : "Click an empty seat to move there. Each seat is one lane; empty seats are played by the autopilot.");
-      const waiting = view.slots.some((q, slot) => q && q !== "ai" && slot !== view.host && !q.ready), me = view.slots[view.yourSlot];
+      set("lbHint", view.local ? "Drag yourself or an autopilot to another seat, or click one and then a seat, to swap them. Each seat is one lane; the button on an autopilot sets how hard it plays."
+        : iHost ? "Drag a player or autopilot to a seat, or click one and then a seat: a taken seat swaps them. The button on each free seat seats an autopilot or keeps it open for a friend; open seats play Easy if nobody comes."
+        : "Click an open seat to move there. Each seat is one lane; the host chooses the autopilots.");
+      const waiting = view.slots.some((q, slot) => q && "user" in q && slot !== view.host && !q.ready), me = view.slots[view.yourSlot];
       const go = $<HTMLButtonElement>("lbGo");
       if (iHost) {
         go.className = "march"; go.disabled = waiting;
-        go.textContent = waiting ? "Waiting for the council" : seated < view.slots.length ? "Begin the march · autopilot fills" : "Begin the march";
+        go.textContent = waiting ? "Waiting for the council" : open ? "Begin the march · Easy fills the open seats" : "Begin the march";
       } else {
-        const ready = !!me && me !== "ai" && me.ready;
+        const ready = !!me && "user" in me && me.ready;
         go.className = ready ? "ghost on" : "march"; go.disabled = false;
         go.textContent = ready ? "Ready · click to wait" : "I am ready";
       }
@@ -474,8 +526,9 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
       const t = Math.floor(s.tick / TICK_RATE);
       $("overlay").className = "show";
       $("overlay").innerHTML = `<div class="panel ${won ? "won" : "lost"}"><h1>${won ? "Victory" : "Ruin"}</h1><div class="sub">${won ? "The enemy cathedral has fallen" : "Your cathedral has fallen"}</div><div class="orn"></div>
-        <p>The war lasted ${Math.floor(t / 60)} minutes and ${t % 60} seconds.</p><button id="startBtn">${online ? "Return" : "March again"}</button></div>`;
+        <p>The war lasted ${Math.floor(t / 60)} minutes and ${t % 60} seconds.</p><div class="row"><button id="startBtn">${online ? "Return" : "March again"}</button>${online ? "" : '<button id="endCouncil" class="ghost">Change the council</button>'}</div></div>`;
       $("startBtn").onclick = () => (online ? act.menu() : act.start());
+      if (!online) $("endCouncil").onclick = () => act.start(s.teamSize);
     },
     hideOverlay(): void { $("overlay").className = ""; },
     /** Dress the HUD in the player's colours: card portraits and which cathedral bar is theirs. */

@@ -1,5 +1,5 @@
 import { Rng } from "./rng";
-import { CHANTRY_HP, INVEST, KEEPERS, LANE_WIDTH, MAP, RESEARCH, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH } from "./data";
+import { AI, CHANTRY_HP, INVEST, KEEPERS, LANE_WIDTH, MAP, RESEARCH, RULES, TICK_RATE, UNITS, UNIT_ORDER, UNIT_RESEARCH } from "./data";
 import type { UnitDef } from "./data";
 import type { BuildingState, Command, FogState, GameConfig, GameState, KeeperState, PlayerId, PlayerState, TeamId, TimedCommand, UnitState } from "./types";
 
@@ -53,7 +53,7 @@ export function incomeOf(s: GameState, player: PlayerId): number {
   const p = s.players[player]!;
   let inc = RULES.baseIncome;
   for (const b of s.beacons) if (b.owner === p.team) inc += RULES.beaconIncome + investBonus(p.invest[b.lane] ?? 0);
-  return inc;
+  return p.isAI ? Math.floor((inc * (100 + AI.levels[p.aiLevel]!.tithePct)) / 100) : inc;
 }
 
 // ---- research helpers ----
@@ -111,7 +111,7 @@ export function createGame(cfg: GameConfig): GameState {
       id: i, team: (i < n ? 0 : 1) as TeamId, lane: (i % n) % laneCount,
       credits: RULES.startCredits, tier: 1, unlocked: UNIT_ORDER.filter(id => UNITS[id]!.free), research: null, mercReady: 0, stormReady: 0, vultureReady: 0, fogUsed: false,
       invest: Array.from({ length: laneCount }, () => 0),
-      isAI: cfg.aiSlots?.includes(i) ?? false,
+      isAI: cfg.aiSlots?.includes(i) ?? false, aiLevel: Math.max(0, Math.min(AI.levels.length - 1, Math.floor(Number(cfg.aiLevels?.[i]) || 0))),
     })),
     teams: [{ hqHp: RULES.hqHp * laneCount, hqCooldown: 0 }, { hqHp: RULES.hqHp * laneCount, hqCooldown: 0 }],
     beacons: [], buildings: [], keepers: [], storms: [], fogs: [], flights: [], urns: [], units: [], events: [], winner: null,

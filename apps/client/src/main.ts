@@ -1,4 +1,4 @@
-import { canPlan, createGame, isUnlocked, researchOffer, simpleAI, step, stormBlock, vultureBlock, INVEST, KEEPERS, MAP, RULES, TICK_RATE, UNITS } from "@lw/sim";
+import { AI, canPlan, createGame, isUnlocked, researchOffer, simpleAI, step, stormBlock, vultureBlock, INVEST, KEEPERS, MAP, RULES, TICK_RATE, UNITS } from "@lw/sim";
 import type { Command, GameState, TimedCommand } from "@lw/sim";
 import { Renderer } from "./scene";
 import { fieldZ, laneAt } from "./layout";
@@ -20,10 +20,12 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   const sound = new Sound();
 
   let game: GameState = createGame({ teamSize: 1, seed: 1, aiSlots: [1] });
-  let soloSize: 1 | 2 | 3 = 1;             // team size of the last solo match, for "March again"
+  /** The solo council: my seat ("me") and each autopilot's difficulty, seat by seat. Kept for "March again". */
+  let solo: { size: 1 | 2 | 3; seats: ("me" | number)[] } = { size: 1, seats: ["me", 0] };
+  let inSolo = false;                      // arranging the solo council on the title overlay
   let teleporting = false;                 // T was pressed: the next click on friendly ground sends the Sexton there
   let running = false, paused = false, speed = 1, ended = false;
-  let ME = 0;                              // my player slot (always 0 in solo play)
+  let ME = 0;                              // my player slot (the seat I took in the council)
   let net: Net | null = null;              // set while connected to the match server
   let online = false;                      // the current match is server-run
   let inLobby = false;                     // seated in an online lobby, waiting for the host to begin
@@ -50,7 +52,25 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     const team = me().team;
     hud.setSide(team, (pics[team] ??= view.portraits(team)));
   };
-  const quitOnline = () => { net?.close(); net = null; online = false; inLobby = false; };
+  const quitOnline = () => { net?.close(); net = null; online = false; inLobby = false; inSolo = false; };
+  /** The difficulty a new solo autopilot starts at: whatever was chosen last on this device. */
+  const lastLevel = (): number => { try { return Math.max(0, Math.min(AI.levels.length - 1, Number(localStorage.getItem("lw.level")) || 0)); } catch { return 0; } };
+  const myName = (): string => { try { return localStorage.getItem("lw.name")?.trim() || "Wanderer"; } catch { return "Wanderer"; } };
+  const showSolo = () => {
+    const mine = solo.seats.indexOf("me");
+    hud.showLobby({
+      t: "lobby", lobbyId: "solo", local: true, settings: { teamSize: solo.size, aiFill: true }, yourSlot: mine, host: mine,
+      slots: solo.seats.map(q => (q === "me" ? { user: { userId: "me", displayName: myName(), provider: "local" }, ready: true } : { ai: q })),
+    });
+  };
+  const marchSolo = () => {
+    inSolo = false;
+    const seats = solo.seats;
+    begin(createGame({
+      teamSize: solo.size, seed: (Date.now() & 0x7fffffff) || 1,
+      aiSlots: seats.flatMap((q, i) => (q === "me" ? [] : [i])), aiLevels: seats.map(q => (q === "me" ? 0 : q)),
+    }), seats.indexOf("me"));
+  };
   /** Connect, then host or join. The lobby and the match arrive as callbacks. */
   let connectionAttempt = 0;
   const goOnline = async (name: string, code: string | null, size: 1 | 2 | 3 = 1) => {
@@ -164,14 +184,30 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     },
     start(size) {
       sound.start(); quitOnline();
-      soloSize = size ?? soloSize;
-      // I take the first seat; the autopilot plays my allies and every enemy.
-      begin(createGame({ teamSize: soloSize, seed: (Date.now() & 0x7fffffff) || 1, aiSlots: Array.from({ length: soloSize * 2 - 1 }, (_, i) => i + 1) }), 0);
+      if (!size) { marchSolo(); return; } // "March again": the same council, at once
+      // The council opens with me in the first seat and an autopilot everywhere else; the same size keeps the last arrangement.
+      if (solo.size !== size || solo.seats.length !== size * 2) solo = { size, seats: ["me", ...Array.from({ length: size * 2 - 1 }, () => lastLevel())] };
+      inSolo = true; showSolo();
     },
     hostOnline(name, size) { goOnline(name, null, size); },
     joinOnline(name, code) { goOnline(name, code); },
-    startOnlineNow() { net?.startNow(); },
-    takeSeat(slot, from) { net?.seat(slot, from); sound.play("click"); },
+    beginMatch() { if (inSolo) marchSolo(); else net?.startNow(); },
+    takeSeat(slot, from) {
+      sound.play("click");
+      if (!inSolo) { net?.seat(slot, from); return; }
+      const a = from ?? solo.seats.indexOf("me"), seats = solo.seats;
+      if (a === slot || seats[a] === undefined || seats[slot] === undefined) { showSolo(); return; }
+      [seats[a], seats[slot]] = [seats[slot]!, seats[a]!];
+      showSolo();
+    },
+    setBot(slot, level) {
+      sound.play("click");
+      if (!inSolo) { net?.bot(slot, level); return; }
+      if (level === null || solo.seats[slot] === "me" || solo.seats[slot] === undefined) return;
+      solo.seats[slot] = level;
+      try { localStorage.setItem("lw.level", String(level)); } catch { /* private window */ }
+      showSolo();
+    },
     setReady(ready) { net?.ready(ready); sound.play("click"); },
     say(text) { net?.chat(text); },
     menu() { connectionAttempt++; quitOnline(); running = false; hud.showStart(); },

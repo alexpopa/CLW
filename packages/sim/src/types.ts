@@ -16,6 +16,7 @@ export interface PlayerState {
   fogUsed: boolean;           // the Deadly Fog has been called: once a match, never again
   invest: number[];           // personal investment level per lane
   isAI: boolean;
+  aiLevel: number;            // autopilot difficulty: index into AI.levels in data.ts
 }
 /** A permanent production building: spawns one unit of `unit` every wave. */
 export interface BuildingState {
@@ -127,4 +128,4 @@ export type Command =
 export interface TimedCommand { player: PlayerId; cmd: Command }
 
 /** `lanes` defaults to one lane per player of a team. */
-export interface GameConfig { teamSize: 1 | 2 | 3; seed: number; lanes?: number; aiSlots?: PlayerId[] }
+export interface GameConfig { teamSize: 1 | 2 | 3; seed: number; lanes?: number; aiSlots?: PlayerId[]; aiLevels?: number[] } // aiLevels[seat]: that autopilot's difficulty (index into AI.levels), Easy when missing

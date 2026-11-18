@@ -311,7 +311,17 @@ export const RULES = {
 
 /** Autopilot AI tuning (see ai.ts). */
 export const AI = {
-  thinkTicks: sec(2),
+  /**
+   * Difficulty, chosen per match for every autopilot seat (index into this list; 0 is the default).
+   * `thinkTicks`: how often it decides (how fast it answers a threat); `researchAtBuildings` / `buildingsPer2Research`:
+   * when it studies (Easy studies too early and starves its army); `tithePct`: extra income it is granted, in percent.
+   * Measured with scripts/levels.ts: each level should beat the one below it most of the time.
+   */
+  levels: [
+    { name: "Easy", thinkTicks: sec(2), researchAtBuildings: 3, buildingsPer2Research: 3, tithePct: 0 },
+    { name: "Medium", thinkTicks: sec(1), researchAtBuildings: 5, buildingsPer2Research: 4, tithePct: 0 },
+    { name: "Hard", thinkTicks: sec(0.5), researchAtBuildings: 5, buildingsPer2Research: 4, tithePct: 15 },
+  ] as { name: string; thinkTicks: number; researchAtBuildings: number; buildingsPer2Research: number; tithePct: number }[],
   /**
    * Each profile is a way to play: `tech` is the order it researches in (a number is the rite that opens that tier,
    * a name is a unit study) and `mix` the army it builds toward (it builds whichever unlocked unit is most under-represented).
@@ -330,8 +340,6 @@ export const AI = {
       tech: ["flagellant", 2, "dreadknight", "doctor", "shade", "hound", 3, "countess", "headsman", "wyrm", "reliquary", 4, "rider"],
       mix: { arbalester: 6, oathguard: 2, zealot: 1, flagellant: 2, hound: 1, shade: 1, dreadknight: 2, doctor: 2, countess: 2, headsman: 1, wyrm: 1, reliquary: 1, rider: 1 } },
   ] as { name: string; tech: (string | number)[]; mix: Record<string, number> }[],
-  researchAtBuildings: 3,         // first research once it owns this many buildings...
-  buildingsPer2Research: 3,       // ...and this many more for every two researches after that
   antiAirShare: 3,                // when the enemy fields flyers, at least 1 building in this many must be able to hit them
   mercReserve: 200,               // when threatened it hires mercenaries only with this much gold to spare
   stormMinFoes: 16,               // calls the storm once this many enemy soldiers are on the board...
