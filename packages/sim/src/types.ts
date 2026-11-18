@@ -40,6 +40,9 @@ export interface UnitState {
   lastHit: number;            // id of the unit it last struck
   abilityCd: number;          // ticks until its ability (Raise Dead) is ready again
   expire: number;             // tick at which a summoned unit crumbles, 0 = never
+  blightUntil: number;        // nothing heals it while tick < blightUntil (Grave Blight)
+  kills: number;              // foes it has helped slay, counted up to its Bloodlust cap
+  reborn: boolean;            // it has already risen once from a killing blow (From the Ashes)
 }
 /** A chantry a keeper has been told to raise and is walking to. It is paid for when ordered and refunded if it cannot be built. */
 export interface KeeperJob { unit: string; lane: number; col: number; row: number }
@@ -67,6 +70,8 @@ export interface FogState { owner: PlayerId; team: TeamId; lane: number; from: n
 export interface FlightState { owner: PlayerId; team: TeamId; lane: number; x: number; cd: [number, number] }
 /** A skull urn in the air: it bursts at (`x`, `y`) of `lane` at tick `at`, on the enemies of `team`. */
 export interface UrnState { team: TeamId; lane: number; x: number; y: number; at: number }
+/** Burning ground left by a blast (a unit's `field`): from `from` to `until` it bites the enemies of `team` once a second. */
+export interface FireState { team: TeamId; lane: number; x: number; y: number; radius: number; dmg: number; from: number; until: number }
 export interface BeaconState { id: number; lane: number; x: number; owner: TeamId | null }
 export interface TeamState { hqHp: number; hqCooldown: number }
 
@@ -75,6 +80,8 @@ export type SimEvent =
   | { t: "shot"; id: number; unit: string; team: TeamId; to: number; chantry?: number; lane: number; x1: number; y1: number; x2: number; y2: number } // unit "hq" (id 0) = headquarters; to = struck unit id, 0 = cathedral, or the chantry whose building id is `chantry`
   | { t: "arc"; team: TeamId; from: number; to: number; lane: number; x1: number; y1: number; x2: number; y2: number }   // one leap of chain lightning
   | { t: "raise"; team: TeamId; lane: number; x: number; y: number }
+  | { t: "reborn"; unit: string; team: TeamId; lane: number; x: number; y: number }   // rose from a killing blow
+  | { t: "martyr"; team: TeamId; lane: number; x: number; y: number; radius: number }  // a death that mends the allies around it
   | { t: "heal"; id: number; team: TeamId; lane: number; x1: number; y1: number; x2: number; y2: number }
   | { t: "death"; unit: string; team: TeamId; lane: number; x: number; y: number }
   | { t: "razed"; building: number; unit: string; owner: PlayerId; team: TeamId; lane: number; x: number; y: number } // a chantry is destroyed
@@ -107,6 +114,7 @@ export interface GameState {
   fogs: FogState[];
   flights: FlightState[];
   urns: UrnState[];
+  fires: FireState[];
   units: UnitState[];
   events: SimEvent[];
   winner: TeamId | null;

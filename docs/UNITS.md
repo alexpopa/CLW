@@ -25,7 +25,7 @@ A player starts with three known units: the Arbalester, the Oathguard and the Py
 | The Fourth Rite (opens tier IV) | 1,500 | 60 s |
 | Study a tier IV unit | 450 | 35 s |
 
-Learning everything costs 8,050 gold and eleven minutes of research time, which is more than a match allows early on. The intended decision is the one the original game is built on: which few units to learn, and when to stop adding chantries and pay for the next rite.
+Learning everything costs 8,230 gold and eleven minutes of research time, which is more than a match allows early on. The intended decision is the one the original game is built on: which few units to learn, and when to stop adding chantries and pay for the next rite.
 
 ## Gravekeepers
 
@@ -42,7 +42,49 @@ Keepers work across lanes: every order carries a lane, and a keeper may stand on
 
 ## The roster
 
-Reach and speed are in lane units and lane units per second (the lane is 480 long and 24 deep). "Hits air" says whether the unit's attack can strike flying units. Units marked ×2 muster two soldiers per wave from one chantry.
+Every unit has one job and at least one clear answer. Targeting is the same for everyone (each soldier fights the nearest foe it can strike), so what sets units apart is what they can hit, how their blows land, and what happens around them.
+
+### Every unit in one line
+
+**Tier I**
+- **Arbalester:** cheap crossbowman. Weak alone, strong in numbers behind a shield; shoots flyers. Loses to the Oathguard and to anything that reaches it.
+- **Oathguard:** the starting tank. Lots of health, little damage, shrugs off arrows. Cannot touch flyers.
+- **Pyre Zealot:** short-range fire that scorches a crowd and keeps burning through armor. Melts light soldiers, barely scratches heavy ones.
+- **Grave Hounds:** two fast, cheap dogs per kennel that run down archers and engines. Their scent unmasks a Shade for everyone. Die to fire and halberds.
+- **Flagellant:** glass-cannon brawler that swings faster the more it bleeds, and whose death heals the allies around it. Blight denies the blessing.
+- **Hexbinder:** weak caster whose curse slows a foe's walk and swing. The cheap answer to a single big unit or a Wyrm; Stone Skin ignores it.
+- **Halberdier:** pikeman who does three times damage to anything swift (hounds, cavalry, Shades, the Countess, the Pale Rider) and takes no extra harm from a charge. Ordinary against anything slow.
+- **Crypt Bats:** three fragile bats per belfry. Melee and ground-only casters cannot touch them; a curse kills one outright, a crossbow in two bolts. The question every early army must answer: can you shoot the sky?
+
+**Tier II**
+- **Plague Doctor:** heals the nearest wounded ally. Blight stops it.
+- **Dreadknight:** fast armored lancer; the first blow on each new foe hits triple. Halberds stop it cold.
+- **Gargoyle:** flying stone brawler that claws ground and air. Stone Skin: no curse, fire or blow moves it, so only raw damage (silver shot, massed bolts) brings it down.
+- **Witch Hunter:** slow, heavy shot that does two and a half times damage to flyers, and a lantern that unmasks Shades. The anti-air specialist.
+- **Iron Penitent:** slow, heavy tank whose maul strips armor, even from towers.
+- **Necromancer:** ground-only caster who turns fallen walkers into Skeletons. Flyers leave no corpses and cannot be shot by him.
+- **Trebuchet:** outranges towers and breaks stone. Helpless against anything close or in the air.
+- **Shade:** invisible assassin with armor-piercing blades. Archers cannot see it from afar unless a lantern or a hound's nose gives it away.
+
+**Tier III**
+- **Bone Colossus:** slow giant that cleaves everything around its target and leaves four Skeletons when it falls.
+- **Ash Wyrm:** flyer whose breath grows hotter on the same foe; melts single big units. Slowed and shot down by curses and silver.
+- **Tempest Cantor:** chain lightning that leaps through a packed crowd, in the air too. Needs a line in front of it: massed alone it is run down.
+- **Reliquary:** does not fight; allies near it gain armor and regenerate. Blight shuts the regeneration off.
+- **Crimson Countess:** swift duelist who heals on every wound she deals and speeds up with every kill. A crowd of light soldiers feeds her; halberds, heavy armor and the Headsman stop her.
+- **Impaler:** ground-only ballista whose stake skewers a whole file, at double damage through heavy armor. Shreds armored lines, cannot shoot the sky.
+- **Pale Lich:** armor-piercing area burst that blights: nothing heals for four seconds. The answer to Doctors, Reliquaries, Countesses and Flagellants. Cannot reach the air.
+- **Headsman:** each blow takes a tenth of the victim's full health. Kills giants; wasted on crowds.
+
+**Tier IV**
+- **Belfry Titan:** huge, slow bell-giant whose toll crushes a crowd and hurls it back, breaking every melee line. Cannot reach flyers.
+- **Ashen Seraph:** flying armor-piercing area fire that rises once from its own ashes at half health. You must kill it twice.
+- **Pale Rider:** fast and enormous, and every foe within 6 swings 35% slower in dread. Halberds and the Headsman are the answer.
+- **Hellmouth:** extreme-range bombard whose blast leaves the ground burning for six seconds: area denial and tower-breaking. Helpless up close and against flyers.
+
+### Tables
+
+Reach and speed are in lane units and lane units per second (the lane is 480 long and 24 deep). "Hits air" says whether the unit's attack can strike flying units. Units marked ×2 or ×3 muster that many soldiers per wave from one chantry.
 
 ### Tier I
 
@@ -50,12 +92,14 @@ Each study costs 90 gold and takes 12 s; the first three units are known from th
 
 | Key | Unit | Cost | Health | Armor | Attack | Reach | Speed | Hits air | Ability |
 |---|---|---:|---:|---:|---|---:|---:|---|---|
-| 3 | **Arbalester** (known) | 140 | 80 | 0 | 11 every 1 s (11/s) | 6 | 6 | yes | Skyward Bolts: can shoot flying foes. |
-| 4 | **Oathguard** (known) | 190 | 280 | 1 | 9 every 1 s (9/s) | 1.5 | 6 | no | Shield Wall: takes 2 less damage from every ranged attack. |
+| 3 | **Arbalester** (known) | 150 | 80 | 0 | 11 every 1 s (11/s) | 6 | 6 | yes | Skyward Bolts: can shoot flying foes. |
+| 4 | **Oathguard** (known) | 200 | 280 | 1 | 9 every 1 s (9/s) | 1.5 | 6 | no | Shield Wall: takes 2 less damage from every ranged attack. |
 | 5 | **Pyre Zealot** (known) | 150 | 110 | 0 | 5 every 0.5 s (10/s) | 3 | 6 | no | Immolate: foes it scorches keep burning for 2 damage a second, through any armor. |
-| 6 | **Grave Hounds** (×2) | 135 | 112 | 0 | 8 every 0.6 s (13/s) | 1.2 | 8.4 | no | Pack: each kennel looses two hounds every wave. |
-| 7 | **Flagellant** | 170 | 215 | 0 | 16 every 1 s (16/s) | 1.5 | 6.4 | no | Frenzy: strikes faster the more it bleeds, up to twice as fast near death. |
-| 8 | **Hexbinder** | 180 | 120 | 0 | 12 every 1.2 s (10/s) | 7 | 6 | yes | Leaden Curse: foes she hits move and attack 45% slower for 2 seconds. Can curse flying foes. |
+| 6 | **Grave Hounds** (×2) | 135 | 112 | 0 | 8 every 0.6 s (13/s) | 1.2 | 8.4 | no | Pack: each kennel looses two hounds every wave. Scent: they sniff out veiled foes within 4, so anyone may strike them. |
+| 7 | **Flagellant** | 195 | 215 | 0 | 16 every 1 s (16/s) | 1.5 | 6.4 | no | Frenzy: strikes faster the more it bleeds, up to twice as fast near death. Martyrdom: when it dies, every ally within 3.5 regains 20 health. |
+| 8 | **Hexbinder** | 185 | 120 | 0 | 12 every 1.2 s (10/s) | 7 | 6 | yes | Leaden Curse: foes she hits move and attack 45% slower for 2 seconds. Can curse flying foes. |
+| 9 | **Halberdier** | 175 | 200 | 1 | 14 every 1.1 s (13/s) | 2 | 6 | no | Set Spears: three times its damage to swift foes (hounds, cavalry, Shades, the Countess), and a charge does it no extra harm. |
+| 0 | **Crypt Bats** (flies) (×3) | 125 | 12 | 0 | 6 every 0.75 s (8/s) | 1.2 | 6.8 | no | Roost: each belfry looses three bats every wave. They fly, so only foes that strike the air can harm them; they bite only walkers. |
 
 ### Tier II
 
@@ -63,14 +107,14 @@ Opened by the Second Rite (400 gold, 30 s). Each study costs 150 gold and takes 
 
 | Key | Unit | Cost | Health | Armor | Attack | Reach | Speed | Hits air | Ability |
 |---|---|---:|---:|---:|---|---:|---:|---|---|
-| 3 | **Plague Doctor** | 120 | 125 | 0 | mends 16/s | 5 | 6 | – | Mend: restores 16 health a second to the nearest wounded ally, on foot or on the wing. |
-| 4 | **Dreadknight** | 365 | 350 | 2 | 20 every 1 s (20/s) | 2.5 | 6.8 | no | Lance Charge: its first strike against each new foe deals triple damage. |
-| 5 | **Gargoyle** (flies) | 315 | 270 | 1 | 17 every 1 s (17/s) | 1.5 | 6.4 | yes | Flight: only foes that can strike the air may harm it. Claws flyers and walkers alike. |
+| 3 | **Plague Doctor** | 105 | 125 | 0 | mends 16/s | 5 | 6 | – | Mend: restores 16 health a second to the nearest wounded ally, on foot or on the wing. |
+| 4 | **Dreadknight** | 360 | 350 | 2 | 20 every 1 s (20/s) | 2.5 | 6.8 | no | Lance Charge: its first strike against each new foe deals triple damage. |
+| 5 | **Gargoyle** (flies) | 390 | 270 | 1 | 17 every 1 s (17/s) | 1.5 | 6.4 | yes | Flight: only foes that can strike the air may harm it. Claws flyers and walkers alike. Stone Skin: it cannot be slowed, set burning or hurled back. |
 | 6 | **Witch Hunter** | 310 | 160 | 0 | 26 every 1.5 s (17/s) | 8 | 6 | yes | Silver Shot: two and a half times its damage to flying foes. Lantern: reveals veiled foes within 11. |
-| 7 | **Iron Penitent** | 405 | 480 | 2 | 23 every 1.2 s (19/s) | 1.5 | 5.6 | no | Sunder: every blow strips 1 armor from its victim, up to 4. |
-| 8 | **Necromancer** | 445 | 165 | 0 | 16 every 1.2 s (13/s) | 7 | 6 | yes | Raise Dead: when anyone on foot dies within 10, a Skeleton rises to fight for the Necromancer (once every 3 seconds). |
-| 9 | **Trebuchet** | 470 | 180 | 1 | 32 every 3 s (11/s) | 13 | 4.4 | no | Siege Stones: half again as much damage to towers and the cathedral, from beyond their reach. Cannot hit foes nearer than 4 or in the air. |
-| 0 | **Shade** | 515 | 265 | 0 | 33 every 0.8 s (41/s) | 1.5 | 7.2 | no | Veil: cannot be targeted from farther than 2 unless revealed. Ghost Blades: ignore armor. |
+| 7 | **Iron Penitent** | 415 | 480 | 2 | 23 every 1.2 s (19/s) | 1.5 | 5.6 | no | Sunder: every blow strips 1 armor from its victim, up to 4. |
+| 8 | **Necromancer** | 440 | 165 | 0 | 16 every 1.2 s (13/s) | 7 | 6 | no | Raise Dead: when anyone on foot dies within 10, a Skeleton rises to fight for the Necromancer (once every 3 seconds). Its bolts cannot reach the air. |
+| 9 | **Trebuchet** | 465 | 180 | 1 | 32 every 3 s (11/s) | 13 | 4.4 | no | Siege Stones: half again as much damage to towers and the cathedral, from beyond their reach. Cannot hit foes nearer than 4 or in the air. |
+| 0 | **Shade** | 535 | 265 | 0 | 33 every 0.8 s (41/s) | 1.5 | 7.2 | no | Veil: cannot be targeted from farther than 2 unless revealed. Ghost Blades: ignore armor. |
 
 ### Tier III
 
@@ -78,14 +122,14 @@ Opened by the Third Rite (800 gold, 45 s). Each study costs 260 gold and takes 2
 
 | Key | Unit | Cost | Health | Armor | Attack | Reach | Speed | Hits air | Ability |
 |---|---|---:|---:|---:|---|---:|---:|---|---|
-| 3 | **Bone Colossus** | 955 | 900 | 2 | 30 every 1.5 s (20/s) | 2.5 | 4.8 | no | Cleave: hits every foe around its target. Ossuary: collapses into four Skeletons when slain. |
-| 4 | **Ash Wyrm** (flies) | 1140 | 700 | 1 | 12 every 0.5 s (24/s) | 5 | 6 | yes | Searing Breath: +25% damage for each consecutive hit on the same foe, up to +200%. Flies. |
-| 5 | **Tempest Cantor** | 725 | 200 | 0 | 33 every 1.5 s (22/s) | 8 | 6 | yes | Chain Lightning: each strike leaps to 4 more foes within 4, losing a quarter of its force per leap. Strikes the air too. |
-| 6 | **Reliquary** | 260 | 520 | 2 | none | 5 | 5.6 | – | Sanctuary: allies within 7 gain 3 armor and regain 15 health a second. Does not fight. |
-| 7 | **Crimson Countess** | 950 | 800 | 1 | 75 every 1.5 s (50/s) | 1.5 | 6.8 | no | Blood Feast: her heavy blade heals her for two fifths of the damage it deals. |
-| 8 | **Impaler** | 615 | 210 | 1 | 42 every 2.5 s (17/s) | 12 | 4.8 | yes | Impale: skewers every foe in a line 14 long. Two and a half times its damage to flying foes. |
-| 9 | **Pale Lich** | 745 | 200 | 0 | 18 every 1.5 s (12/s) | 8 | 6 | yes | Grave Frost: bursts in an area, ignores armor, and slows everyone caught by 40% for 3 seconds. |
-| 0 | **Headsman** | 815 | 850 | 2 | 44 every 1.4 s (31/s) | 1.8 | 6 | no | Execute: every blow deals bonus damage equal to 10% of its victim's full health. |
+| 3 | **Bone Colossus** | 950 | 900 | 2 | 30 every 1.5 s (20/s) | 2.5 | 4.8 | no | Cleave: hits every foe around its target. Ossuary: collapses into four Skeletons when slain. |
+| 4 | **Ash Wyrm** (flies) | 1210 | 700 | 1 | 12 every 0.5 s (24/s) | 5 | 6 | yes | Searing Breath: +25% damage for each consecutive hit on the same foe, up to +200%. Flies. |
+| 5 | **Tempest Cantor** | 780 | 200 | 0 | 33 every 1.5 s (22/s) | 8 | 6 | yes | Chain Lightning: each strike leaps to 4 more foes within 4, losing a quarter of its force per leap. Strikes the air too. |
+| 6 | **Reliquary** | 265 | 520 | 2 | none | 5 | 5.6 | – | Sanctuary: allies within 7 gain 3 armor and regain 15 health a second. Does not fight. |
+| 7 | **Crimson Countess** | 950 | 950 | 1 | 30 every 0.8 s (38/s) | 1.5 | 6.8 | no | Blood Feast: heals for two fifths of the damage she deals. Bloodlust: each foe she helps slay quickens her blade by 12%, up to five. |
+| 8 | **Impaler** | 525 | 210 | 1 | 34 every 2.5 s (14/s) | 12 | 4.8 | no | Impale: skewers every walker in a line 14 long, at double damage against heavy armor (2 or more). Cannot hit the air. |
+| 9 | **Pale Lich** | 675 | 200 | 0 | 18 every 1.5 s (12/s) | 8 | 6 | no | Grave Blight: bursts in an area through any armor; those caught cannot be healed by anything for 4 seconds. Cannot reach the air. |
+| 0 | **Headsman** | 825 | 850 | 2 | 44 every 1.4 s (31/s) | 1.8 | 6 | no | Execute: every blow deals bonus damage equal to 10% of its victim's full health. |
 
 ### Tier IV
 
@@ -93,10 +137,10 @@ Opened by the Fourth Rite (1500 gold, 60 s). Only the Undertaker can raise these
 
 | Key | Unit | Cost | Health | Armor | Attack | Reach | Speed | Hits air | Ability |
 |---|---|---:|---:|---:|---|---:|---:|---|---|
-| 3 | **Belfry Titan** | 2000 | 2300 | 3 | 55 every 1.8 s (31/s) | 2.8 | 4.4 | no | Death Knell: each toll crushes every foe around its target and leaves them 30% slower for 2 seconds. |
-| 4 | **Ashen Seraph** (flies) | 2400 | 950 | 2 | 36 every 1 s (36/s) | 7 | 6 | yes | Cinder Lance: bursts in an area, ignores armor, strikes ground and air. Flies. |
-| 5 | **Pale Rider** | 1900 | 1350 | 2 | 58 every 0.9 s (64/s) | 2.5 | 7.6 | no | Reaping Charge: its first strike on each new foe deals triple damage. Harvest: heals for 30% of the damage it deals, and each blow takes 4% of the victim's full health. |
-| 6 | **Hellmouth** | 1950 | 520 | 2 | 85 every 3.5 s (24/s) | 15 | 4 | no | Brimstone: a huge burning blast; those caught burn for 6 a second for 4 seconds. Double damage to towers and the cathedral. Cannot hit foes nearer than 5 or in the air. |
+| 3 | **Belfry Titan** | 2000 | 2300 | 3 | 55 every 1.8 s (31/s) | 2.8 | 4.4 | no | Death Knell: each toll crushes every foe around its target and hurls them 3 back, scattering any line that stands before it. |
+| 4 | **Ashen Seraph** (flies) | 2400 | 950 | 2 | 36 every 1 s (36/s) | 7 | 6 | yes | Cinder Lance: bursts in an area through armor, on ground and air. From the Ashes: the first time it falls, it rises again at half health. |
+| 5 | **Pale Rider** | 1900 | 1600 | 2 | 64 every 0.9 s (71/s) | 2.5 | 7.6 | no | Dread: every foe within 6 of it attacks 35% slower, towers excepted. |
+| 6 | **Hellmouth** | 1950 | 520 | 2 | 85 every 3.5 s (24/s) | 15 | 4 | no | Brimstone: a huge blast that leaves the ground burning for 6 seconds; walkers in the fire take 8 a second through armor. Double damage to towers and the cathedral. Cannot hit foes nearer than 5 or in the air. |
 
 ### Mercenaries
 
@@ -115,7 +159,7 @@ Opened by the Fourth Rite (1500 gold, 60 s). Only the Undertaker can raise these
 
 ## Tier IV and mercenaries
 
-Tier IV is the top of the roster: four units, each several times the price of a tier III unit, and only the Undertaker can raise them. They are meant to be the strongest things on the lane and each still has an answer: the Belfry Titan and the Pale Rider cannot reach flyers and are slowed and executed like any giant; the Ashen Seraph is a flyer and dies to silver shot and the Impaler; the Hellmouth cannot shoot up or close.
+Tier IV is the top of the roster: four units, each several times the price of a tier III unit, and only the Undertaker can raise them. They are meant to be the strongest things on the lane, each does something no lower unit does, and each still has an answer: the Belfry Titan cannot reach flyers and is executed like any giant; the Pale Rider is swift, so halberds bite it deep; the Ashen Seraph is a flyer and dies (twice) to massed silver shot; the Hellmouth cannot shoot up or close.
 
 Mercenaries are not built. The Undertaker pays once, the band appears in front of the base towers, and it leaves at the middle of the lane. A chantry of a comparable unit costs three to five times as much but musters every wave for the rest of the match, so mercenaries are worth it only to survive a push or to take the middle shrine at a moment that matters. Their dead can be raised by Necromancers like anyone else's.
 
@@ -125,30 +169,39 @@ Every ability is automatic: units use them on their own, and the autopilot uses 
 
 | Ability (field) | Units | Rule |
 |---|---|---|
-| Flight (`flying`) | Gargoyle, Ash Wyrm | Can only be attacked by units that hit air. Ignores the ground melee in front of it, and is ignored by it. Does not hold shrines. |
-| Anti-air (`air`) | see tables | The attack can target flying units. Area, line and chain attacks only hurt flyers if the attacker has this. |
-| Pack (`count`) | Grave Hounds | One chantry musters two units per wave. |
+| Flight (`flying`) | Crypt Bats, Gargoyle, Ash Wyrm, Ashen Seraph | Can only be attacked by units that hit air. Ignores the ground melee in front of it, and is ignored by it. Does not hold shrines, is never hurled back and does not burn on the ground. |
+| Anti-air (`air`) | see tables | The attack can target flying units. Area, line and chain attacks only hurt flyers if the attacker has this. Melee walkers, the Necromancer, the Pale Lich, the Impaler and the war engines do not have it. |
+| Pack, Roost (`count`) | Grave Hounds (2), Crypt Bats (3) | One chantry musters several units per wave. |
 | Shield Wall (`ward`) | Oathguard | Takes 2 less damage from every attack made from farther than melee reach (3). Stacks with armor. |
 | Immolate (`dot`) | Pyre Zealot | Each foe hit burns for 2 damage a second for 2 s. Burning ignores armor. Re-applying refreshes it. |
-| Leaden Curse, Grave Frost (`slow`) | Hexbinder, Pale Lich | Foes hit move slower and attack slower for a few seconds. The strongest slow applies; it does not stack. |
+| Leaden Curse (`slow`) | Hexbinder | Foes hit move slower and attack slower for a few seconds. The strongest slow applies; it does not stack. |
 | Frenzy (`frenzy`) | Flagellant | The time between its attacks shrinks in proportion to missing health, down to half at the point of death. |
-| Lance Charge (`charge`) | Dreadknight | The first hit against each new target deals triple damage. |
+| Martyrdom (`martyr`) | Flagellant | When it dies, every ally within 3.5 regains 20 health (not the blighted, not towers). |
+| Lance Charge (`charge`) | Dreadknight | The first hit against each new target deals triple damage, unless the target is braced. |
+| Set Spears (`bonus.swift`, `brace`) | Halberdier | Three times damage to any unit with a base speed of 6.8 or more (`RULES.swiftSpeed`): Hounds, Dreadknight, Shade, Countess, Pale Rider. A charge does a braced unit no extra harm. |
 | Sunder (`sunder`) | Iron Penitent | Each hit permanently removes 1 armor from the target, down to 4 below its normal armor (never below zero). Works on towers. |
-| Ghost Blades, Grave Frost (`pierce`) | Shade, Pale Lich | The attack ignores armor (but not Shield Wall). |
+| Ghost Blades, Grave Blight, Cinder Lance (`pierce`) | Shade, Pale Lich, Ashen Seraph | The attack ignores armor (but not Shield Wall). |
 | Veil (`veil`) | Shade | Cannot be targeted from farther than 2 unless revealed. Area attacks aimed at something else still hurt it. |
-| Lantern (`reveal`) | Witch Hunter | Enemy veiled units within 11 can be targeted by everyone as usual. |
-| Silver Shot, Impale, Siege Stones (`bonus`) | Witch Hunter, Impaler, Trebuchet | Extra damage against one kind of target: flying units (Witch Hunter, Impaler: two and a half times) or towers and the cathedral (Trebuchet: half again as much, from outside their reach). |
-| Minimum range (`minRange`) | Trebuchet | Cannot attack anything nearer than 4. With enemies inside that distance and nothing else to shoot, it holds still. |
+| Lantern, Scent (`reveal`) | Witch Hunter (11), Grave Hounds (4) | Enemy veiled units within that distance can be targeted by everyone as usual. |
+| Silver Shot, Impale, Siege Stones (`bonus`) | Witch Hunter, Impaler, Trebuchet, Hellmouth | Extra damage against one kind of target: flyers (Witch Hunter: two and a half times), heavy armor of 2 or more (Impaler: double) or towers and the cathedral (Trebuchet half again, Hellmouth double). |
+| Minimum range (`minRange`) | Trebuchet, Hellmouth | Cannot attack anything nearer than 4 (5). With enemies inside that distance and nothing else to shoot, it holds still. |
 | Raise Dead (`raise`) | Necromancer | When a unit on foot (not a Skeleton, not a flyer, not a tower) dies within 10 of a Necromancer whose ability is ready, a Skeleton rises for the Necromancer's side. Ready again after 3 s. If several Necromancers could claim a corpse, the nearest does. |
-| Cleave (`splash`) | Bone Colossus, Pyre Zealot, Trebuchet, Pale Lich | The attack hits every enemy within a radius of the target. |
+| Cleave (`splash`) | Pyre Zealot, Trebuchet, Bone Colossus, Pale Lich, Belfry Titan, Ashen Seraph, Hellmouth | The attack hits every enemy within a radius of the target. |
 | Ossuary (`spawnOnDeath`) | Bone Colossus | Leaves four Skeletons when it dies. |
 | Searing Breath (`ramp`) | Ash Wyrm | Each consecutive hit on the same target deals 25% more than the last, up to +200% after eight hits. Changing target resets it. |
 | Chain Lightning (`chain`) | Tempest Cantor | After the target, the bolt leaps to the nearest unstruck enemy within 4, up to four times, losing a quarter of its damage each leap. |
 | Sanctuary (`aura`) | Reliquary | Allies within 7 (not itself, not towers) have 3 more armor and regain 15 health a second. Several Reliquaries do not stack. |
-| Blood Feast (`leech`) | Crimson Countess | Heals herself for two fifths of the damage she deals. |
+| Blood Feast (`leech`) | Crimson Countess | Heals herself for two fifths of the damage she deals, unless blighted. |
+| Bloodlust (`bloodlust`) | Crimson Countess | Every foe she struck on the tick it died counts as her kill; each kill shortens the time between her blows by 12%, up to five kills, for the rest of her life. |
 | Impale (`line`) | Impaler | The stake hits every enemy within 0.9 of a line 14 long, starting at the Impaler and passing through its target. |
+| Grave Blight (`blight`) | Pale Lich | Every foe hit cannot be healed by anything (Mend, Sanctuary, Blood Feast, Martyrdom) for 4 s. |
 | Execute (`maim`) | Headsman | Each hit deals extra damage equal to 10% of the target's full health. Not against towers or the cathedral. |
-| Mend (`heal`) | Plague Doctor | Heals the nearest wounded ally in reach; stays behind the fighting. |
+| Mend (`heal`) | Plague Doctor | Heals the nearest wounded ally in reach that is not blighted; stays behind the fighting. |
+| Stone Skin (`steadfast`) | Gargoyle | Cannot be slowed, set burning, or hurled back. |
+| Death Knell (`knock`) | Belfry Titan | Every walker struck is hurled 3 back toward its own end of the lane (not towers, flyers or Stone Skin). Melee foes must walk back in; ranged foes lose little. |
+| Dread (`dread`) | Pale Rider | Every enemy soldier within 6 (not towers) takes 35% longer between attacks, mends included. |
+| From the Ashes (`undying`) | Ashen Seraph | The first blow that would kill it leaves it at half health instead, with burns, curses and blight cleared. Once per life. |
+| Brimstone (`field`) | Hellmouth | Each blast leaves burning ground of radius 3.5 for 6 s; enemy walkers standing in it take 8 a second through armor (not flyers or Stone Skin). |
 
 ## Who beats what
 
@@ -156,18 +209,24 @@ The roster is built around the counter system of the original: no unit is good a
 
 | If the enemy builds | Answer with | Why |
 |---|---|---|
-| Massed cheap infantry or Grave Hounds | Pyre Zealot, Bone Colossus, Pale Lich, Tempest Cantor | Area damage hits many small units at once. |
-| Arbalesters and other archers | Oathguard, Grave Hounds, Shade | Shield Wall blunts every arrow; hounds and Shades reach the archers quickly. |
-| Heavy armor (Dreadknight, Iron Penitent) | Iron Penitent, Shade, Pale Lich, Pyre Zealot | Sunder strips armor; ghost blades, frost and fire ignore it. |
-| One huge unit (Bone Colossus, Crimson Countess) | Hexbinder, Arbalesters, flyers, Headsman | A slowed giant is half a giant; massed bolts ignore its cleave; neither can reach the air; Execute scales with the victim's health. |
-| Flyers (Gargoyle, Ash Wyrm) | Witch Hunter, Hexbinder, Impaler; Arbalesters against the Wyrm; your own Wyrm against Gargoyles | Silver shot and the stake do two and a half times their damage to flyers; a cursed flyer barely moves. Melee units cannot touch them. |
-| Trebuchets and Impalers | Shade, Grave Hounds, Dreadknight, Gargoyle | Fast units get inside the engines' reach; the Trebuchet cannot shoot up or close. |
-| Shades | A Witch Hunter among your archers, any area damage, Headsman | The lantern lets everyone shoot them; fire and frost do not need to see them. |
-| Necromancers | Flyers, Tempest Cantor, anything that kills the Necromancer first | Flyers leave no corpses to raise and the Skeletons cannot reach them. |
-| Plague Doctors and a Reliquary | Burst and area damage, Shades | Healing loses to damage that kills in one or two hits; Shades slip past to the support. |
-| Towers and the cathedral | Trebuchet, Iron Penitent | The Trebuchet outranges towers and hits stone harder; Sunder works on towers. |
+| Massed cheap infantry or Grave Hounds | Pyre Zealot, Bone Colossus, Tempest Cantor, Halberdier (against hounds) | Area damage hits many small units at once; halberds bite deep into anything swift. |
+| Arbalesters and other archers | Oathguard, Grave Hounds, Crimson Countess, Shade | Shield Wall blunts every arrow; hounds and Shades reach the archers quickly; every archer the Countess kills makes her faster. |
+| Crypt Bats | Hexbinder, Gargoyle, Arbalesters in numbers, towers; a Reliquary | A curse or a tower's shot kills a bat outright, a bolt in two; Gargoyles claw them from the sky; three armor leaves their bites almost harmless. The Witch Hunter's slow silver is wasted on them. |
+| Fast units: Hounds, Dreadknight, Shade, Countess, Pale Rider | Halberdier | Set Spears: three times damage to the swift, and a lance charge does it no extra harm. |
+| Heavy armor (Dreadknight, Iron Penitent, Headsman, Bone Colossus) | Impaler, Iron Penitent, Shade, Pale Lich, Pyre Zealot | The stake does double through heavy armor and skewers the whole file; Sunder strips armor; ghost blades, blight and fire ignore it. |
+| One huge unit (Bone Colossus, Belfry Titan) | Headsman, Hexbinder, flyers | Execute scales with the victim's health; a cursed giant is half a giant; neither can reach the air. |
+| The Crimson Countess | Halberdier, Iron Penitent, Headsman, flyers | She is swift, her quick blows glance off heavy armor, Execute bites her large health, and she cannot reach the air. A crowd of light soldiers or curses only feeds her Bloodlust. |
+| Healing and sustain (Plague Doctor, Reliquary, Countess, Flagellants) | Pale Lich | Grave Blight: nothing heals for four seconds, not even Martyrdom. |
+| Flyers (Gargoyle, Ash Wyrm, Ashen Seraph) | Witch Hunter; Arbalesters and Hexbinders against the Wyrm | Silver shot does two and a half times to flyers; a cursed flyer barely moves, but the Gargoyle's Stone Skin ignores curses, so it needs raw damage. |
+| Ground-only casters and engines (Necromancer, Pale Lich, Impaler, Trebuchet, Hellmouth) | Any flyer, Shade, Grave Hounds | None of them can shoot the sky; fast units get inside the engines' reach. |
+| Shades | Grave Hounds, a Witch Hunter, any area damage, Halberdier | Scent and lantern let everyone strike them; fire and lightning do not need to see them; halberds bite the swift. |
+| Necromancers | Flyers, Tempest Cantor, anything that kills the Necromancer first | Flyers leave no corpses, the Necromancer cannot shoot them, and the Skeletons cannot reach them. |
+| The Belfry Titan | Flyers, Headsman, ranged soldiers | It cannot reach the air; Execute takes a tenth of its huge health each blow; the knockback hurts melee lines, not archers. |
+| The Pale Rider | Halberdier, Headsman, archers beyond its dread | It is swift; its dread only reaches 6. |
+| The Ashen Seraph | Witch Hunters, many of them | Silver shot does two and a half times to wings; the Seraph's fire shreds light archers and curses, and it must be killed twice. |
+| Towers and the cathedral | Trebuchet, Hellmouth, Iron Penitent | Engines outrange towers and hit stone harder; Sunder works on towers. |
 
-Flyers deserve a note. They are strong against an army with no anti-air and poor against a prepared one, and they travel alone over the fighting, so they reach the enemy towers (which do shoot upward) before the rest of the army. They are a punish for a careless opponent, not a main army.
+Flyers deserve a note. They are strong against an army with no anti-air and poor against a prepared one, and they travel alone over the fighting, so they reach the enemy towers (which do shoot upward) before the rest of the army. Fewer units can shoot the sky than before (melee, the Necromancer, the Pale Lich, the Impaler and the engines cannot), and the Crypt Bats bring that question to tier I: an army of halberds and shields with no bow among it has no answer to them.
 
 ## How balance is tested
 
@@ -196,13 +255,16 @@ The harness found and fixed several things that playing by hand would have taken
 - **Fast units are worse than they look.** Hounds, cavalry, Shades and flyers outrun their army and meet the enemy alone. They were slowed toward the army's pace and made cheaper.
 - **Flyers** won every clash against armies without anti-air but lost most lane matches, because towers shoot upward. They were made much cheaper rather than tougher, to keep them a counter-pick.
 - **Support units** are only worth a fraction of an army; the Plague Doctor and the Reliquary were priced for that.
+- **The roles pass (giving every unit its own job).** An audit found units doing each other's work: three slows (Hexbinder, Pale Lich, Belfry Titan), two identical anti-air bonuses (Witch Hunter, Impaler), nine area attackers, nearly every ranged unit able to shoot the sky, the Countess and the Headsman as two big melee duelists, and tier IV built from lower units' abilities glued together. Each unit now has one job and a counter: the Lich blights instead of slowing, the Impaler breaks heavy armor instead of wings, the Titan hurls foes back, the Pale Rider radiates dread, the Seraph rises from its ashes, the Hellmouth leaves burning ground, the Countess grows faster with each kill, the Gargoyle has Stone Skin, Flagellants heal as they die and hounds sniff out Shades. The Halberdier (anti-swift) and the Crypt Bats (a tier I flyer) were added, and the Necromancer, the Lich and the Impaler lost anti-air, so flyers are a real question. Ten new rules are each a data field, every one covered by a test, and a mirrored fight using all of them at once stays exactly symmetric.
+- **One point of health decides the Crypt Bats.** At 11 health or less an Arbalester's bolt kills a bat outright, and since every lane army carries Arbalesters the bats lost everywhere (−50 on the lane); with much more health they beat even the crossbows. At 12 a bat takes two bolts and dies to one curse or one tower shot: Arbalesters still beat them in the open, Hexbinders and Gargoyles crush them, and on the lane they come out around −20 against armies that are half crossbow, which is fair for a counter-pick.
+- **The Impaler is judged behind a line.** Massed alone with nothing in front of it, it loses every open-field duel; behind a shield wall, its job, it beats the Iron Penitent, the Bone Colossus and the Headsman by a wide margin. The "every unit beats something" test counts a siege unit's wins with that escort.
 - **Mirrored autopilots never finished.** Two identical armies cancel each other forever. Sudden death now makes both cathedrals crumble, faster for the side holding fewer shrines.
 
 ### Where the numbers stand
 
-The costs in the tables above come from the latest lane tuning pass, run after a rules fix that changed melee combat (units could stop a hair short of their target and never strike; see "What the testing changed"). In that pass, on the lane, most tier I to III units scored within about 15 points of even after three rounds; the Plague Doctor and the Reliquary were still weak and were strengthened rather than made cheaper, and the flyers and the Crimson Countess were still somewhat strong and were made dearer.
+The costs in the tables above come from the lane tuning pass run after the roles pass (three rounds of `npm run balance:lane`), with a final hand step for the units still more than about 12 points from their target: the Gargoyle, Bone Colossus, Tempest Cantor, Ash Wyrm and Iron Penitent were made a little dearer, the Hexbinder, Plague Doctor and Reliquary a little cheaper, and the Crypt Bats and the Crimson Countess were reshaped (see above) rather than repriced. Before that hand step most tier I to III units scored within about 15 points of even on the lane; the flyers stay somewhat strong for their price there and the support units somewhat weak, as in earlier passes.
 
-In massed equal-gold clashes (`npm run balance`) every tier I to III unit averages between about −50 and +50 against the rest (melee and flyers high, ranged and siege low, the Necromancer lowest), which is the open-field picture; prices follow the lane tuner, where escorts and towers matter, which is priced for fighting behind a line. Every unit, tier IV included, loses clearly to something: the Belfry Titan and the Pale Rider to flyers and to the Hexbinder, the Ashen Seraph to the Witch Hunter and the Impaler, the Hellmouth to anything fast.
+In massed equal-gold clashes (`npm run balance`) every tier I to III unit averages between about −50 and +50 against the rest (melee and flyers high, ranged and siege low, the Necromancer lowest), which is the open-field picture; prices follow the lane tuner, where escorts and towers matter, which is priced for fighting behind a line. Every unit, tier IV included, loses clearly to something: the Belfry Titan to flyers and the Headsman, the Pale Rider to the Halberdier and the Headsman, the Ashen Seraph to the Witch Hunter, the Hellmouth to anything fast.
 
 Tier IV and the mercenaries are priced by hand. They have been checked for having counters, not tuned on the lane, and nothing here has been tuned for 2v2 or 3v3. Run the three balance commands for current figures rather than trusting numbers written down here.
 

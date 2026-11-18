@@ -56,16 +56,23 @@ function bodyReach(def: ModelDef): number {
 }
 /** Stride speed (radians per millisecond) of each gait. */
 const STRIDE: Record<Gait, number> = { walk: 0.02, shuffle: 0.016, gallop: 0.024, lope: 0.03, stomp: 0.011, float: 0.01, roll: 0.02, fly: 0.01 };
+/** Grave Blight's sickly green, and the dark motes that hang about the blighted. */
+const BLIGHT = 0xb4e05a, BLIGHT_DARK = 0x3f4a26;
+/** True when this attack lands with its bonus (silver on wings, a halberd on the swift, a stake through heavy armor): such blows flash. */
+const telling = (attacker: string, victim: string | undefined): boolean => {
+  const a = UNITS[attacker]?.bonus, v = victim ? UNITS[victim] : undefined;
+  return !!a && !!v && !v.structure && ((!!a.flying && !!v.flying) || (!!a.swift && v.speed >= RULES.swiftSpeed) || (!!a.armored && v.armor >= 2));
+};
 /** How each unit's attack looks and sounds; anything not listed strikes in melee. */
 type Shot = "bolt" | "gun" | "orb" | "stone" | "flame" | "stake" | "lightning" | "beam";
 const SHOTS: Record<string, { kind: Shot; color: number }> = {
   marksman: { kind: "gun", color: 0xfff1c9 }, fireeater: { kind: "flame", color: 0xff7a1a }, seraph: { kind: "orb", color: PAL.ember }, hellmouth: { kind: "stone", color: 0xff5a1f },
   arbalester: { kind: "bolt", color: PAL.bone }, witchhunter: { kind: "gun", color: 0xfff1c9 }, hexbinder: { kind: "orb", color: PAL.storm },
-  necromancer: { kind: "orb", color: PAL.venom }, lich: { kind: "orb", color: PAL.frost }, trebuchet: { kind: "stone", color: 0x55586a },
+  necromancer: { kind: "orb", color: PAL.venom }, lich: { kind: "orb", color: BLIGHT }, trebuchet: { kind: "stone", color: 0x55586a },
   zealot: { kind: "flame", color: 0xff7a1a }, wyrm: { kind: "flame", color: 0xff5a1f }, ballista: { kind: "stake", color: 0x8c93a6 },
   cantor: { kind: "lightning", color: PAL.storm }, hq: { kind: "beam", color: 0 }, tower: { kind: "beam", color: 0 }, bastion: { kind: "beam", color: 0 },
 };
-const MELEE: Record<string, number> = { titan: 0xffd27a, rider: 0xdfe6ff, ogre: 0xcdbf9f, countess: 0xff3b4f, shade: PAL.ghost, colossus: 0xcdbf9f, headsman: 0xffffff, gargoyle: 0xc8ccd8, hound: 0xe2d7bc };
+const MELEE: Record<string, number> = { halberdier: 0xdfe6ff, bats: 0xb3263a, titan: 0xffd27a, rider: 0xdfe6ff, ogre: 0xcdbf9f, countess: 0xff3b4f, shade: PAL.ghost, colossus: 0xcdbf9f, headsman: 0xffffff, gargoyle: 0xc8ccd8, hound: 0xe2d7bc };
 export const shotKind = (unit: string): Shot | "melee" => SHOTS[unit]?.kind ?? "melee";
 interface Flight { mesh: THREE.Object3D; from: THREE.Vector3; to: THREE.Vector3; born: number; life: number; arc: number; beam: boolean; onEnd?: () => void }
 
@@ -636,6 +643,10 @@ export class Renderer {
           for (let i = 0; i < 3; i++) this.spark(to.x, to.y, to.z, i ? 0x8a8474 : 0xcfc6ad, 420 + Math.random() * 260, 0.35, 0.1, rnd(3), 1.5 + Math.random() * 2.5, rnd(3), -12, now);
         }
         const style = SHOTS[e.unit], kind = style?.kind ?? "melee", color = style?.color ?? MELEE[e.unit] ?? 0xffe2a8;
+        if (e.to && telling(e.unit, this.units.get(e.to)?.type)) { // the counter bites: a white flash and a spray of bright shards
+          this.spark(to.x, to.y, to.z, 0xffffff, 200, 2.2, 0.3, 0, 0, 0, 0, now);
+          for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; this.spark(to.x, to.y, to.z, i % 2 ? 0xfff1c9 : color, 260, 0.5, 0.1, Math.cos(a) * 4, 1 + rnd(2), Math.sin(a) * 4, -6, now); }
+        }
         if (kind === "bolt") this.shoot(new THREE.Mesh(this.geo("bolt", () => new THREE.BoxGeometry(0.55, 0.05, 0.05)), basic(color)), from, to, now, 170);
         else if (kind === "gun") {
           this.spark(from.x, from.y, from.z, 0xffd27a, 110, 1.6, 0.4, 0, 0, 0, 0, now);
@@ -670,15 +681,33 @@ export class Renderer {
           this.shoot(new THREE.Mesh(this.rod(hq ? 0.09 : 0.06, 5), bright(TEAM[e.team].glow)), from, to, now, hq ? 200 : 180, 0, true);
           this.spark(to.x, to.y, to.z, TEAM[e.team].glow, hq ? 260 : 200, hq ? 1.2 : 0.6, hq ? 3 : 1.5, 0, 0, 0, 0, now);
         } else {
-          const big = e.unit === "colossus" || e.unit === "headsman" || e.unit === "penitent" || e.unit === "titan" || e.unit === "ogre" || e.unit === "rider";
+          const big = e.unit === "colossus" || e.unit === "headsman" || e.unit === "penitent" || e.unit === "titan" || e.unit === "ogre" || e.unit === "rider" || e.unit === "halberdier";
           for (let i = 0; i < (big ? 6 : 3); i++) this.spark(to.x + rnd(0.3), to.y + rnd(0.3), to.z + 0.2, color, 150 + Math.random() * 120, big ? 0.9 : 0.55, 0.15, rnd(big ? 5 : 3), 1.5 + rnd(2), rnd(big ? 4 : 2), -9, now);
           if (e.unit === "colossus" || e.unit === "titan" || e.unit === "ogre") for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; this.spark(to.x, 0.3, to.z, 0x6d6050, 520, 0.9, 2.4, Math.cos(a) * 4, 0.8, Math.sin(a) * 4, 0, now); }
+          if (UNITS[e.unit]?.knock) { // Death Knell: a bronze shockwave races out and the dust is flung away from the bell
+            const r = W(UNITS[e.unit]!.splash);
+            this.spark(to.x, 0.5, to.z, 0xffd27a, 360, 2, r * 2.4, 0, 0, 0, 0, now);
+            for (let i = 0; i < 18; i++) { const a = (i / 18) * Math.PI * 2; this.spark(to.x + Math.cos(a) * 0.6, 0.35, to.z + Math.sin(a) * 0.6, i % 3 ? 0x8a7a5c : 0xffd27a, 520, 1.1, 0.4, Math.cos(a) * 9 + (from.x < to.x ? 4 : -4), 1.2, Math.sin(a) * 9, -3, now); }
+          }
           else if (e.unit === "countess") for (let i = 0; i < 3; i++) this.spark(to.x, to.y, to.z, 0xff2b45, 420, 0.5, 0.15, (from.x - to.x) * 2.2 + rnd(1), 0.6 + rnd(1), (from.z - to.z) * 2.2 + rnd(1), 0, now); // blood drawn back to her
         }
       } else if (e.t === "arc") lightning(chest(e.from, e.x1, e.y1), chest(e.to, e.x2, e.y2), PAL.storm);
       else if (e.t === "raise") {
         for (let i = 0; i < 12; i++) this.spark(W(e.x) + rnd(0.8), 0.1 + Math.random() * 0.4, Zy(e.y) + rnd(0.8), PAL.venom, 700 + Math.random() * 400, 0.6, 0.1, 0, 1.6 + Math.random() * 2, 0, 0, now);
         this.spark(W(e.x), 0.4, Zy(e.y), PAL.venom, 380, 0.6, 3.4, 0, 0, 0, 0, now);
+      } else if (e.t === "reborn") {
+        // From the Ashes: a column of fire, a ring of cinders, and the burnt angel rises out of it
+        const x = W(e.x), z = Zy(e.y);
+        this.flash = Math.max(this.flash, now - 200);
+        this.spark(x, 3, z, 0xfff1c9, 420, 3, 12, 0, 0, 0, 0, now);
+        for (let i = 0; i < 26; i++) this.spark(x + rnd(1.2), 0.3 + Math.random() * 1.5, z + rnd(1.2), i % 3 ? PAL.ember : 0xffc04a, 900 + Math.random() * 600, 0.9, 0.1, rnd(1.5), 5 + Math.random() * 6, rnd(1.5), 0, now);
+        for (let i = 0; i < 20; i++) { const a = (i / 20) * Math.PI * 2; this.spark(x, 0.4, z, 0xff8a2a, 600, 1, 0.2, Math.cos(a) * 8, 0.5, Math.sin(a) * 8, 0, now); }
+      } else if (e.t === "martyr") {
+        // Martyrdom: the blood that falls becomes a blessing, a ring of healing light reaching the allies around
+        const x = W(e.x), z = Zy(e.y), r = W(e.radius);
+        this.spark(x, 0.5, z, PAL.heal, 600, 1.5, r * 2.2, 0, 0, 0, 0, now);
+        for (let i = 0; i < 14; i++) { const a = (i / 14) * Math.PI * 2; this.spark(x + Math.cos(a) * r, 0.3, z + Math.sin(a) * r, PAL.heal, 900, 0.6, 0.1, 0, 1.6 + Math.random(), 0, 0, now); }
+        for (let i = 0; i < 8; i++) this.spark(x, 1.2, z, 0xb3263a, 500, 0.5, 0.15, rnd(4), 2 + Math.random() * 2, rnd(4), -10, now);
       } else if (e.t === "built") {
         const k = this.units.get(keeperKey(e.player, e.slot)); if (k) k.lastAttack = now; // the spade comes down
         for (let i = 0; i < 14; i++) { const a = (i / 14) * Math.PI * 2; this.spark(W(e.x), 0.3, Zy(e.y), i % 3 ? 0x6d6050 : 0xe9c56b, 520 + Math.random() * 260, 0.8, 2.2, Math.cos(a) * 3, 1 + Math.random() * 1.5, Math.sin(a) * 3, -2, now); }
@@ -811,13 +840,24 @@ export class Renderer {
       }
     }
 
+    // Burning ground (Brimstone): embers and low tongues of flame over the whole patch until it gutters out
+    for (const f of s.fires) {
+      const left = (f.until - s.tick) / (f.until - f.from), r = W(f.radius), n = dt * 0.05 * r * left;
+      for (let i = 0; i < n || (i === 0 && Math.random() < n); i++) {
+        const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * r, x = W(f.x) + Math.cos(a) * d, z = LZ(f.lane) + W(f.y) + Math.sin(a) * d;
+        const tongue = Math.random() < 0.35;
+        this.spark(x, 0.15, z, tongue ? (Math.random() < 0.5 ? 0xff5a1f : 0xffa040) : 0xff7a1a, tongue ? 500 : 900, tongue ? 0.9 : 0.35, tongue ? 0.2 : 0.05, 0, tongue ? 2 + Math.random() * 1.5 : 0.6 + Math.random(), 0, 0, now);
+      }
+      if (Math.random() < dt * 0.004) this.spark(W(f.x) + (Math.random() - 0.5) * r, 0.6, LZ(f.lane) + W(f.y) + (Math.random() - 0.5) * r, 0x3a3236, 1800, 1.5, 4, 0, 1.2, 0, 0, now); // smoke
+    }
+
     // units
     const seen = new Set<number>(), byId = new Map<number, GameState["units"][number]>();
     for (const u of s.units) byId.set(u.id, u);
     const ease = Math.min(1, dt * 0.012);
     // Gravekeepers are posed by the same code as soldiers: they walk, turn and swing a spade, but are not units.
-    const walkers = s.keepers.map(k => ({ id: keeperKey(k.owner, k.slot), type: KEEPERS[k.slot].id as string, team: k.team, lane: k.lane, x: k.x, y: k.y, target: 0, dotUntil: 0, slowUntil: 0 }));
-    for (const f of s.flights) for (const bird of [0, 1]) walkers.push({ id: vultureKey(f.owner, bird), type: "vulture", team: f.team, lane: f.lane, x: f.x, y: RULES.vultureY[bird]!, target: 0, dotUntil: 0, slowUntil: 0 });
+    const walkers = s.keepers.map(k => ({ id: keeperKey(k.owner, k.slot), type: KEEPERS[k.slot].id as string, team: k.team, lane: k.lane, x: k.x, y: k.y, target: 0, dotUntil: 0, slowUntil: 0, blightUntil: 0, kills: 0 }));
+    for (const f of s.flights) for (const bird of [0, 1]) walkers.push({ id: vultureKey(f.owner, bird), type: "vulture", team: f.team, lane: f.lane, x: f.x, y: RULES.vultureY[bird]!, target: 0, dotUntil: 0, slowUntil: 0, blightUntil: 0, kills: 0 });
     for (const u of [...s.units, ...walkers]) {
       seen.add(u.id);
       let view = this.units.get(u.id);
@@ -886,6 +926,15 @@ export class Renderer {
 
       // Afflictions show: burning units shed embers, cursed or frozen ones a cold mist.
       if (s.tick < u.dotUntil && Math.random() < dt * 0.012) this.spark(view.root.position.x + (Math.random() - 0.5) * 0.5, view.alt + 0.6 + Math.random() * 1.2, view.root.position.z + (Math.random() - 0.5) * 0.5, 0xff7a1a, 420, 0.5, 0.1, 0, 1.6, 0, 0, now);
+      if (s.tick < u.blightUntil && Math.random() < dt * 0.01) this.spark(view.root.position.x + (Math.random() - 0.5) * 0.6, view.alt + 1 + Math.random() * 1.2, view.root.position.z + (Math.random() - 0.5) * 0.6, Math.random() < 0.4 ? BLIGHT : BLIGHT_DARK, 700, 0.55, 0.2, 0, -0.9, 0, 0, now);
+      // Bloodlust: the more she has killed, the thicker the crimson that rises off her
+      if (u.kills > 0 && Math.random() < dt * 0.003 * u.kills) this.spark(view.root.position.x + (Math.random() - 0.5) * 0.7, view.alt + 0.8 + Math.random() * 1.6, view.root.position.z + (Math.random() - 0.5) * 0.7, Math.random() < 0.3 ? 0xff5a6a : 0xb3263a, 520, 0.45 + u.kills * 0.06, 0.05, 0, 1.4, 0, 0, now);
+      // Dread: a slow tide of shadow wisps marks how far the terror reaches
+      const dread = UNITS[u.type]?.dread;
+      if (dread && Math.random() < dt * 0.02) {
+        const a = Math.random() * Math.PI * 2, r = W(dread.radius) * (0.75 + Math.random() * 0.25);
+        this.spark(view.root.position.x + Math.cos(a) * r, 0.25, view.root.position.z + Math.sin(a) * r, Math.random() < 0.3 ? PAL.ghost : 0x2a2238, 1100, 0.9, 1.8, -Math.cos(a) * 0.8, 0.5, -Math.sin(a) * 0.8, 0, now);
+      }
       if (s.tick < u.slowUntil && Math.random() < dt * 0.009) this.spark(view.root.position.x + (Math.random() - 0.5) * 0.7, view.alt + 0.2 + Math.random() * 0.5, view.root.position.z + (Math.random() - 0.5) * 0.7, PAL.frost, 520, 0.5, 0.9, 0, 0.3, 0, 0, now);
     }
     if (this.blobs) { // one call draws every soldier's shadow blot

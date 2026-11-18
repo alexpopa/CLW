@@ -84,6 +84,45 @@ export const ROSTER: Record<string, (t: Pal) => ModelDef> = {
       glow: ball(0.14, PAL.storm, 0.52, 1.46, 0, 1) },
   }),
 
+  // Halberdier: a watchman of the charnel gates in a kettle helm and team tabard, a lantern on his belt, his long blade set low.
+  halberdier: t => ({
+    height: 3.0,
+    body: merge([
+      cyl(0.32, 0.42, 1.0, 8, PAL.steel, 0, 1.45, 0),
+      box(0.08, 1.15, 0.56, t.main, 0.34, 1.2, 0, { rz: 0.05 }), box(0.08, 1.0, 0.5, t.lo, -0.34, 1.25, 0, { rz: -0.05 }),
+      box(0.1, 0.5, 0.07, PAL.gold, 0.4, 1.42, 0), box(0.1, 0.07, 0.3, PAL.gold, 0.4, 1.52, 0),
+      box(0.66, 0.1, 0.86, PAL.leather, 0, 1.0, 0), box(0.12, 0.14, 0.16, PAL.bronze, 0.36, 1.0, 0),
+      box(0.52, 0.24, 0.9, PAL.steelHi, 0, 1.98, 0), box(0.4, 0.12, 0.7, PAL.steel, 0, 2.1, 0),
+      ball(0.2, PAL.skin, 0.04, 2.22, 0), box(0.05, 0.07, 0.3, PAL.ink, 0.21, 2.26, 0),
+      cyl(0.5, 0.56, 0.06, 12, PAL.steel, 0, 2.36, 0), cyl(0.2, 0.27, 0.28, 10, PAL.steelHi, 0, 2.5, 0), cyl(0.04, 0.04, 0.12, 5, PAL.steelHi, 0, 2.68, 0),
+    ]),
+    legs: [leg(PAL.dark, PAL.leather, 0.18), leg(PAL.dark, PAL.leather, -0.18)],
+    parts: [
+      { motion: "sway", pivot: [-0.12, 1.02, -0.5], geo: merge([box(0.03, 0.26, 0.03, PAL.iron, 0, -0.13, 0), box(0.22, 0.06, 0.22, PAL.iron, 0, -0.28, 0), box(0.22, 0.06, 0.22, PAL.iron, 0, -0.58, 0), cyl(0, 0.15, 0.12, 4, PAL.iron, 0, -0.2, 0)]), glow: box(0.14, 0.22, 0.14, PAL.candle, 0, -0.43, 0) },
+    ],
+    // the halberd: a long ash haft, a broad axe-blade, a rear hook and a spike, with a team pennant under the head
+    weapon: { pivot: [0.12, 1.72, 0.44], anim: "thrust",
+      geo: merge([
+        box(0.22, 0.22, 0.22, PAL.steel, 0, 0, 0), cyl(0.045, 0.045, 3.3, 6, PAL.wood, 0.75, 0.1, 0, { rz: -HALF + 0.1 }),
+        plate([[0, 0], [0.5, 0.06], [0.55, 0.5], [0.3, 0.56], [0, 0.3]], 0.04, PAL.steelHi, 2.0, 0.22, 0), box(0.1, 0.32, 0.05, PAL.steel, 1.92, 0.0, 0, { rz: 0.4 }),
+        cyl(0, 0.06, 0.55, 4, PAL.steelHi, 2.65, 0.3, 0, { rz: -HALF + 0.1 }), box(0.3, 0.06, 0.06, PAL.gold, 1.98, 0.21, 0),
+        plate([[0, 0], [0.42, -0.06], [0.3, -0.2], [0.42, -0.34], [0, -0.3]], 0.03, t.main, 1.5, 0.12, 0),
+      ]) },
+  }),
+  // Crypt bats: a hunched bat with a pale snout and long finger-wings stretched with team-dyed skin. They come three to a belfry.
+  bats: t => ({
+    height: 1.1, gait: "fly", hover: 2.4,
+    body: merge([
+      ball(0.26, PAL.fur, 0, 0.55, 0, 1), box(0.34, 0.28, 0.3, PAL.fur, -0.18, 0.5, 0, { rz: 0.3 }),
+      ball(0.16, PAL.fur, 0.26, 0.74, 0, 1), box(0.12, 0.1, 0.16, PAL.pale, 0.38, 0.71, 0),
+      cyl(0, 0.07, 0.24, 4, PAL.fur, 0.22, 0.95, 0.08, { rx: -0.3 }), cyl(0, 0.07, 0.24, 4, PAL.fur, 0.22, 0.95, -0.08, { rx: 0.3 }),
+      box(0.04, 0.14, 0.04, PAL.ink, 0.04, 0.28, 0.08), box(0.04, 0.14, 0.04, PAL.ink, 0.04, 0.28, -0.08),
+    ]),
+    glow: merge([ball(0.03, t.glow, 0.38, 0.8, 0.07, 0), ball(0.03, t.glow, 0.38, 0.8, -0.07, 0)]),
+    parts: wings([0, 0.66, 0.16], 0.95, 0.6, PAL.fur, t.lo, 16, 1.3),
+    weapon: { pivot: [0.36, 0.66, 0], anim: "bite", geo: merge([box(0.1, 0.06, 0.12, PAL.ink, 0.06, -0.04, 0), box(0.03, 0.07, 0.03, PAL.bone, 0.09, -0.09, 0.04), box(0.03, 0.07, 0.03, PAL.bone, 0.09, -0.09, -0.04)]) },
+  }),
+
   // ---------- Tier II ----------
   // Gargoyle: horned stone beast on bat wings, a rune burning in its chest.
   gargoyle: t => ({

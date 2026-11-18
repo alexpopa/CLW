@@ -96,7 +96,8 @@ export function fogFront(s: GameState, f: FogState): number {
 export function addUnit(s: GameState, type: string, owner: PlayerId, team: TeamId, lane: number, x: number, y: number): UnitState {
   const def = UNITS[type]!;
   const u: UnitState = { id: s.nextId++, type, owner, team, lane, x, y, hp: def.hp, cooldown: 0, target: 0,
-    slowUntil: 0, slowPct: 0, dotUntil: 0, dotFrom: 0, dotDmg: 0, sunder: 0, ramp: 0, lastHit: 0, abilityCd: 0, expire: def.life ? s.tick + def.life : 0 };
+    slowUntil: 0, slowPct: 0, dotUntil: 0, dotFrom: 0, dotDmg: 0, sunder: 0, ramp: 0, lastHit: 0, abilityCd: 0, expire: def.life ? s.tick + def.life : 0,
+    blightUntil: 0, kills: 0, reborn: false };
   s.units.push(u);
   return u;
 }
@@ -120,7 +121,7 @@ export function createGame(cfg: GameConfig): GameState {
       isAI: cfg.aiSlots?.includes(i) ?? false, aiLevel: Math.max(0, Math.min(AI.levels.length - 1, Math.floor(Number(cfg.aiLevels?.[i]) || 0))),
     })),
     teams: [{ hqHp: RULES.hqHp * laneCount, hqCooldown: 0 }, { hqHp: RULES.hqHp * laneCount, hqCooldown: 0 }],
-    beacons: [], buildings: [], keepers: [], storms: [], fogs: [], flights: [], urns: [], units: [], events: [], winner: null,
+    beacons: [], buildings: [], keepers: [], storms: [], fogs: [], flights: [], urns: [], fires: [], units: [], events: [], winner: null,
   };
   // Two gravekeepers per player wait near the rear of their own building ground.
   for (const p of s.players) for (const slot of [0, 1] as const) {
@@ -263,11 +264,11 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
   const byId = new Map<number, UnitState>();
   for (const u of s.units) byId.set(u.id, u);
 
-  // Auras and lanterns are worked out once, from where everyone stood at the start of the tick.
-  const auraArmor = new Map<UnitState, number>(), auraRegen = new Map<UnitState, number>(), revealed = new Set<UnitState>();
+  // Auras, dread and lanterns are worked out once, from where everyone stood at the start of the tick.
+  const auraArmor = new Map<UnitState, number>(), auraRegen = new Map<UnitState, number>(), revealed = new Set<UnitState>(), dreaded = new Map<UnitState, number>();
   for (const a of s.units) {
     const d = UNITS[a.type]!;
-    if (!d.aura && !d.reveal) continue;
+    if (!d.aura && !d.reveal && !d.dread) continue;
     for (const o of s.units) {
       if (o === a || o.lane !== a.lane) continue;
       const far = dist(a.x, a.y, o.x, o.y);
@@ -276,6 +277,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
         auraRegen.set(o, Math.max(auraRegen.get(o) ?? 0, d.aura.regen));
       }
       if (d.reveal && o.team !== a.team && UNITS[o.type]!.veil && far <= d.reveal) revealed.add(o);
+      if (d.dread && o.team !== a.team && !isStructure(o) && far <= d.dread.radius) dreaded.set(o, Math.max(dreaded.get(o) ?? 0, d.dread.pct));
     }
   }
 
@@ -288,23 +290,32 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
   const razing = new Map<BuildingState, number>(); // damage done to chantries this tick
   const footHalf = (MAP.footprint * MAP.cell) / 2;
   const change = (u: UnitState, amount: number) => delta.set(u, (delta.get(u) ?? 0) + amount);
-  /** One unit's attack landing on one victim, with every on-hit ability. */
-  const hit = (u: UnitState, def: UnitDef, v: UnitState, base: number): void => {
+  const blighted = (u: UnitState): boolean => s.tick < u.blightUntil;
+  /** Who struck each victim this tick, for those that count their kills (Bloodlust). */
+  const struckBy = new Map<UnitState, UnitState[]>();
+  /** One unit's attack landing on one victim, with every on-hit ability. `charged`: the first blow on a new foe (Lance Charge). */
+  const hit = (u: UnitState, def: UnitDef, v: UnitState, raw: number, charged = false): void => {
     const vd = UNITS[v.type]!;
+    const base = charged && !vd.brace ? Math.trunc((raw * def.charge!) / 100) : raw;
     let dmg = base;
     if (def.bonus) {
       if (vd.flying && def.bonus.flying) dmg += Math.trunc((base * def.bonus.flying) / 100);
       if (vd.structure && def.bonus.structure) dmg += Math.trunc((base * def.bonus.structure) / 100);
       if (vd.armor >= 2 && !vd.structure && def.bonus.armored) dmg += Math.trunc((base * def.bonus.armored) / 100);
+      if (vd.speed >= RULES.swiftSpeed && !vd.structure && def.bonus.swift) dmg += Math.trunc((base * def.bonus.swift) / 100);
     }
     if (def.maim && !vd.structure) dmg += Math.trunc((vd.hp * def.maim) / 100);
     const armor = def.pierce ? 0 : Math.max(0, vd.armor + (auraArmor.get(v) ?? 0) - v.sunder);
     const ward = vd.ward && def.range > RULES.meleeReach ? vd.ward : 0;
     const dealt = Math.max(1, dmg - armor - ward);
     change(v, -dealt);
-    if (def.leech) change(u, Math.trunc((dealt * def.leech) / 100));
+    if (def.bloodlust) { const by = struckBy.get(v); if (by) { if (!by.includes(u)) by.push(u); } else struckBy.set(v, [u]); }
+    if (def.leech && !blighted(u)) change(u, Math.trunc((dealt * def.leech) / 100));
     if (def.sunder && v.sunder < def.sunder) { const cap = def.sunder; afflict.push(() => { if (v.sunder < cap) v.sunder++; }); }
     if (vd.structure) return; // stone neither burns nor slows
+    if (def.blight) { const until = s.tick + def.blight; afflict.push(() => { v.blightUntil = Math.max(v.blightUntil, until); }); }
+    if (vd.steadfast) return; // stone skin: no curse, fire or blow moves it
+    if (def.knock && !vd.flying) { const push = u.team === 0 ? def.knock : -def.knock; afflict.push(() => { v.x = Math.max(0, Math.min(MAP.laneLength, v.x + push)); }); }
     if (def.slow) { const { pct, ticks } = def.slow; afflict.push(() => {
       v.slowPct = s.tick < v.slowUntil ? Math.max(v.slowPct, pct) : pct; v.slowUntil = Math.max(v.slowUntil, s.tick + ticks); }); }
     if (def.dot) { const { dmg: burn, ticks } = def.dot; afflict.push(() => {
@@ -315,7 +326,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
   /** A full attack: works out who is struck (one foe, an area, a line, a chain) and how hard. */
   const strike = (u: UnitState, def: UnitDef, target: UnitState): void => {
     let base = def.damage;
-    if (def.charge && u.lastHit !== target.id) base = Math.trunc((base * def.charge) / 100);
+    const charged = !!def.charge && u.lastHit !== target.id;
     if (def.ramp) {
       u.ramp = u.lastHit === target.id ? Math.min(def.ramp.max, u.ramp + 1) : 0;
       base += Math.trunc((base * def.ramp.pct * u.ramp) / 100);
@@ -328,12 +339,13 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
       for (const o of s.units) {
         if (o.team === u.team || o.lane !== u.lane || !canHit(def, o)) continue;
         const ox = o.x - u.x, oy = o.y - u.y, along = Math.trunc((ox * dx + oy * dy) / len), across = Math.abs(Math.trunc((ox * dy - oy * dx) / len));
-        if (o === target || (along >= 0 && along <= def.line.length && across <= def.line.width)) hit(u, def, o, base);
+        if (o === target || (along >= 0 && along <= def.line.length && across <= def.line.width)) hit(u, def, o, base, charged);
       }
     } else if (def.splash > 0) {
       for (const o of s.units)
-        if (o.team !== u.team && o.lane === u.lane && canHit(def, o) && dist(o.x, o.y, target.x, target.y) <= def.splash) hit(u, def, o, base);
-    } else hit(u, def, target, base);
+        if (o.team !== u.team && o.lane === u.lane && canHit(def, o) && dist(o.x, o.y, target.x, target.y) <= def.splash) hit(u, def, o, base, charged);
+    } else hit(u, def, target, base, charged);
+    if (def.field) s.fires.push({ team: u.team, lane: u.lane, x: target.x, y: target.y, radius: def.field.radius, dmg: def.field.dmg, from: s.tick, until: s.tick + def.field.ticks });
     if (def.chain) {
       const struck = new Set<UnitState>([target]);
       let from = target, force = base;
@@ -352,6 +364,16 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
       }
     }
   };
+
+  // Burning ground bites every enemy walker standing in it once a second, through armor. Stone and wings are spared.
+  s.fires = s.fires.filter(f => s.tick <= f.until);
+  for (const f of s.fires) {
+    if (s.tick === f.from || (s.tick - f.from) % TICK_RATE !== 0) continue;
+    for (const u of s.units) {
+      const d = UNITS[u.type]!;
+      if (u.team !== f.team && u.lane === f.lane && !d.structure && !d.flying && !d.steadfast && dist(u.x, u.y, f.x, f.y) <= f.radius) change(u, -f.dmg);
+    }
+  }
 
   // Storms of Wrath: each one strikes every enemy soldier on the board, the same for all, once per interval.
   s.storms = s.storms.filter(st => s.tick <= st.until);
@@ -407,13 +429,15 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
     if (u.expire && s.tick >= u.expire) { change(u, -u.hp); continue; }
     // Burning bites once a second, counted from when the fire caught; sanctuary mends on the second.
     if (s.tick <= u.dotUntil && s.tick > u.dotFrom && (s.tick - u.dotFrom) % TICK_RATE === 0) change(u, -u.dotDmg);
-    if (s.tick % TICK_RATE === 0 && u.hp < def.hp) { const regen = auraRegen.get(u); if (regen) change(u, regen); }
+    if (s.tick % TICK_RATE === 0 && u.hp < def.hp && !blighted(u)) { const regen = auraRegen.get(u); if (regen) change(u, regen); }
     const slowed = s.tick < u.slowUntil;
     const speed = slowed ? Math.trunc((def.speed * (100 - u.slowPct)) / 100) : def.speed;
     const rearm = (): void => {
       let t = def.interval;
       if (def.frenzy) t -= Math.trunc((t * def.frenzy * (def.hp - u.hp)) / (def.hp * 100));
+      if (def.bloodlust) t -= Math.trunc((t * def.bloodlust.pct * u.kills) / 100);
       if (slowed) t = Math.trunc((t * 100) / (100 - u.slowPct));
+      const dread = dreaded.get(u); if (dread) t = Math.trunc((t * 100) / (100 - dread));
       u.cooldown = Math.max(1, t);
     };
     /** Distance at which `o` can be attacked right now, or -1 if it cannot be (in the air, veiled, too near). */
@@ -437,7 +461,7 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
         const d = reach(o);
         if (d === -2) tooClose = true;
         else if (d >= 0 && d < nearestEnemyD) { nearestEnemy = o; nearestEnemyD = d; }
-      } else if (def.heal > 0 && !isStructure(o) && o.hp < UNITS[o.type]!.hp) {
+      } else if (def.heal > 0 && !isStructure(o) && o.hp < UNITS[o.type]!.hp && !blighted(o)) {
         const d = dist(u.x, u.y, o.x, o.y);
         if (d < patientD) { patient = o; patientD = d; }
       }
@@ -590,11 +614,30 @@ export function step(s: GameState, commands: TimedCommand[] = []): void {
   // Apply damage/healing, remove the dead; some of the dead leave something behind.
   for (const [u, d] of delta) u.hp = Math.min(UNITS[u.type]!.hp, u.hp + d);
   if (delta.size > 0) {
+    // From the Ashes: the first killing blow leaves it standing, its wounds and afflictions burned away.
+    for (const u of delta.keys()) {
+      const undying = UNITS[u.type]!.undying;
+      if (u.hp > 0 || !undying || u.reborn || (u.expire && s.tick >= u.expire)) continue;
+      u.reborn = true; u.hp = Math.max(1, Math.trunc((UNITS[u.type]!.hp * undying) / 100));
+      u.dotUntil = u.slowUntil = u.blightUntil = 0;
+      s.events.push({ t: "reborn", unit: u.type, team: u.team, lane: u.lane, x: u.x, y: u.y });
+    }
     const dead: UnitState[] = [];
     s.units = s.units.filter(u => u.hp > 0 || (dead.push(u), false));
+    // Bloodlust: everyone who struck a foe on the tick it fell counts the kill.
+    for (const u of dead) for (const by of struckBy.get(u) ?? []) {
+      const cap = UNITS[by.type]!.bloodlust!.max;
+      if (by.hp > 0 && by.kills < cap) by.kills++;
+    }
     for (const u of dead) {
       const def = UNITS[u.type]!;
       s.events.push({ t: "death", unit: u.type, team: u.team, lane: u.lane, x: u.x, y: u.y });
+      if (def.martyr) { // Martyrdom: its blood mends the living around it (never the blighted)
+        const { heal, radius } = def.martyr;
+        for (const o of s.units)
+          if (o.team === u.team && o.lane === u.lane && !isStructure(o) && !blighted(o) && dist(o.x, o.y, u.x, u.y) <= radius) o.hp = Math.min(UNITS[o.type]!.hp, o.hp + heal);
+        s.events.push({ t: "martyr", team: u.team, lane: u.lane, x: u.x, y: u.y, radius });
+      }
       if (def.spawnOnDeath) for (let i = 0; i < def.spawnOnDeath.count; i++) {
         const [ox, oy] = SCATTER[i % SCATTER.length]!;
         addUnit(s, def.spawnOnDeath.unit, u.owner, u.team, u.lane, u.x + (u.team === 0 ? ox : -ox), Math.max(500, Math.min(LANE_WIDTH - 500, u.y + oy)));

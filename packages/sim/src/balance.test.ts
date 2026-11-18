@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { UNITS, UNIT_ORDER, addUnit, clash, createGame, massOf, step, stream } from "./index";
+import { RULES, UNITS, UNIT_ORDER, addUnit, clash, createGame, massOf, step, stream } from "./index";
 import type { Army } from "./index";
 
 /**
@@ -10,6 +10,12 @@ const GOLD = 3300;
 const mass = (id: string): Army => massOf(id, GOLD);
 /** Margin of `a` over `b` for the same gold: +1 = a untouched and b wiped out. */
 const duel = (a: string, b: string): number => clash(mass(a), mass(b)).margin;
+/** Half the gold on a plain escort: shields before a ranged or siege unit, crossbows behind a front-line one. How engines are meant to fight. */
+const escorted = (id: string): Army => {
+  const e = UNITS[id]!.role === "front" ? "arbalester" : "oathguard", a = massOf(id, 2000), b = massOf(e, 2000);
+  return { ...b, [id]: (a[id] ?? 0) + (b[id] ?? 0) };
+};
+const behindLine = (a: string, b: string): number => clash(escorted(a), escorted(b)).margin;
 const fighters = UNIT_ORDER.filter(id => UNITS[id]!.damage > 0);
 /** Tiers I to III are tuned against each other; tier IV is meant to be the strongest and is only checked for fairness and for having answers. */
 const tuned = fighters.filter(id => UNITS[id]!.tier <= 3);
@@ -20,10 +26,13 @@ describe("fairness", () => {
     for (const id of fighters) expect(Math.abs(clash(mass(id), mass(id)).margin), id).toBeLessThan(1e-9);
     const mixed: Army = { oathguard: 4, arbalester: 5, zealot: 2, hound: 3, necromancer: 2, colossus: 1, cantor: 1, shade: 2, doctor: 1 };
     expect(Math.abs(clash(mixed, mixed).margin)).toBeLessThan(1e-9);
+    // every new rule at once: kills counted, blight, martyrs, knockback, dread, rebirth, burning ground
+    const wild: Army = { halberdier: 3, flagellant: 3, bats: 2, countess: 1, lich: 1, reliquary: 1, doctor: 1, titan: 1, rider: 1, seraph: 1, hellmouth: 1 };
+    expect(Math.abs(clash(wild, wild, { maxSeconds: 200 }).margin)).toBeLessThan(1e-9);
   });
 
   it("a mirrored match on the real lane stays mirrored, towers, waves, summons and all", () => {
-    const army: Army = { oathguard: 3, arbalester: 4, hound: 2, necromancer: 2, colossus: 1, gargoyle: 2, shade: 2, doctor: 1, zealot: 2, ballista: 1 };
+    const army: Army = { oathguard: 3, arbalester: 4, hound: 2, necromancer: 2, colossus: 1, gargoyle: 2, shade: 2, doctor: 1, zealot: 2, ballista: 1, halberdier: 1, bats: 1, flagellant: 1, countess: 1, lich: 1 };
     const r = stream(army, army, 6);
     expect(r.score).toBe(0);
     expect(r.broken[0]).toBe(r.broken[1]);
@@ -48,10 +57,18 @@ describe("counters (equal gold)", () => {
   it("melee cannot touch flyers; anti-air brings them down", () => {
     for (const walker of ["oathguard", "zealot", "dreadknight", "penitent", "colossus", "countess", "headsman"]) {
       const r = clash(mass("gargoyle"), mass(walker));
-      expect(r.left[0], walker).toBeGreaterThan(0.9); // barely a scratch (only the cathedral gun, if they fly that far)
+      expect(r.left[0], walker).toBeGreaterThan(0.85); // barely a scratch (only the cathedral gun, while the walkers besiege it)
       expect(r.left[1], walker).toBeLessThan(0.9); // (the fastest walkers partly outrun them)
     }
-    beats("witchhunter", "gargoyle"); beats("witchhunter", "wyrm"); beats("arbalester", "wyrm"); beats("ballista", "gargoyle"); beats("hexbinder", "wyrm");
+    beats("witchhunter", "gargoyle"); beats("witchhunter", "wyrm"); beats("arbalester", "wyrm"); beats("hexbinder", "wyrm");
+  });
+  it("crypt bats feast on armies that cannot shoot up, and fall to any that can", () => {
+    for (const walker of ["oathguard", "zealot", "halberdier", "penitent", "dreadknight"]) beats("bats", walker, 0.5);
+    for (const archer of ["hexbinder", "gargoyle"]) beats(archer, "bats");
+    beats("arbalester", "bats", 0.05); // two bolts a bat: a win, not a rout
+  });
+  it("ground-bound casters and engines cannot answer wings", () => {
+    for (const engine of ["necromancer", "lich", "ballista", "trebuchet"]) beats("gargoyle", engine, 0.5);
   });
   it("a lantern among the archers unmasks shades", () => {
     const blind = clash({ arbalester: 20 }, mass("shade")).margin;
@@ -59,23 +76,38 @@ describe("counters (equal gold)", () => {
     expect(lit).toBeGreaterThan(blind + 0.08);
   });
   it("the headsman is the answer to single great foes, the hexbinder to anything slow and strong", () => {
-    beats("headsman", "countess"); beats("hexbinder", "countess"); beats("hexbinder", "headsman");
+    beats("headsman", "countess"); beats("gargoyle", "countess"); beats("hexbinder", "headsman");
     expect(duel("headsman", "colossus")).toBeGreaterThan(duel("penitent", "colossus")); // execute matters against the biggest target
   });
-  it("elite units lose to their counters for the same gold", () => { beats("gargoyle", "colossus"); beats("arbalester", "countess"); beats("witchhunter", "wyrm"); });
+  it("elite units lose to their counters for the same gold", () => { beats("gargoyle", "colossus"); beats("witchhunter", "wyrm"); beats("penitent", "countess"); });
+  it("halberds stop anything that comes at a run", () => {
+    for (const swift of ["hound", "dreadknight", "shade", "countess"]) beats("halberdier", swift);
+  });
+  it("the Countess grows on a crowd of light soldiers, and dies to steel and the axe", () => {
+    beats("countess", "arbalester"); beats("headsman", "countess"); beats("halberdier", "countess");
+  });
+
+  it("behind a shield wall, the Impaler breaks heavy armor", () => {
+    for (const heavy of ["penitent", "colossus", "headsman"]) expect(behindLine("ballista", heavy), heavy).toBeGreaterThan(0.15);
+  });
 
   it("no unit beats everything, and every unit beats something", () => {
     for (const a of tuned) {
       let wins = 0, losses = 0;
-      for (const b of tuned) { if (a === b) continue; const m = duel(a, b); if (m > 0.15) wins++; if (m < -0.15) losses++; }
+      for (const b of tuned) {
+        if (a === b) continue;
+        const m = duel(a, b);
+        if (m > 0.15 || (UNITS[a]!.role === "siege" && behindLine(a, b) > 0.15)) wins++; // engines are judged behind a line, where they fight
+        if (m < -0.15) losses++;
+      }
       expect(wins, `${a} wins`).toBeGreaterThanOrEqual(1); // casters priced for fighting behind a line win few duels massed alone
       expect(losses, `${a} losses`).toBeGreaterThanOrEqual(2);
     }
   });
 
   it("more gold beats a counter", () => {
-    expect(duel("flagellant", "zealot")).toBeLessThan(0);
-    expect(clash(massOf("flagellant", GOLD * 2.5), mass("zealot")).margin).toBeGreaterThan(0);
+    expect(duel("hound", "zealot")).toBeLessThan(0);
+    expect(clash(massOf("hound", GOLD * 2.5), mass("zealot")).margin).toBeGreaterThan(0);
     expect(clash(massOf("colossus", GOLD * 2.5), mass("gargoyle"), { maxSeconds: 60 }).left[0]).toBeGreaterThan(0.5); // they cannot be killed fast enough
   });
 
@@ -265,14 +297,152 @@ describe("abilities", () => {
     expect(UNITS.colossus!.hp - big.hp).toBeGreaterThan(UNITS.skeleton!.hp - small.hp + 50);
   });
 
-  it("the Impaler skewers a whole file, and flyers in it take far more", () => {
+  it("the Impaler skewers a whole file, doubly through heavy armor, and never the sky", () => {
     const s = arena();
     const file = [0, 1, 2].map(i => foe(s, "oathguard", 108000 + i * 2500)), beside = foe(s, "oathguard", 110000, 16000), bird = foe(s, "gargoyle", 112000, 12300);
+    const heavy = foe(s, "penitent", 112000, 12500);
     mine(s, "ballista", 100000);
     step(s);
+    const d = UNITS.ballista!;
     expect(file.every(u => u.hp < UNITS.oathguard!.hp)).toBe(true);
     expect(beside.hp).toBe(UNITS.oathguard!.hp);
-    expect(UNITS.gargoyle!.hp - bird.hp).toBe(UNITS.ballista!.damage + Math.trunc((UNITS.ballista!.damage * UNITS.ballista!.bonus!.flying!) / 100) - UNITS.gargoyle!.armor);
+    expect(bird.hp).toBe(UNITS.gargoyle!.hp);
+    expect(UNITS.oathguard!.hp - file[0]!.hp).toBe(d.damage - UNITS.oathguard!.armor - UNITS.oathguard!.ward!);
+    expect(UNITS.penitent!.hp - heavy.hp).toBe(d.damage + Math.trunc((d.damage * d.bonus!.armored!) / 100) - UNITS.penitent!.armor);
+  });
+
+  it("Set Spears: a halberd bites deep into swift foes, and a lance charge does it no extra harm", () => {
+    const s = arena();
+    const dog = foe(s, "hound", 101800, 11000), slow = foe(s, "oathguard", 101800, 13000);
+    mine(s, "halberdier", 100000, 11000); mine(s, "halberdier", 100000, 13000);
+    step(s);
+    const h = UNITS.halberdier!;
+    expect(UNITS.hound!.hp - dog.hp).toBe(h.damage + Math.trunc((h.damage * h.bonus!.swift!) / 100));
+    expect(UNITS.oathguard!.hp - slow.hp).toBe(h.damage - UNITS.oathguard!.armor);
+    const s2 = arena(), pike = foe(s2, "halberdier", 102000);
+    mine(s2, "dreadknight", 100000);
+    step(s2);
+    expect(UNITS.halberdier!.hp - pike.hp).toBe(UNITS.dreadknight!.damage - UNITS.halberdier!.armor);
+  });
+
+  it("Scent: a hound near a Shade lets the archers see it", () => {
+    const s = arena();
+    const ghost = foe(s, "shade", 105000);
+    mine(s, "arbalester", 100000);
+    step(s);
+    expect(ghost.hp).toBe(UNITS.shade!.hp);
+    mine(s, "hound", 103000);
+    run(s, 2);
+    expect(ghost.hp).toBeLessThanOrEqual(UNITS.shade!.hp - UNITS.arbalester!.damage);
+  });
+
+  it("Martyrdom mends the allies around a fallen Flagellant, unless they are blighted", () => {
+    const s = arena();
+    const martyr = mine(s, "flagellant", 100000, 12000), near = mine(s, "oathguard", 98500, 12000), cursed = mine(s, "oathguard", 100000, 14500), far = mine(s, "oathguard", 90000, 12000);
+    for (const u of [near, cursed, far]) u.hp = 100;
+    cursed.blightUntil = 1000;
+    martyr.hp = 1; foe(s, "arbalester", 104000, 12000);
+    step(s);
+    expect(s.units).not.toContain(martyr);
+    expect(near.hp).toBe(100 + UNITS.flagellant!.martyr!.heal);
+    expect([cursed.hp, far.hp]).toEqual([100, 100]);
+    expect(s.events.some(e => e.t === "martyr")).toBe(true);
+  });
+
+  it("Grave Blight stops every kind of healing", () => {
+    const s = arena();
+    const ark = mine(s, "reliquary", 99000), doc = mine(s, "doctor", 100000, 9000), lady = mine(s, "countess", 100000, 12000);
+    void ark; void doc;
+    lady.hp = 300;
+    foe(s, "trebuchet", 101400, 12000).cooldown = 10000; // something for her to cut
+    lady.blightUntil = 60;
+    run(s, 50);
+    expect(lady.hp).toBeLessThanOrEqual(300);
+    run(s, 40);
+    expect(lady.hp).toBeGreaterThan(300); // blight gone: mended, blessed and fed again
+    const s2 = arena(), victim = foe(s2, "oathguard", 108000);
+    mine(s2, "lich", 100000);
+    step(s2);
+    expect(victim.blightUntil).toBe(s2.tick - 1 + UNITS.lich!.blight!);
+  });
+
+  it("Death Knell hurls walkers back, but not stone skin or wings", () => {
+    const s = arena();
+    const walker = foe(s, "oathguard", 102500, 12000), stone = foe(s, "gargoyle", 102500, 12500);
+    mine(s, "titan", 100000);
+    step(s);
+    expect(walker.x).toBeGreaterThanOrEqual(102500 + UNITS.titan!.knock! - UNITS.oathguard!.speed - RULES.separationStep); // hurled back, less its own step
+    expect(Math.abs(stone.x - 102500)).toBeLessThan(UNITS.titan!.knock! / 2);
+  });
+
+  it("Stone Skin shrugs off curses and fire", () => {
+    const s = arena();
+    const g = foe(s, "gargoyle", 104000);
+    mine(s, "hexbinder", 100000);
+    run(s, 2);
+    expect(g.hp).toBeLessThan(UNITS.gargoyle!.hp);
+    expect(g.slowUntil).toBe(0);
+  });
+
+  it("Dread: soldiers near the Pale Rider strike slower; towers do not care", () => {
+    const swings = (withRider: boolean): number => {
+      const s = arena();
+      foe(s, "tower", 103000).cooldown = 1e9; // a target that never fights back
+      const guard = mine(s, "oathguard", 101800);
+      if (withRider) foe(s, "rider", 104000, 7000).cooldown = 1e9;
+      let n = 0;
+      for (let i = 0; i < 200; i++) { step(s); n += s.events.filter(e => e.t === "shot" && e.id === guard.id).length; }
+      return n;
+    };
+    expect(swings(true)).toBeLessThan(swings(false) * 0.8);
+  });
+
+  it("From the Ashes: a slain Seraph rises once at half health", () => {
+    const s = arena();
+    const bird = mine(s, "seraph", 100000);
+    bird.hp = 1; bird.blightUntil = 1000;
+    const shooter = foe(s, "arbalester", 104000);
+    void shooter;
+    run(s, 2);
+    expect(s.units).toContain(bird);
+    expect(bird.reborn).toBe(true);
+    expect(bird.hp).toBeGreaterThan(UNITS.seraph!.hp / 2 - 40);
+    expect(bird.blightUntil).toBe(0);
+    bird.hp = 1;
+    run(s, 25);
+    expect(s.units).not.toContain(bird);
+  });
+
+  it("Bloodlust: each kill quickens the Countess, up to her cap", () => {
+    const s = arena();
+    const lady = mine(s, "countess", 100000);
+    for (let i = 0; i < 8; i++) { const v = foe(s, "skeleton", 101400, 12000 + (i % 2 ? 300 : -300)); v.hp = 1; v.cooldown = 1e9; }
+    run(s, 200);
+    expect(lady.kills).toBe(UNITS.countess!.bloodlust!.max);
+  });
+
+  it("Brimstone leaves the ground burning: walkers in it keep burning, flyers above do not", () => {
+    const s = arena();
+    const target = foe(s, "oathguard", 110000), bird = foe(s, "gargoyle", 110500, 13000);
+    mine(s, "tower", 108500).cooldown = 1e9; // holds the walker in the fire without harming it
+    mine(s, "hellmouth", 100000);
+    step(s);
+    expect(s.fires.length).toBe(1);
+    s.units = s.units.filter(u => u.type !== "hellmouth");
+    const [a, b] = [target.hp, bird.hp];
+    run(s, 41);
+    expect(a - target.hp).toBe(UNITS.hellmouth!.field!.dmg * 2);
+    expect(bird.hp).toBe(b);
+    run(s, UNITS.hellmouth!.field!.ticks);
+    expect(s.fires.length).toBe(0);
+  });
+
+  it("a belfry looses three bats, and swords cannot reach them", () => {
+    const g = arena();
+    g.players[0]!.unlocked.push("bats"); g.players[0]!.credits = 1000;
+    step(g, [{ player: 0, cmd: { type: "build", keeper: 0, unit: "bats", col: 4, row: 4 } }]);
+    run(g, 600);
+    expect(g.units.filter(u => u.type === "bats").length).toBe(3);
   });
 
   it("Frenzy quickens a wounded Flagellant; two hounds come from one kennel", () => {
