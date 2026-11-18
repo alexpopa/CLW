@@ -268,7 +268,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   const teleportTo = (w: Spot) => {
     const slot = selectedKeeper ?? KEEPERS.findIndex(k => k.teleport) as 0 | 1;
     teleporting = false;
-    send({ type: "teleport", keeper: slot, x: Math.round(w.x), y: Math.round(w.y), lane: w.lane }); sound.play("raise");
+    send({ type: "teleport", keeper: slot, x: Math.round(w.x), y: Math.round(w.y), lane: w.lane }); sound.play("teleport");
   };
   canvas.addEventListener("pointerup", e => {
     const wasDrag = down?.moved; down = null;
@@ -357,7 +357,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     view.snapshot(game);
     step(game, cmds);
     view.addEvents(game, game.events, now);
-    sound.events(game.events, view.camX, me().team);
+    sound.events(game, view.camX, view.camZ, ME);
     for (const e of game.events) {
       if (e.t === "researched" && e.player === ME) {
         if (e.unit) hud.toast(`${UNITS[e.unit]!.name} studied — its chantry may now be raised`);
