@@ -108,3 +108,62 @@ export function courtyardTile(px: number, wu: number): HTMLCanvasElement {
     }
   });
 }
+
+/**
+ * The cathedral court's churchyard ground: dark earth, moss, dead grass, mud and puddles, laid over the court's paving
+ * with the paved walks left open (transparent). `x0`/`z0` is the world corner the canvas starts at, `wu` x `hu` its
+ * size in world units; `walks` are the polygons (world x, z) where the paving shows, edged with half-sunk kerb stones.
+ */
+export function churchyardGround(px: number, x0: number, z0: number, wu: number, hu: number, walks: [number, number][][], seed: number): HTMLCanvasElement {
+  return tile(Math.round(wu * px), Math.round(hu * px), (c: Ctx, w, h) => {
+    const r = rng(seed), X = (x: number) => (x - x0) * px, Y = (z: number) => (z - z0) * px;
+    c.fillStyle = "#33342f"; c.fillRect(0, 0, w, h);
+    const blot = (x: number, y: number, rad: number, col: string) => {
+      const g = c.createRadialGradient(x, y, 0, x, y, rad); g.addColorStop(0, col); g.addColorStop(1, col.replace(/[\d.]+\)$/, "0)"));
+      c.fillStyle = g; c.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+    };
+    for (let i = 0; i < 70; i++) blot(r() * w, r() * h, px * (2 + r() * 5), r() < 0.5 ? `rgba(62,76,50,${0.35 + r() * 0.3})` : `rgba(20,19,17,${0.25 + r() * 0.3})`); // moss and bare mud
+    for (let i = 0; i < 26; i++) blot(r() * w, r() * h, px * (1.5 + r() * 3), `rgba(78,70,56,${0.25 + r() * 0.25})`); // dry, paler soil
+    for (let i = 0; i < 6000; i++) { // grain
+      const x = r() * w, y = r() * h, s = 0.6 + r() * 2.2;
+      c.fillStyle = r() < 0.55 ? `rgba(0,0,0,${0.06 + r() * 0.14})` : r() < 0.6 ? `rgba(92,110,72,${0.08 + r() * 0.14})` : `rgba(210,200,180,${0.03 + r() * 0.05})`;
+      c.beginPath(); c.ellipse(x, y, s * 1.6, s * 0.8, r() * 3, 0, Math.PI * 2); c.fill();
+    }
+    for (let i = 0; i < 9; i++) { // puddles catching the moonlight
+      const x = r() * w, y = r() * h, rx = px * (0.8 + r() * 1.8), ry = rx * (0.4 + r() * 0.4), a = r() * 3;
+      c.fillStyle = "rgba(24,22,19,0.55)"; c.beginPath(); c.ellipse(x, y, rx * 1.15, ry * 1.2, a, 0, Math.PI * 2); c.fill(); // wet mud round it
+      c.fillStyle = "rgba(52,60,78,0.8)"; c.beginPath(); c.ellipse(x, y, rx, ry, a, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = "rgba(170,185,215,0.3)"; c.lineWidth = 1.5; c.beginPath(); c.ellipse(x, y, rx * 0.75, ry * 0.65, a, 3.6, 5.2); c.stroke();
+    }
+    for (let i = 0; i < 70; i++) { // loose flagstones and rubble sunk in the earth
+      const x = r() * w, y = r() * h, s = px * (0.35 + r() * 0.6), v = 92 + r() * 40;
+      c.save(); c.translate(x, y); c.rotate(r() * 3);
+      c.fillStyle = `rgb(${v + 6},${v},${v - 10})`; c.beginPath(); c.moveTo(0, -s); c.lineTo(s, 0); c.lineTo(0, s * (0.5 + r() * 0.5)); c.lineTo(-s, 0); c.closePath(); c.fill();
+      c.strokeStyle = "rgba(0,0,0,0.5)"; c.lineWidth = 1.2; c.stroke(); c.restore();
+    }
+    for (let i = 0; i < 900; i++) { // tufts of dead grass
+      const x = r() * w, y = r() * h, tall = 4 + r() * 7;
+      c.strokeStyle = r() < 0.6 ? `rgba(${96 + r() * 30},${100 + r() * 26},${70 + r() * 16},0.6)` : `rgba(${120 + r() * 30},${108 + r() * 20},${78 + r() * 14},0.55)`; c.lineWidth = 1.2;
+      for (let k = -2; k <= 2; k++) { c.beginPath(); c.moveTo(x + k * 1.2, y); c.lineTo(x + k * 2.6 + (r() - 0.5) * 2, y - tall * (0.6 + r() * 0.4)); c.stroke(); }
+    }
+    // the walks: ragged outlines, so the earth spills a little onto the paving and the paving breaks into the earth
+    const ragged = walks.map(poly => {
+      const pts: [number, number][] = [];
+      poly.forEach(([ax, az], i) => {
+        const [bx, bz] = poly[(i + 1) % poly.length]!, len = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.round(len / 0.8));
+        for (let k = 0; k < n; k++) pts.push([X(ax + ((bx - ax) * k) / n) + (r() - 0.5) * px * 0.7, Y(az + ((bz - az) * k) / n) + (r() - 0.5) * px * 0.7]);
+      });
+      return pts;
+    });
+    const paths = ragged.map(pts => { const p = new Path2D(); pts.forEach(([x, y], i) => (i ? p.lineTo(x, y) : p.moveTo(x, y))); p.closePath(); return p; });
+    c.globalCompositeOperation = "destination-out"; c.fillStyle = "#000";
+    for (const p of paths) c.fill(p);
+    c.globalCompositeOperation = "source-over";
+    ragged.forEach((pts, i) => { for (const [x, y] of pts) { // kerb stones along the edge, where it meets earth and not another walk
+      if (r() < 0.25 || paths.some((p, j) => j !== i && c.isPointInPath(p, x, y))) continue;
+      const s = px * (0.28 + r() * 0.22), v = 104 + r() * 36;
+      c.fillStyle = `rgb(${v + 8},${v + 2},${v - 10})`; c.beginPath(); c.roundRect(x - s, y - s * 0.8, s * 2, s * 1.6, s * 0.5); c.fill();
+      c.strokeStyle = "rgba(0,0,0,0.55)"; c.lineWidth = 1.2; c.stroke();
+    } });
+  });
+}

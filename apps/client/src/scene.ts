@@ -8,12 +8,15 @@ import type { GameState, SimEvent, TeamId } from "@lw/sim";
 import { PAL, TEAM, ball, box, cyl, cathedralModel, chantryModel, cloisterModel, curtainModel, fenceModel, graveyardModel, merge, precinctModel, shrineModel, unitModel, wholeModel } from "./models";
 import type { Gait, ModelDef, Part } from "./models";
 import { LANE_GAP, LANE_LEN, LANE_PITCH, LANE_W, fieldX, fieldZ, laneAt, laneZ, midZ } from "./layout";
-import { blobTexture, courtyardTile, glowTexture, groundTile, runeTexture } from "./textures";
+import { blobTexture, churchyardGround, courtyardTile, glowTexture, groundTile, runeTexture } from "./textures";
+import { churchyard } from "./churchyard";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 /** Presentation only: a 3D view drawn FROM GameState. No rules here. World: x along the lane, z across it, y up. */
 const W = (milli: number) => milli / 1000;
 const MID_Z = LANE_W / 2, LZ = laneZ;
+/** World units per tile of the building grounds' paving. */
+const PAVE = 12;
 const PITCH = (52 * Math.PI) / 180, FOV = 30;
 const NEUTRAL = 0x8a90a6, UNIT_SCALE = 0.8, BUILDING_SCALE = 0.6;
 const SHRINE_Z = [-1.8, LANE_W + 1.8]; // shrines flank the lane instead of standing in it
@@ -347,6 +350,26 @@ export class Renderer {
     return new THREE.MeshBasicMaterial({ map: this.glowTex, color, opacity, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
   }
 
+  /**
+   * A flat paved rectangle on the ground, x0..x1 by z0..z1, its texture laid by world position so that neighbouring
+   * pavings (a building ground and the court behind it) join without a seam.
+   */
+  private paving(x0: number, x1: number, z0: number, z1: number): THREE.BufferGeometry {
+    const geo = new THREE.PlaneGeometry(x1 - x0, z1 - z0); geo.rotateX(-Math.PI / 2); geo.translate((x0 + x1) / 2, 0, (z0 + z1) / 2);
+    const pos = geo.attributes.position!, uv = geo.attributes.uv!;
+    for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) / PAVE, -pos.getZ(i) / PAVE);
+    return geo;
+  }
+  private pavingTex?: THREE.Texture;
+  /** The paving's material; `offset` keeps overlapping pavings apart in depth. */
+  private pavingMat(offset: number): THREE.MeshStandardMaterial {
+    if (!this.pavingTex) {
+      const t = (this.pavingTex = new THREE.CanvasTexture(courtyardTile(40, PAVE)));
+      t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+    }
+    return new THREE.MeshStandardMaterial({ map: this.pavingTex, roughness: 0.9, metalness: 0, polygonOffset: true, polygonOffsetFactor: offset, polygonOffsetUnits: offset });
+  }
+
   private buildWorld(): void {
     const s = this.world, n = this.lanes, mid = midZ(n), nearEdge = LZ(n - 1) + LANE_W;
 
@@ -425,26 +448,37 @@ export class Renderer {
       }
     } else {
       // the cathedral courts: paved yards from the rear of the building grounds back to a curtain wall, across every lane
-      // and the graveyard strips between them
-      const depth = W(court) + W(MAP.zoneStart), z0 = -0.9, z1 = nearEdge + 0.9, courtTex = new THREE.CanvasTexture(courtyardTile(40, 12));
-      courtTex.wrapS = courtTex.wrapT = THREE.RepeatWrapping; courtTex.repeat.set(depth / 12, (z1 - z0) / 12); courtTex.colorSpace = THREE.SRGBColorSpace; courtTex.anisotropy = 8;
-      const courtMat = new THREE.MeshStandardMaterial({ map: courtTex, color: 0xb8b0a4, roughness: 0.9, metalness: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+      // and the graveyard strips between them, paved like the grounds (and in the same tone, so one runs into the other).
+      // Over the paving lies a churchyard: earth, trees, graves and statuary, with the walks the armies take left open.
+      const z0 = -0.9, z1 = nearEdge + 0.9;
       for (const team of [0, 1] as const) {
         const back = team === 0 ? -W(court) : LANE_LEN + W(court), front = team === 0 ? W(MAP.zoneStart) : LANE_LEN - W(MAP.zoneStart);
-        const yard = new THREE.Mesh(new THREE.PlaneGeometry(depth, z1 - z0), courtMat);
-        yard.rotation.x = -Math.PI / 2; yard.position.set((back + front) / 2, 0.02, (z0 + z1) / 2); yard.receiveShadow = true; s.add(yard);
+        const yard = new THREE.Mesh(this.paving(Math.min(back, front), Math.max(back, front), z0, z1), this.pavingMat(-1));
+        yard.position.y = 0.02; yard.receiveShadow = true; s.add(yard);
         const wall = this.mesh(curtainModel(z0, z1), this.lit); wall.position.x = back + (team === 0 ? -0.5 : 0.5); s.add(wall);
+
+        const cy = churchyard(n, 31 + team), g = new THREE.Group();
+        g.position.x = team === 0 ? 0 : LANE_LEN; g.scale.x = team === 0 ? 1 : -1; // team 1's court is team 0's, mirrored along the lanes
+        const earthTex = new THREE.CanvasTexture(churchyardGround(14, cy.x0, cy.z0, cy.x1 - cy.x0, cy.z1 - cy.z0, cy.walks, 5 + team));
+        earthTex.colorSpace = THREE.SRGBColorSpace; earthTex.anisotropy = 8;
+        const earth = new THREE.Mesh(new THREE.PlaneGeometry(cy.x1 - cy.x0, cy.z1 - cy.z0),
+          new THREE.MeshStandardMaterial({ map: earthTex, alphaTest: 0.5, roughness: 1, metalness: 0, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
+        earth.rotation.x = -Math.PI / 2; earth.position.set((cy.x0 + cy.x1) / 2, 0.025, (cy.z0 + cy.z1) / 2); earth.receiveShadow = true;
+        g.add(earth, this.mesh(cy.lit, this.lit), new THREE.Mesh(cy.glow, this.glow));
+        for (const [x, y, z] of cy.flames) {
+          if (this.lite) g.add(new THREE.Mesh(this.pool(x, z, 16), this.poolMat(0xff9a40, 0.5)));
+          else { const l = new THREE.PointLight(0xff9a40, 70, 22, 1.7); l.position.set(x, y + 0.6, z); g.add(l); }
+        }
+        s.add(g);
       }
     }
 
     // building ground: a paved precinct that runs from the cathedral steps (1v1) or the court (team games) to the base towers in every lane, walled along its sides, with a gate toward each neighbouring lane
-    const back = n === 1 ? W(MAP.zoneStart - MAP.hqOffset) : 0, yardLen = zoneLen + back + 0.6, yardTex = new THREE.CanvasTexture(courtyardTile(40, 12));
-    yardTex.wrapS = yardTex.wrapT = THREE.RepeatWrapping; yardTex.repeat.set(yardLen / 12, (LANE_W + 1.2) / 12); yardTex.colorSpace = THREE.SRGBColorSpace; yardTex.anisotropy = 8;
-    const yardMat = new THREE.MeshStandardMaterial({ map: yardTex, roughness: 0.9, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const back = n === 1 ? W(MAP.zoneStart - MAP.hqOffset) : 0, yardLen = zoneLen + back + 0.6, yardMat = this.pavingMat(-2);
     for (let l = 0; l < n; l++) for (const team of [0, 1] as const) {
-      const rear = W(MAP.zoneStart), x0 = team === 0 ? rear : LANE_LEN - rear - zoneLen;
-      const yard = new THREE.Mesh(new THREE.PlaneGeometry(yardLen, LANE_W + 1.2), yardMat);
-      yard.rotation.x = -Math.PI / 2; yard.position.set(x0 + zoneLen / 2 + (team === 0 ? -1 : 1) * (back - 0.6) / 2, 0.03, LZ(l) + MID_Z); yard.receiveShadow = true; s.add(yard);
+      const rear = W(MAP.zoneStart), x0 = team === 0 ? rear : LANE_LEN - rear - zoneLen, cx = x0 + zoneLen / 2 + (team === 0 ? -1 : 1) * (back - 0.6) / 2;
+      const yard = new THREE.Mesh(this.paving(cx - yardLen / 2, cx + yardLen / 2, LZ(l) - 0.6, LZ(l) + LANE_W + 0.6), yardMat);
+      yard.position.y = 0.03; yard.receiveShadow = true; s.add(yard);
       const wall = precinctModel(team, zoneLen, LANE_W, l > 0, l < n - 1, back), g = new THREE.Group();
       g.add(this.mesh(wall.lit, this.lit), new THREE.Mesh(wall.glow, this.glow));
       g.position.set(team === 0 ? rear : LANE_LEN - rear, 0, LZ(l)); g.scale.x = team === 0 ? 1 : -1; s.add(g);

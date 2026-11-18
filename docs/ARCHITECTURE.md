@@ -20,7 +20,7 @@ Consequences:
 - **AI** is just a function `(state, me) → Command[]` (`ai.ts`). Keep it simple.
 
 ## Client (Fable owns)
-- `scene.ts`: three.js scene (ground, cloister, cathedrals, shrines, chantries, units, effects) and camera. `models.ts`: original low-poly models built from primitives. `textures.ts`: procedural textures. `audio.ts`: synthesized WebAudio sound. `hud.ts` + `hud.css`: DOM overlay (gold, income, wave bell, cathedral health, unit cards, tithe, rite, map strip). `main.ts`: input and the fixed-step loop.
+- `scene.ts`: three.js scene (ground, cloister, cathedrals, shrines, chantries, units, effects) and camera. `churchyard.ts` lays out original decorative scenery in team-game cathedral courts, leaving paved army walks clear; its ground texture is generated in `textures.ts`. `models.ts`: original low-poly models built from primitives. `textures.ts`: procedural textures. `audio.ts`: synthesized WebAudio sound. `hud.ts` + `hud.css`: DOM overlay (gold, income, wave bell, cathedral health, unit cards, tithe, rite, map strip). `main.ts`: input and the fixed-step loop.
 - **Horizontal scrolling**: camera x, edge-scroll + drag + wheel + minimap click; world = `laneLengthTiles` wide. Lanes stack vertically; see GAME_DESIGN.md §Map.
 - Interpolate unit positions between sim ticks for smooth render (render at display rate, sim at 20 Hz).
 - Never put rules in the client.

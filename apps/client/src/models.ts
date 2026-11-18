@@ -249,20 +249,23 @@ export function cloisterModel(fromX: number, toX: number): G {
   return merge(parts);
 }
 
+/** A bare, twisted tree of `h` trunk length at (x, z), its branches pushed onto `parts`; `r` is a seeded random source. */
+export function deadTree(parts: G[], r: () => number, x: number, z: number, h: number, rad = 0.32): void {
+  const branch = (p: THREE.Vector3, dir: THREE.Vector3, len: number, rad: number) => {
+    const end = p.clone().addScaledVector(dir, len), g = paint(new THREE.CylinderGeometry(rad * 0.65, rad, len, 5), PAL.ink);
+    g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir)).translate((p.x + end.x) / 2, (p.y + end.y) / 2, (p.z + end.z) / 2);
+    parts.push(g);
+    if (len > 1.1) for (let i = 0; i < 2; i++) branch(end, dir.clone().add(new THREE.Vector3(r() - 0.5, r() * 0.3, r() - 0.5).multiplyScalar(1.5)).normalize(), len * 0.68, rad * 0.62);
+  };
+  branch(new THREE.Vector3(x, 0, z), new THREE.Vector3((r() - 0.5) * 0.2, 1, 0).normalize(), h, rad);
+}
+
 /** Graves, crosses and dead trees scattered along both lane edges (deterministic). */
 export function graveyardModel(fromX: number, toX: number, zNear: number): G {
   let s = 1234;
   const r = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
   const parts: G[] = [];
-  const tree = (x: number, z: number, h: number) => {
-    const branch = (p: THREE.Vector3, dir: THREE.Vector3, len: number, rad: number) => {
-      const end = p.clone().addScaledVector(dir, len), g = paint(new THREE.CylinderGeometry(rad * 0.65, rad, len, 5), PAL.ink);
-      g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir)).translate((p.x + end.x) / 2, (p.y + end.y) / 2, (p.z + end.z) / 2);
-      parts.push(g);
-      if (len > 1.1) for (let i = 0; i < 2; i++) branch(end, dir.clone().add(new THREE.Vector3(r() - 0.5, r() * 0.3, r() - 0.5).multiplyScalar(1.5)).normalize(), len * 0.68, rad * 0.62);
-    };
-    branch(new THREE.Vector3(x, 0, z), new THREE.Vector3((r() - 0.5) * 0.2, 1, 0).normalize(), h, 0.32);
-  };
+  const tree = (x: number, z: number, h: number) => deadTree(parts, r, x, z, h);
   for (let x = fromX; x < toX; x += 3.2) {
     for (const z0 of [-1.6, zNear]) {
       const z = z0 + (z0 < 0 ? r() * 1.2 - 0.4 : r() * 3), xx = x + r() * 2.4, roll = r();
