@@ -5,6 +5,7 @@ import { fieldZ, laneAt } from "./layout";
 import { RITE, TAB_KEYS, cardByKey, createHud } from "./hud";
 import { Sound } from "./audio";
 import { hostedAccounts, matchCredentials, Net } from "./net";
+import { lite, profile } from "./device";
 
 /**
  * Solo: a match vs the autopilot runs the shared sim right here (no server, no account).
@@ -16,7 +17,8 @@ const LANE = MAP.laneLength / 1000;
 
 function start(mount: HTMLElement, hudRoot: HTMLElement): void {
   const view = new Renderer();
-  view.init(mount);
+  if (profile() === "phone") view.zoom = 0.85; // a small screen starts a little nearer, so soldiers are big enough to read
+  view.init(mount, lite);
   const sound = new Sound();
 
   let game: GameState = createGame({ teamSize: 1, seed: 1, aiSlots: [1] });
@@ -51,6 +53,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     view.reset(); view.layout(state.laneCount); view.lookAt(me().lane, home()); hud.hideOverlay(); sound.play("bell");
     const team = me().team;
     hud.setSide(team, (pics[team] ??= view.portraits(team)));
+    if (hud.profile === "phone" && innerHeight > innerWidth) hud.toast("Turn your phone on its side for a wider field");
   };
   const quitOnline = () => { net?.close(); net = null; online = false; inLobby = false; inSolo = false; };
   /** The difficulty a new solo autopilot starts at: whatever was chosen last on this device. */
@@ -370,6 +373,7 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
 
   // ---- main loop ----
   let hudTurn = false; // on touch devices the HUD is refreshed every other frame: the frame time goes to the picture
+  let hudAt = 0;       // phones and foldables refresh it at the sim's own pace (20 a second), however fast the picture runs
   const frame = (now: number) => {
     requestAnimationFrame(frame);
     const dt = Math.min(100, now - last); last = now;
@@ -410,7 +414,8 @@ function start(mount: HTMLElement, hudRoot: HTMLElement): void {
     }
     if (selectedBuilding !== null && !game.buildings.some(b => b.id === selectedBuilding)) selectedBuilding = null;
     view.draw(game, { selectedKeeper, selectedUnit, hoverCell, selectedBuilding, me: ME }, paused || ended ? 1 : Math.min(1, acc / TICK_MS), now, dt);
-    if ((hudTurn = !hudTurn) || !touching) hud.update(game, { me: ME, keeper: selectedKeeper, tier: tierTab, selectedUnit, selectedBuilding, speed, paused, teleport: teleporting, camRect: view.viewRect(), names: online ? names : [] });
+    const hudDue = lite ? now - hudAt >= 1000 / TICK_RATE - 2 : (hudTurn = !hudTurn) || !touching;
+    if (hudDue) { hudAt = now; hud.update(game, { me: ME, keeper: selectedKeeper, tier: tierTab, selectedUnit, selectedBuilding, speed, paused, teleport: teleporting, camRect: view.viewRect(), names: online ? names : [] }); }
   };
   requestAnimationFrame(frame);
 

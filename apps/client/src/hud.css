@@ -336,3 +336,173 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .seat.picked{border-color:var(--gold);box-shadow:0 0 0 1px #000,0 0 14px rgba(233,197,107,.45);opacity:.85}
 .seat.target:not(.picked){border-color:var(--gold-dim)}.seat.open.target .tag{opacity:1;color:var(--gold)}
 .seat.over{border-color:#f0d792!important;background:linear-gradient(rgba(60,50,26,.95),rgba(24,20,12,.96))!important}
+
+/* ======================================================================================================
+   Hand-held layouts (device.ts): "phone" for an iPhone either way up, "fold" for a foldable opened out.
+   Everything below is scoped to #hud.phone / #hud.fold: the regular HUD never sees it.
+   The field gets the screen; the HUD keeps to a slim top strip, a bar along the bottom that only opens
+   its cards while a keeper is chosen, and a rail of thumb buttons in the bottom right corner.
+   ====================================================================================================== */
+#menuBtn,#touchbar .ico{display:none}
+
+/* ---- shared by both ---- */
+:is(#hud.phone,#hud.fold) .num{letter-spacing:0}
+:is(#hud.phone,#hud.fold) #top{height:auto;align-items:center;background:linear-gradient(rgba(6,6,11,.86),rgba(6,6,11,.42) 62%,transparent)}
+:is(#hud.phone,#hud.fold) .hp .cap span{display:none}
+:is(#hud.phone,#hud.fold) .hp.me .cap{justify-content:flex-start}:is(#hud.phone,#hud.fold) .hp.foe .cap{justify-content:flex-start}
+:is(#hud.phone,#hud.fold) #bell small{display:none}
+:is(#hud.phone,#hud.fold) #toast{white-space:normal;width:max-content;max-width:min(560px,70vw);text-align:center}
+:is(#hud.phone,#hud.fold) #mapbox{opacity:.94}
+
+/* the dock: the bar, and above it the note on what is chosen (laid over the field, it never pushes the bar) */
+:is(#hud.phone,#hud.fold) #dock{max-width:none;gap:0;align-items:flex-start}
+:is(#hud.phone,#hud.fold) #bar{width:auto;max-width:100%;flex-wrap:nowrap;align-items:stretch;clip-path:none;
+  background:linear-gradient(rgba(22,20,28,.9),rgba(8,7,12,.94));box-shadow:0 0 0 1px #000,inset 0 0 0 1px rgba(201,162,75,.16),0 6px 22px rgba(0,0,0,.6)}
+:is(#hud.phone,#hud.fold) #bar:has(#build.open){width:100%}
+:is(#hud.phone,#hud.fold) #keepers{align-self:center}
+:is(#hud.phone,#hud.fold) .keeper .key,:is(#hud.phone,#hud.fold) .keeper::before{display:none}
+:is(#hud.phone,#hud.fold) .keeper b{letter-spacing:.02em}
+:is(#hud.phone,#hud.fold) #build{order:0;flex:1 1 auto;min-width:0}
+:is(#hud.phone,#hud.fold) #side{justify-content:center}
+:is(#hud.phone,#hud.fold) #tiers{flex-direction:column}
+:is(#hud.phone,#hud.fold) .tier{padding-left:0}:is(#hud.phone,#hud.fold) .tier::before{display:none}
+:is(#hud.phone,#hud.fold) #page{flex:1;min-width:0;display:flex;align-items:center}
+:is(#hud.phone,#hud.fold) #cards{display:flex;flex:1;min-width:0;padding:4px 2px 0;overflow-x:auto;overflow-y:hidden;touch-action:pan-x;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+:is(#hud.phone,#hud.fold) #cards::-webkit-scrollbar{display:none}
+/* fingers: cards and keepers carry no drop-shadow filter or hover lift (each filter is repainted whenever a card changes) */
+:is(#hud.phone,#hud.fold) .card{flex:none;filter:none;transition:none}:is(#hud.phone,#hud.fold) .card.low{left:0}
+:is(#hud.phone,#hud.fold) .card.sel{filter:none;transform:translateY(-3px)}:is(#hud.phone,#hud.fold) .card.sel .frame{background:linear-gradient(#fff0bf,#e0b858)}
+:is(#hud.phone,#hud.fold) #page.sealed .card.locked{filter:brightness(.6)}
+:is(#hud.phone,#hud.fold) .card .key{display:none}:is(#hud.phone,#hud.fold) .card .plaque{justify-content:center}
+:is(#hud.phone,#hud.fold) .keeper{transition:none}:is(#hud.phone,#hud.fold) .keeper.sel{transform:none}
+
+/* the note: title, and while placing only what to do next ("brief") */
+:is(#hud.phone,#hud.fold) #tip{position:fixed;overflow:auto;overscroll-behavior:contain}
+:is(#hud.phone,#hud.fold) #tip.brief p:not(.hint),:is(#hud.phone,#hud.fold) #tip.brief .stats{display:none}
+:is(#hud.phone,#hud.fold) #tip.brief h3{margin-bottom:2px}
+
+/* the rail: Storm, Fog and Vultures beside Cathedral, Teleport and Cancel, each in its own fixed place */
+:is(#hud.phone,#hud.fold) #touchbar{position:fixed;display:grid;gap:6px;pointer-events:none;
+  grid-template-areas:"storm home" "fog tele" "vult cancel"}
+:is(#hud.phone,#hud.fold) #touchbar>*{pointer-events:auto}
+:is(#hud.phone,#hud.fold) #powers{display:contents!important}
+#hud.phone #tbHome,#hud.fold #tbHome{grid-area:home}#hud.phone #tbTele,#hud.fold #tbTele{grid-area:tele}
+#hud.phone #tbCancel,#hud.fold #tbCancel{grid-area:cancel}#hud.phone #tbVult,#hud.fold #tbVult{grid-area:vult}
+#hud.phone #storm,#hud.fold #storm{grid-area:storm}#hud.phone #fog,#hud.fold #fog{grid-area:fog}
+:is(#hud.phone,#hud.fold) #touchbar button{position:relative;width:auto;height:auto;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  font:600 7px/1 var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--bone);border-radius:12px;overflow:hidden;
+  background:radial-gradient(circle at 50% 30%,rgba(44,41,52,.96),rgba(14,13,18,.97));border:1px solid var(--gold-dim);box-shadow:0 0 0 1px #000,0 4px 12px #000a;clip-path:none}
+:is(#hud.phone,#hud.fold) #touchbar button:active{background:radial-gradient(circle at 50% 30%,#6a5628,#2a2214);color:#fff4d4}
+:is(#hud.phone,#hud.fold) #touchbar .ico{display:block;width:20px;height:20px}
+:is(#hud.phone,#hud.fold) #touchbar .lbl{display:block;max-width:100%;white-space:nowrap}
+/* the rail's names are short: "Cathedral" reads as Home on a 46-pixel button */
+:is(#hud.phone,#hud.fold) #tbHome .lbl{font-size:0}:is(#hud.phone,#hud.fold) #tbHome .lbl::after{content:"Home";font-size:7px}
+#hud.fold #tbHome .lbl::after{font-size:7.5px}
+:is(#hud.phone,#hud.fold) #tbVult{color:#c9b8ff}:is(#hud.phone,#hud.fold) #tbTele{color:#8dffb0}:is(#hud.phone,#hud.fold) #tbHome{color:var(--gold)}
+:is(#hud.phone,#hud.fold) #tbCancel{color:#f3c9c2;border-color:#7f3b3b}
+:is(#hud.phone,#hud.fold) #touchbar .lbl{color:var(--bone);opacity:.82}
+#hud.phone #tbTele.on,#hud.fold #tbTele.on{background:#8dffb0!important;color:#0b0a0f!important}#hud.phone #tbTele.on .lbl,#hud.fold #tbTele.on .lbl{color:#0b0a0f}
+/* storm and fog: the sigil, and under it what it costs or how long it rests */
+:is(#hud.phone,#hud.fold) .power .key,:is(#hud.phone,#hud.fold) .power em,:is(#hud.phone,#hud.fold) .power strong>span:first-child{display:none}
+:is(#hud.phone,#hud.fold) .power .sigil{width:22px;height:22px}
+:is(#hud.phone,#hud.fold) .power .ptext{display:block;flex:none}
+:is(#hud.phone,#hud.fold) .power strong{display:block}:is(#hud.phone,#hud.fold) .power strong .num{display:block;font:700 8px/1 var(--display);letter-spacing:.04em;color:var(--bone)}
+:is(#hud.phone,#hud.fold) #fog strong .num{font-size:6.5px;letter-spacing:.12em;color:#9df0b4}
+:is(#hud.phone,#hud.fold) .power .fill{height:3px}
+:is(#hud.phone,#hud.fold) #storm{color:#b9c6ff;border-color:#4a5384}:is(#hud.phone,#hud.fold) #fog{color:#9df0b4;border-color:#3f6b4d}
+:is(#hud.phone,#hud.fold) #storm.raging,:is(#hud.phone,#hud.fold) #fog.rolling{border-color:currentColor}
+
+/* the menu: on a phone the pause, speed and sound buttons fold away behind one button */
+#hud.phone .tools{position:relative;gap:4px;flex-wrap:nowrap}
+#hud.phone .tools>:not(#menuBtn){display:none}
+#hud.phone .tools.open>:not(#menuBtn):not(#clock){display:block}
+#hud.phone .tools button{min-width:34px;height:30px;padding:0 6px}
+#hud.phone #menuBtn{display:grid;place-items:center;width:34px;min-width:34px;padding:0}
+#hud.phone #menuBtn svg{width:18px;height:18px}
+#hud.phone .tools.open #menuBtn{color:#14110a;background:linear-gradient(#e2c06c,#a8842f)}
+
+/* ---- phone, on its side (an iPhone: about 852 x 393; less with Safari's own bars) ---- */
+#hud.phone #top{grid-template-columns:1fr auto 1fr;padding:calc(4px + var(--st)) calc(8px + var(--sr)) 12px calc(8px + var(--sl))}
+#hud.phone .purse{gap:6px}
+#hud.phone .coin{width:20px;height:20px}#hud.phone .coin::after{height:9px;margin-top:-4.5px;width:2px;margin-left:-1px}#hud.phone .coin::before{width:7px;height:2px;margin:-2.5px 0 0 -3.5px}
+#hud.phone #credits{font-size:17px}
+#hud.phone #incomeLine{font-size:10px;margin-top:0;white-space:nowrap}
+#hud.phone .duel{gap:6px}
+#hud.phone .hp{width:min(19vw,170px)}
+#hud.phone .hp .cap{font-size:8px;letter-spacing:.04em;margin-bottom:2px}
+#hud.phone .glass{height:8px;clip-path:polygon(4px 0,calc(100% - 4px) 0,100% 50%,calc(100% - 4px) 100%,4px 100%,0 50%)}
+#hud.phone #bell{width:34px;height:34px}#hud.phone #bell::before{inset:3px}#hud.phone #bell span{font-size:13px}
+#hud.phone #toast{top:calc(44px + var(--st));font-size:13px}
+#hud.phone #mapbox{top:calc(42px + var(--st));bottom:auto;right:calc(6px + var(--sr));width:128px;padding:2px}
+#hud.phone #titheL{top:2px;bottom:2px;width:24px;margin-right:4px}#hud.phone #titheL button{width:22px;height:22px}#hud.phone #titheL button b{font-size:15px}
+#hud.phone #touchbar{right:calc(6px + var(--sr));bottom:calc(6px + var(--sb));grid-template-columns:46px 46px;grid-template-rows:46px 46px 46px}
+#hud.phone #dock{left:calc(6px + var(--sl));right:calc(112px + var(--sr));bottom:calc(6px + var(--sb))}
+#hud.phone #bar{padding:5px;gap:6px}
+#hud.phone #keepers{gap:4px}
+#hud.phone .keeper{width:46px;height:62px}#hud.phone .keeper img{height:48px;bottom:12px}#hud.phone .keeper b{font-size:6.5px;bottom:2px}
+#hud.phone .keeper.busy::after{right:2px;top:2px;min-width:13px;height:13px;font-size:9px;line-height:13px}
+#hud.phone #build{gap:6px}
+#hud.phone #tiers{gap:3px}#hud.phone .tier{width:40px;height:18px;gap:3px}#hud.phone .tier b{font-size:10.5px}#hud.phone .tier small{font-size:7px}
+#hud.phone #cards{gap:5px}
+#hud.phone .card{width:46px;height:62px}#hud.phone .card img{height:46px;bottom:12px}
+#hud.phone .card .plaque{height:15px}#hud.phone .card .cost{font-size:11px}#hud.phone .card .prog{bottom:17px}
+#hud.phone .card .seal{top:21px;font-size:9px}#hud.phone .card.locked .seal{top:17px;font-size:14px}
+#hud.phone #research{width:min(214px,94%);padding:4px 8px 5px 31px}
+#hud.phone #research .key{left:8px;width:16px;height:16px;font-size:9px}#hud.phone #research strong{font-size:9.5px}#hud.phone #research em{font-size:10px}
+#hud.phone #page.half #research{top:50%}
+#hud.phone #tip{left:calc(6px + var(--sl));bottom:calc(82px + var(--sb));width:min(300px,calc(100vw - 150px - var(--sl) - var(--sr)));max-height:calc(100dvh - 132px - var(--st) - var(--sb));
+  padding:7px 10px 8px;font-size:11.5px;line-height:1.26}
+#hud.phone #tip h3{font-size:11.5px}#hud.phone #tip .stats{font-size:9.5px}#hud.phone #tip p{margin-bottom:3px}
+#hud.phone #confirm,#hud.phone #sell{margin-top:4px;padding:8px 16px;font-size:10.5px}
+
+/* ---- phone, held upright: purse and menu on one line, the cathedrals under them; the rail is one row over the bar ---- */
+#hud.phone.tall #top{grid-template-columns:1fr auto;row-gap:4px;padding-bottom:12px}
+#hud.phone.tall .midcol{grid-column:1/-1;grid-row:2}
+#hud.phone.tall .hp{width:min(34vw,200px)}
+#hud.phone.tall #toast{top:calc(92px + var(--st));max-width:88vw}
+#hud.phone.tall #mapbox{top:calc(84px + var(--st));width:140px}
+#hud.phone.tall #dock{right:calc(6px + var(--sr))}
+#hud.phone.tall #touchbar{bottom:calc(82px + var(--sb));grid-template-areas:"storm fog vult tele home cancel";grid-template-columns:repeat(6,46px);grid-template-rows:46px}
+#hud.phone.tall #tip{bottom:calc(136px + var(--sb));width:calc(100vw - 12px - var(--sl) - var(--sr));max-height:calc(100dvh - 240px - var(--st) - var(--sb))}
+
+/* ---- foldable opened out (the iPhone Duo unfolded: about 890 x 626) ---- */
+#hud.fold #top{grid-template-columns:1fr auto 1fr;padding:calc(8px + var(--st)) calc(12px + var(--sr)) 16px calc(12px + var(--sl))}
+#hud.fold .purse{gap:9px}
+#hud.fold .coin{width:28px;height:28px}#hud.fold .coin::after{height:13px;margin-top:-6.5px}#hud.fold .coin::before{width:9px;margin:-3.5px 0 0 -4.5px}
+#hud.fold #credits{font-size:24px}#hud.fold #incomeLine{font-size:12.5px;margin-top:1px}
+#hud.fold .duel{gap:10px}
+#hud.fold .hp{width:min(21vw,190px)}#hud.fold .hp .cap{font-size:9px;letter-spacing:.05em;margin-bottom:3px}#hud.fold .glass{height:11px}
+#hud.fold #bell{width:48px;height:48px}#hud.fold #bell span{font-size:18px}
+#hud.fold #clock{display:none}
+#hud.fold .tools{gap:5px}#hud.fold .tools button{min-width:36px;height:34px}
+#hud.fold #toast{top:calc(76px + var(--st));font-size:16px}
+#hud.fold #mapbox{top:auto;bottom:calc(10px + var(--sb));right:calc(10px + var(--sr));width:210px;padding:4px}
+#hud.fold #titheL{top:4px;bottom:4px;width:30px;margin-right:6px}#hud.fold #titheL button{width:28px;height:28px}
+#hud.fold #touchbar{right:calc(10px + var(--sr));bottom:calc(var(--maph,76px) + 28px + var(--sb));grid-template-columns:56px 56px;grid-template-rows:56px 56px 56px;gap:8px}
+#hud.fold #touchbar button{font-size:7.5px}#hud.fold #touchbar .ico{width:23px;height:23px}#hud.fold .power .sigil{width:25px;height:25px}
+#hud.fold .power strong .num{font-size:9px}
+#hud.fold #dock{left:calc(10px + var(--sl));right:calc(262px + var(--sr));bottom:calc(10px + var(--sb))}
+#hud.fold #bar{padding:7px 8px;gap:8px}
+#hud.fold #keepers{gap:6px}
+#hud.fold .keeper{width:60px;height:86px}#hud.fold .keeper img{height:66px;bottom:16px}#hud.fold .keeper b{font-size:7.5px;bottom:3px}
+#hud.fold #build{gap:8px}
+#hud.fold #tiers{gap:4px}#hud.fold .tier{width:52px;height:25px}#hud.fold .tier b{font-size:12px}#hud.fold .tier small{font-size:8.5px}
+#hud.fold #cards{gap:7px;padding-top:5px}
+#hud.fold .card{width:58px;height:84px}#hud.fold .card img{height:64px;bottom:15px}
+#hud.fold .card .plaque{height:18px}#hud.fold .card .cost{font-size:12.5px}#hud.fold .card .prog{bottom:20px}
+#hud.fold .card .seal{top:29px;font-size:11px}#hud.fold .card.locked .seal{top:24px;font-size:18px}
+#hud.fold #research{width:min(250px,94%);padding:7px 11px 8px 40px}#hud.fold #page.half #research{top:50%}
+#hud.fold #research strong{font-size:11px}#hud.fold #research em{font-size:12px}
+#hud.fold #tip{left:calc(10px + var(--sl));bottom:calc(116px + var(--sb));width:min(400px,calc(100vw - 300px - var(--sl) - var(--sr)));max-height:calc(100dvh - 200px - var(--st) - var(--sb));
+  padding:10px 14px 11px;font-size:14px;line-height:1.3}
+#hud.fold #tip h3{font-size:13.5px}#hud.fold #tip .stats{font-size:11px}
+
+/* ---- foldable held upright (about 626 x 890): two lines on top, the map under them, the rail over the bar ---- */
+#hud.fold.tall #top{grid-template-columns:1fr auto;row-gap:6px}
+#hud.fold.tall .midcol{grid-column:1/-1;grid-row:2}
+#hud.fold.tall .hp{width:min(34vw,240px)}
+#hud.fold.tall #toast{top:calc(118px + var(--st))}
+#hud.fold.tall #mapbox{top:calc(112px + var(--st));bottom:auto;width:200px}
+#hud.fold.tall #dock{right:calc(10px + var(--sr))}
+#hud.fold.tall #touchbar{bottom:calc(114px + var(--sb));grid-template-areas:"storm fog vult tele home cancel";grid-template-columns:repeat(6,56px);grid-template-rows:56px}
+#hud.fold.tall #tip{bottom:calc(184px + var(--sb));width:min(460px,calc(100vw - 20px - var(--sl) - var(--sr)));max-height:calc(100dvh - 330px - var(--st) - var(--sb))}

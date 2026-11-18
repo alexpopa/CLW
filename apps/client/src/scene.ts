@@ -8,7 +8,8 @@ import type { GameState, SimEvent, TeamId } from "@lw/sim";
 import { PAL, TEAM, ball, box, cyl, cathedralModel, chantryModel, chapelModel, cloisterModel, curtainModel, fenceModel, graveyardModel, merge, precinctModel, shrineModel, unitModel, wholeModel } from "./models";
 import type { Gait, ModelDef, Part } from "./models";
 import { LANE_GAP, LANE_LEN, LANE_PITCH, LANE_W, fieldZ, laneAt, laneZ, midZ } from "./layout";
-import { courtyardTile, glowTexture, groundTile, runeTexture } from "./textures";
+import { blobTexture, courtyardTile, glowTexture, groundTile, runeTexture } from "./textures";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 /** Presentation only: a 3D view drawn FROM GameState. No rules here. World: x along the lane, z across it, y up. */
 const W = (milli: number) => milli / 1000;
@@ -39,6 +40,19 @@ interface UnitView {
   legs: THREE.Mesh[]; weapon: THREE.Group; parts: { node: THREE.Group; def: Part }[];
   def: ModelDef; type: string; team: TeamId; lastAttack: number; born: number;
   yaw: number; walk: number; alt: number;   // smoothed facing, 0..1 how much it is walking, height of its feet above the ground
+  blot: number;                             // phones: radius of the soft shadow under it (0: it casts a real one)
+}
+/** Half the widest side of a model's body, for the size of its shadow blot. */
+const reachOf = new WeakMap<ModelDef, number>();
+function bodyReach(def: ModelDef): number {
+  let r = reachOf.get(def);
+  if (r === undefined) {
+    def.body.computeBoundingBox();
+    const b = def.body.boundingBox!;
+    r = Math.max(b.max.x - b.min.x, b.max.z - b.min.z) / 2;
+    reachOf.set(def, r);
+  }
+  return r;
 }
 /** Stride speed (radians per millisecond) of each gait. */
 const STRIDE: Record<Gait, number> = { walk: 0.02, shuffle: 0.016, gallop: 0.024, lope: 0.03, stomp: 0.011, float: 0.01, roll: 0.02, fly: 0.01 };
@@ -53,17 +67,106 @@ const SHOTS: Record<string, { kind: Shot; color: number }> = {
 };
 const MELEE: Record<string, number> = { titan: 0xffd27a, rider: 0xdfe6ff, ogre: 0xcdbf9f, countess: 0xff3b4f, shade: PAL.ghost, colossus: 0xcdbf9f, headsman: 0xffffff, gargoyle: 0xc8ccd8, hound: 0xe2d7bc };
 export const shotKind = (unit: string): Shot | "melee" => SHOTS[unit]?.kind ?? "melee";
-interface Particle { sprite: THREE.Sprite; vx: number; vy: number; vz: number; born: number; life: number; s0: number; s1: number; grav: number }
 interface Flight { mesh: THREE.Object3D; from: THREE.Vector3; to: THREE.Vector3; born: number; life: number; arc: number; beam: boolean; onEnd?: () => void }
 
 /** Steps of picture quality, dearest first: pixel density, shadow map size (0 = no shadows), and whether the glow pass runs. */
-const QUALITY = [
+type Quality = { pixels: number; shadow: number; bloom: boolean };
+const QUALITY: Quality[] = [
   { pixels: 2, shadow: 2048, bloom: true },
   { pixels: 1.5, shadow: 1024, bloom: true },
   { pixels: 1.25, shadow: 1024, bloom: false },
   { pixels: 1, shadow: 512, bloom: false },
   { pixels: 1, shadow: 0, bloom: false },
 ];
+/** Phones and opened foldables: the same picture with fewer pixels to fill, stepping down sooner. */
+const QUALITY_LITE: Quality[] = [
+  { pixels: 1.5, shadow: 1024, bloom: true },
+  { pixels: 1.5, shadow: 1024, bloom: false },
+  { pixels: 1.25, shadow: 1024, bloom: false },
+  { pixels: 1, shadow: 512, bloom: false },
+  { pixels: 1, shadow: 0, bloom: false },
+];
+
+/**
+ * Every spark, ember and puff of dust on the field, drawn in one call: camera-facing quads of the glow texture,
+ * each with its own place, size, colour and fade (what a THREE.Sprite per spark used to draw, one call each).
+ */
+const SPARK_VERT = `
+attribute vec3 iPos; attribute vec4 iCol; attribute float iSize;
+varying vec2 vUv; varying vec4 vCol;
+#include <fog_pars_vertex>
+void main(){
+  vUv = uv; vCol = iCol;
+  vec4 mvPosition = modelViewMatrix * vec4(iPos, 1.0);
+  mvPosition.xy += position.xy * iSize;
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
+}`;
+const SPARK_FRAG = `
+uniform sampler2D map; varying vec2 vUv; varying vec4 vCol;
+#include <fog_pars_fragment>
+void main(){
+  gl_FragColor = vec4(vCol.rgb, vCol.a) * texture2D(map, vUv);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+  #include <fog_fragment>
+}`;
+class Sparks {
+  readonly mesh: THREE.Mesh;
+  private n = 0;
+  private readonly pos: Float32Array; private readonly vel: Float32Array; private readonly rgb: Float32Array;
+  private readonly born: Float64Array; private readonly life: Float32Array; private readonly s0: Float32Array; private readonly s1: Float32Array; private readonly grav: Float32Array;
+  private readonly iPos: THREE.InstancedBufferAttribute; private readonly iCol: THREE.InstancedBufferAttribute; private readonly iSize: THREE.InstancedBufferAttribute;
+  private readonly geo: THREE.InstancedBufferGeometry;
+  private readonly tint = new THREE.Color();
+  constructor(readonly cap: number, map: THREE.Texture) {
+    this.pos = new Float32Array(cap * 3); this.vel = new Float32Array(cap * 3); this.rgb = new Float32Array(cap * 3);
+    this.born = new Float64Array(cap); this.life = new Float32Array(cap); this.s0 = new Float32Array(cap); this.s1 = new Float32Array(cap); this.grav = new Float32Array(cap);
+    const quad = new THREE.PlaneGeometry(1, 1), geo = this.geo = new THREE.InstancedBufferGeometry();
+    geo.index = quad.index; geo.setAttribute("position", quad.getAttribute("position")); geo.setAttribute("uv", quad.getAttribute("uv"));
+    const attr = (size: number) => new THREE.InstancedBufferAttribute(new Float32Array(cap * size), size).setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute("iPos", this.iPos = attr(3)); geo.setAttribute("iCol", this.iCol = attr(4)); geo.setAttribute("iSize", this.iSize = attr(1));
+    geo.instanceCount = 0;
+    const mat = new THREE.ShaderMaterial({
+      vertexShader: SPARK_VERT, fragmentShader: SPARK_FRAG, uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: null } }]),
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, fog: true,
+    });
+    mat.uniforms.map!.value = map;
+    this.mesh = new THREE.Mesh(geo, mat); this.mesh.frustumCulled = false; this.mesh.renderOrder = 10;
+  }
+  get count(): number { return this.n; }
+  add(x: number, y: number, z: number, color: number, life: number, s0: number, s1: number, vx: number, vy: number, vz: number, grav: number, now: number): void {
+    if (this.n >= this.cap) return;
+    const i = this.n++, c = this.tint.setHex(color);
+    this.pos[i * 3] = x; this.pos[i * 3 + 1] = y; this.pos[i * 3 + 2] = z;
+    this.vel[i * 3] = vx; this.vel[i * 3 + 1] = vy; this.vel[i * 3 + 2] = vz;
+    this.rgb[i * 3] = c.r; this.rgb[i * 3 + 1] = c.g; this.rgb[i * 3 + 2] = c.b;
+    this.born[i] = now; this.life[i] = life; this.s0[i] = s0; this.s1[i] = s1; this.grav[i] = grav;
+  }
+  /** Move, grow and fade every spark; the spent ones are dropped (the last takes the place of each). */
+  update(now: number, sec: number): void {
+    const P = this.pos, V = this.vel, C = this.rgb, ip = this.iPos.array as Float32Array, ic = this.iCol.array as Float32Array, is = this.iSize.array as Float32Array;
+    for (let i = 0; i < this.n; i++) {
+      const t = (now - this.born[i]!) / this.life[i]!;
+      if (t >= 1) { this.drop(i); i--; continue; }
+      const vy = V[i * 3 + 1]! + this.grav[i]! * sec;
+      V[i * 3 + 1] = vy;
+      P[i * 3] = P[i * 3]! + V[i * 3]! * sec; P[i * 3 + 1] = Math.max(0.1, P[i * 3 + 1]! + vy * sec); P[i * 3 + 2] = P[i * 3 + 2]! + V[i * 3 + 2]! * sec;
+      ip[i * 3] = P[i * 3]!; ip[i * 3 + 1] = P[i * 3 + 1]!; ip[i * 3 + 2] = P[i * 3 + 2]!;
+      ic[i * 4] = C[i * 3]!; ic[i * 4 + 1] = C[i * 3 + 1]!; ic[i * 4 + 2] = C[i * 3 + 2]!; ic[i * 4 + 3] = 1 - t * t;
+      is[i] = this.s0[i]! + (this.s1[i]! - this.s0[i]!) * t;
+    }
+    this.geo.instanceCount = this.n;
+    for (const a of [this.iPos, this.iCol, this.iSize]) { a.clearUpdateRanges(); a.addUpdateRange(0, this.n * a.itemSize); a.needsUpdate = true; }
+  }
+  private drop(i: number): void {
+    const j = --this.n;
+    if (i === j) return;
+    for (let k = 0; k < 3; k++) { this.pos[i * 3 + k] = this.pos[j * 3 + k]!; this.vel[i * 3 + k] = this.vel[j * 3 + k]!; this.rgb[i * 3 + k] = this.rgb[j * 3 + k]!; }
+    this.born[i] = this.born[j]!; this.life[i] = this.life[j]!; this.s0[i] = this.s0[j]!; this.s1[i] = this.s1[j]!; this.grav[i] = this.grav[j]!;
+  }
+  clear(): void { this.n = 0; this.geo.instanceCount = 0; }
+}
 /**
  * The Deadly Fog: sheets of drifting vapour stacked over the lane, each a warped noise field, so that it reads as a
  * rolling bank with depth and never as a solid slab. vP.x is the distance from the caster's lane end, vP.y across the lane.
@@ -117,9 +220,18 @@ export class Renderer {
   private struck = new Map<number, number>();   // chantry id -> when it was last hit (it shudders)
   private razed = new Set<number>();            // chantries destroyed this frame: they collapse instead of vanishing
   private ruins: { g: THREE.Group; born: number }[] = [];
-  private shrines: { flames: THREE.Mesh[]; lights: THREE.PointLight[]; runes: THREE.Mesh[]; owner: TeamId | null | undefined }[] = [];
+  private shrines: { flames: THREE.Mesh[]; lights: THREE.PointLight[]; pools: THREE.Mesh[]; runes: THREE.Mesh[]; owner: TeamId | null | undefined }[] = [];
   private hqGlow: THREE.Mesh[] = [];
-  private particles: Particle[] = [];
+  private sparks!: Sparks;
+  /** Phones: no real lamps or shrine lights (each one is paid for by every lit pixel), soldiers cast a soft blot instead of a shadow. */
+  private lite = false;
+  private blobs: THREE.InstancedMesh | null = null;
+  private blobAt = new THREE.Matrix4(); private blobTurn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+  private blobPos = new THREE.Vector3(); private blobSize = new THREE.Vector3();
+  private frameNo = 0;
+  /** Projectile shapes are shared: a shot only owns its material, which is let go when it lands. */
+  private geos = new Map<string, THREE.BufferGeometry>();
+  private shared = new Set<THREE.Material>();
   private shots: Flight[] = [];
   private prev = new Map<number, { x: number; y: number }>();
   private hover!: THREE.Mesh; private range!: THREE.Mesh; private selRing!: THREE.Mesh;
@@ -132,13 +244,27 @@ export class Renderer {
   lanes = 1;    // lanes of the current battlefield
   private world = new THREE.Group(); // everything that depends on the number of lanes
 
-  init(mount: HTMLElement): void {
+  /** `lite`: a phone or an opened foldable (see device.ts), drawn by the lighter rules above. */
+  init(mount: HTMLElement, lite = false): void {
     const r = this.renderer;
-    // phones start a step down, and with plain (cheaper) shadow filtering; every device steps down further if it cannot keep up
+    // touch screens start a step down, and with plain (cheaper) shadow filtering; every device steps down further if it cannot keep up
     const phone = matchMedia("(pointer:coarse)").matches;
-    this.quality = phone ? 1 : 0;
+    this.lite = lite;
+    this.ladder = lite ? QUALITY_LITE : QUALITY;
+    this.quality = lite ? 0 : phone ? 1 : 0;
     r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.4;
-    r.shadowMap.enabled = true; r.shadowMap.type = phone ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+    r.shadowMap.enabled = true; r.shadowMap.type = phone || lite ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+    // a phone redraws the shadows every other frame: the moon follows the camera, and a frame's lag cannot be seen
+    if (lite) r.shadowMap.autoUpdate = false;
+    for (const m of [this.lit, this.glow, this.statue, this.ghost, this.halo]) this.shared.add(m);
+    this.sparks = new Sparks(lite ? 300 : 500, this.glowTex);
+    this.scene.add(this.sparks.mesh);
+    if (lite) {
+      const tex = new THREE.CanvasTexture(blobTexture());
+      this.blobs = new THREE.InstancedMesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }), 700);
+      this.blobs.count = 0; this.blobs.frustumCulled = false; this.blobs.renderOrder = 1; this.blobs.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      this.scene.add(this.blobs);
+    }
     mount.append(r.domElement, this.overlay);
     Object.assign(this.overlay.style, { position: "absolute", inset: "0", width: "100%", height: "100%", pointerEvents: "none" });
     this.scene.background = new THREE.Color(0x090b14);
@@ -147,19 +273,36 @@ export class Renderer {
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.42, 0.6, 0.85);
     this.composer.addPass(this.bloom); this.composer.addPass(new OutputPass());
-    this.scene.add(new THREE.HemisphereLight(0xa9afc4, 0x2a2622, 1.15));
+    this.scene.add(new THREE.HemisphereLight(0xa9afc4, 0x2a2622, lite ? 1.3 : 1.15)); // a little more moonlight where the lamps are painted on
     const m = this.moon; m.castShadow = true;
     Object.assign(m.shadow.camera, { left: -58, right: 58, top: 44, bottom: -44, near: 1, far: 160 });
     m.shadow.bias = -0.0006; m.shadow.normalBias = 0.04;
     this.scene.add(m, m.target, this.world);
     this.buildWorld();
     this.applyQuality();
+    this.warmUp();
+  }
+  /** Build every shader the battle will need now, so the first arrow or ghost does not stall the frame it appears in. */
+  private warmUp(): void {
+    const g = new THREE.Group(), geo = new THREE.BoxGeometry(0.1, 0.1, 0.1), mats: THREE.Material[] = [
+      this.lit, this.glow, this.statue, this.ghost, this.halo,
+      new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, toneMapped: false }),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true }),
+    ];
+    for (const m of mats) { const mesh = new THREE.Mesh(geo, m); mesh.castShadow = mesh.receiveShadow = true; mesh.position.set(this.camX, -50, this.camZ); g.add(mesh); }
+    this.scene.add(g);
+    this.placeCamera();
+    try { this.renderer.compile(this.scene, this.camera); } catch { /* not every driver can; the frame will compile it instead */ }
+    this.scene.remove(g); geo.dispose();
+    for (const m of mats) if (!this.shared.has(m)) m.dispose();
   }
   /** How much the picture costs: 0 is everything, each step up sheds something (see QUALITY). Only ever raised, by `pace`. */
   private quality = 0;
+  private ladder: Quality[] = QUALITY;
   private slow = 0; private frames = 0;
   private applyQuality(): void {
-    const q = QUALITY[this.quality]!, m = this.moon;
+    const q = this.ladder[this.quality]!, m = this.moon;
     this.renderer.setPixelRatio(Math.min(q.pixels, devicePixelRatio || 1));
     m.castShadow = q.shadow > 0;
     if (q.shadow > 0 && m.shadow.mapSize.x !== q.shadow) { m.shadow.mapSize.set(q.shadow, q.shadow); m.shadow.map?.dispose(); m.shadow.map = null; }
@@ -170,7 +313,7 @@ export class Renderer {
     if (dt >= 100 || document.hidden) return; // a stalled or hidden tab says nothing about the device
     this.frames++; if (dt > 24) this.slow++;
     if (this.frames < 90) return;
-    if (this.slow > 45 && this.quality < QUALITY.length - 1) { this.quality++; this.applyQuality(); }
+    if (this.slow > 45 && this.quality < this.ladder.length - 1) { this.quality++; this.applyQuality(); }
     this.frames = 0; this.slow = 0;
   }
   /** Rebuild the battlefield for a match with this many lanes (1v1: one, 2v2: two, 3v3: three). */
@@ -187,6 +330,14 @@ export class Renderer {
 
   private mesh(geo: THREE.BufferGeometry, mat: THREE.Material, shadow = true): THREE.Mesh {
     const m = new THREE.Mesh(geo, mat); m.castShadow = shadow; m.receiveShadow = shadow; return m;
+  }
+
+  /** A flat glow of this size lying on the ground at (x, z): light painted on instead of computed (phones). */
+  private pool(x: number, z: number, size: number): THREE.BufferGeometry {
+    const geo = new THREE.PlaneGeometry(size, size); geo.rotateX(-Math.PI / 2); geo.translate(x, 0.09, z); return geo;
+  }
+  private poolMat(color: number, opacity: number): THREE.MeshBasicMaterial {
+    return new THREE.MeshBasicMaterial({ map: this.glowTex, color, opacity, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
   }
 
   private buildWorld(): void {
@@ -222,17 +373,19 @@ export class Renderer {
     }
 
     // lamp posts: warm pools of light along the kerbs (every lane edge when there is one lane, the strips between and outside when there are more)
-    const lamps: THREE.BufferGeometry[] = [], flames: THREE.BufferGeometry[] = [];
+    const lamps: THREE.BufferGeometry[] = [], flames: THREE.BufferGeometry[] = [], pools: THREE.BufferGeometry[] = [];
     const rows = n === 1 ? [-1, LANE_W + 1] : [-1, ...Array.from({ length: n - 1 }, (_, l) => LZ(l) + LANE_W + LANE_GAP / 2 + 1.2), nearEdge + 1];
     const step = n === 1 ? 76 : 96;
     rows.forEach((z, r) => {
       for (let x = 32 + (r % 2) * (step / 2); x <= LANE_LEN - 30; x += step) {
         lamps.push(box(0.5, 0.4, 0.5, PAL.stoneLo, x, 0.2, z), box(0.16, 3.6, 0.16, PAL.ink, x, 2, z), box(0.7, 0.1, 0.7, PAL.ink, x, 3.8, z), box(0.5, 0.1, 0.5, PAL.ink, x, 4.5, z));
         flames.push(box(0.36, 0.56, 0.36, PAL.candle, x, 4.15, z));
-        const l = new THREE.PointLight(0xffb060, 90, 26, 1.7); l.position.set(x, 4.4, z); s.add(l);
+        if (this.lite) pools.push(this.pool(x, z, 19)); // the pool of light the lamp would cast, painted on the ground
+        else { const l = new THREE.PointLight(0xffb060, 90, 26, 1.7); l.position.set(x, 4.4, z); s.add(l); }
       }
     });
     s.add(this.mesh(merge(lamps), this.lit), new THREE.Mesh(merge(flames), this.glow));
+    if (pools.length) s.add(new THREE.Mesh(mergeGeometries(pools), this.poolMat(0xffb060, 0.5)));
 
     // one cathedral per side, standing behind all of its lanes and growing with their number
     this.hqScale = 1 + 0.25 * (n - 1);
@@ -240,7 +393,8 @@ export class Renderer {
       const c = cathedralModel(team), g = new THREE.Group();
       const glow = new THREE.Mesh(c.glow, this.glow.clone());
       g.add(this.mesh(c.lit, this.lit), glow); this.hqGlow[team] = glow;
-      const lamp = new THREE.PointLight(TEAM[team].glow, 60, 34, 1.6); lamp.position.set(0, 6, 12); g.add(lamp);
+      if (this.lite) { const pool = new THREE.Mesh(this.pool(0, 12, 30), this.poolMat(TEAM[team].glow, 0.42)); g.add(pool); }
+      else { const lamp = new THREE.PointLight(TEAM[team].glow, 60, 34, 1.6); lamp.position.set(0, 6, 12); g.add(lamp); }
       g.scale.setScalar(this.hqScale);
       g.position.set(W(hqX(team)) + (team === 0 ? -1 : 1) * 5.5 * (this.hqScale - 1), 0, mid); s.add(g);
     }
@@ -278,19 +432,20 @@ export class Renderer {
     // shrines: each checkpoint is a pair standing just outside its lane, one on either edge (same order as the sim's beacons)
     const runeTex = new THREE.CanvasTexture(runeTexture());
     for (let l = 0; l < n; l++) for (const x of MAP.beaconX) {
-      const flames: THREE.Mesh[] = [], lights: THREE.PointLight[] = [], runes: THREE.Mesh[] = [];
+      const flames: THREE.Mesh[] = [], lights: THREE.PointLight[] = [], runes: THREE.Mesh[] = [], pools: THREE.Mesh[] = [];
       for (const z of SHRINE_Z) {
         const g = new THREE.Group(); g.position.set(W(x), 0, LZ(l) + z);
         const flame = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.5, 7), new THREE.MeshBasicMaterial({ toneMapped: false }));
         flame.position.y = 5.7;
-        const light = new THREE.PointLight(0xffffff, 0, 24, 1.5); light.position.y = 6.2;
+        if (this.lite) { const pool = new THREE.Mesh(this.pool(0, 0, 17), this.poolMat(0xffffff, 0)); g.add(pool); pools.push(pool); }
+        else { const light = new THREE.PointLight(0xffffff, 0, 24, 1.5); light.position.y = 6.2; g.add(light); lights.push(light); }
         const rune = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 6.4),
           new THREE.MeshBasicMaterial({ map: runeTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
         rune.rotation.x = -Math.PI / 2; rune.position.y = 0.12;
-        g.add(this.mesh(shrineModel(), this.lit), flame, light, rune); s.add(g);
-        flames.push(flame); lights.push(light); runes.push(rune);
+        g.add(this.mesh(shrineModel(), this.lit), flame, rune); s.add(g);
+        flames.push(flame); runes.push(rune);
       }
-      this.shrines.push({ flames, lights, runes, owner: undefined });
+      this.shrines.push({ flames, lights, pools, runes, owner: undefined });
     }
 
     const flat = (geo: THREE.BufferGeometry, color: number, opacity: number) => {
@@ -407,11 +562,11 @@ export class Renderer {
     for (const b of this.buildings.values()) this.scene.remove(b);
     for (const r of this.ruins) this.scene.remove(r.g);
     this.ruins = []; this.struck.clear(); this.razed.clear();
-    for (const p of this.particles) this.scene.remove(p.sprite);
-    for (const sh of this.shots) this.scene.remove(sh.mesh);
+    this.sparks.clear();
+    for (const sh of this.shots) this.dropShot(sh.mesh);
     for (const f of this.fogs.values()) this.dropFog(f);
     this.fogs.clear();
-    this.units.clear(); this.buildings.clear(); this.dying = []; this.particles = []; this.shots = []; this.prev.clear();
+    this.units.clear(); this.buildings.clear(); this.dying = []; this.shots = []; this.prev.clear();
   }
 
   private makeFog(team: TeamId, lane: number): FogView {
@@ -419,7 +574,7 @@ export class Renderer {
     const x0 = -10, x1 = reach + 12, z0 = -3, z1 = LANE_W + 3;
     geo.setAttribute("position", new THREE.Float32BufferAttribute([x0, 0, z0, x0, 0, z1, x1, 0, z0, x1, 0, z1], 3)); geo.setIndex([0, 1, 2, 2, 1, 3]);
     const view: FogView = { g, front: { value: 0 }, time: { value: 0 }, fade: { value: 0 }, mote: 0 };
-    const sheets = QUALITY[this.quality]!.bloom ? 4 : 2; // fewer on a struggling phone
+    const sheets = !this.lite && this.ladder[this.quality]!.bloom ? 4 : 2; // fewer on a phone
     for (let i = 0; i < sheets; i++) {
       const m = new THREE.Mesh(geo, new THREE.ShaderMaterial({
         vertexShader: FOG_VERT, fragmentShader: FOG_FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide,
@@ -436,10 +591,19 @@ export class Renderer {
   }
 
   private spark(x: number, y: number, z: number, color: number, life: number, s0: number, s1: number, vx = 0, vy = 0, vz = 0, grav = 0, now = performance.now()): void {
-    if (this.particles.length > 500) return;
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false }));
-    sprite.position.set(x, y, z); sprite.scale.setScalar(s0); this.scene.add(sprite);
-    this.particles.push({ sprite, vx, vy, vz, born: now, life, s0, s1, grav });
+    this.sparks.add(x, y, z, color, life, s0, s1, vx, vy, vz, grav, now);
+  }
+  /** One shared shape per kind of projectile. */
+  private geo(key: string, make: () => THREE.BufferGeometry): THREE.BufferGeometry {
+    let g = this.geos.get(key);
+    if (!g) this.geos.set(key, (g = make()));
+    return g;
+  }
+  private rod(r: number, seg: number): THREE.BufferGeometry { return this.geo(`rod${r}/${seg}`, () => new THREE.CylinderGeometry(r, r, 1, seg)); }
+  /** A landed shot lets go of its own material (never the shared ones, nor the shared shapes). */
+  private dropShot(o: THREE.Object3D): void {
+    this.scene.remove(o);
+    if (o instanceof THREE.Mesh && !this.shared.has(o.material as THREE.Material)) (o.material as THREE.Material).dispose();
   }
   private shoot(mesh: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3, now: number, life: number, arc = 0, beam = false, onEnd?: () => void): void {
     this.scene.add(mesh); this.shots.push({ mesh, from, to, born: now, life, arc, beam, onEnd });
@@ -458,7 +622,7 @@ export class Renderer {
       const n = Math.max(2, Math.round(from.distanceTo(to) / 1.6)); let a = from;
       for (let i = 1; i <= n; i++) {
         const b = from.clone().lerp(to, i / n); if (i < n) b.add(new THREE.Vector3(rnd(0.9), rnd(0.9), rnd(0.9)));
-        this.shoot(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1, 4), bright(color)), a, b, now, 190, 0, true); a = b;
+        this.shoot(new THREE.Mesh(this.rod(0.05, 4), bright(color)), a, b, now, 190, 0, true); a = b;
       }
       this.spark(to.x, to.y, to.z, color, 240, 1.6, 0.3, 0, 0, 0, 0, now);
     };
@@ -472,21 +636,21 @@ export class Renderer {
           for (let i = 0; i < 3; i++) this.spark(to.x, to.y, to.z, i ? 0x8a8474 : 0xcfc6ad, 420 + Math.random() * 260, 0.35, 0.1, rnd(3), 1.5 + Math.random() * 2.5, rnd(3), -12, now);
         }
         const style = SHOTS[e.unit], kind = style?.kind ?? "melee", color = style?.color ?? MELEE[e.unit] ?? 0xffe2a8;
-        if (kind === "bolt") this.shoot(new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.05, 0.05), basic(color)), from, to, now, 170);
+        if (kind === "bolt") this.shoot(new THREE.Mesh(this.geo("bolt", () => new THREE.BoxGeometry(0.55, 0.05, 0.05)), basic(color)), from, to, now, 170);
         else if (kind === "gun") {
           this.spark(from.x, from.y, from.z, 0xffd27a, 110, 1.6, 0.4, 0, 0, 0, 0, now);
           this.spark(from.x, from.y + 0.1, from.z, 0x8d8a92, 700, 0.6, 1.8, rnd(0.6), 0.9, rnd(0.6), 0, now);
-          this.shoot(new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1, 4), bright(color)), from, to, now, 90, 0, true);
+          this.shoot(new THREE.Mesh(this.rod(0.025, 4), bright(color)), from, to, now, 90, 0, true);
           this.spark(to.x, to.y, to.z, 0xffffff, 150, 0.7, 0.1, 0, 0, 0, 0, now);
         } else if (kind === "orb") {
           const burst = e.unit === "lich" || e.unit === "seraph";
-          this.shoot(new THREE.Mesh(new THREE.IcosahedronGeometry(burst ? 0.24 : 0.16, 1), bright(color)), from, to, now, 110 + from.distanceTo(to) * 34, burst ? 1.2 : 0.5, false, () => {
+          this.shoot(new THREE.Mesh(this.geo(`orb${burst}`, () => new THREE.IcosahedronGeometry(burst ? 0.24 : 0.16, 1)), bright(color)), from, to, now, 110 + from.distanceTo(to) * 34, burst ? 1.2 : 0.5, false, () => {
             const t = performance.now(), n = burst ? 14 : 5, reach = burst ? W(UNITS[e.unit]!.splash) * 2 : 1.5;
             this.spark(to.x, to.y, to.z, color, 260, burst ? 4 : 1.2, 0.2, 0, 0, 0, 0, t);
             for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; this.spark(to.x, burst ? 0.3 : to.y, to.z, color, 420 + Math.random() * 240, 0.7, 0.15, Math.cos(a) * reach, burst ? 0.6 : 1 + rnd(1), Math.sin(a) * reach, 0, t); }
           });
         } else if (kind === "stone") {
-          this.shoot(this.mesh(new THREE.IcosahedronGeometry(0.2, 0), new THREE.MeshStandardMaterial({ color, flatShading: true })), from, to, now, 700, 6, false, () => {
+          this.shoot(this.mesh(this.geo("stone", () => new THREE.IcosahedronGeometry(0.2, 0)), new THREE.MeshStandardMaterial({ color, flatShading: true })), from, to, now, 700, 6, false, () => {
             const t = performance.now();
             this.spark(to.x, 0.6, to.z, 0xffd9a0, 260, 2, e.unit === "hellmouth" ? 14 : 9, 0, 0, 0, 0, t);
             if (e.unit === "hellmouth") for (let i = 0; i < 16; i++) this.spark(to.x + rnd(4), 0.3, to.z + rnd(4), i % 2 ? 0xff5a1f : 0xffc04a, 900 + Math.random() * 600, 1.2, 0.2, rnd(2), 2 + Math.random() * 3, rnd(2), 0, t);
@@ -498,12 +662,12 @@ export class Renderer {
         } else if (kind === "stake") {
           // the stake carries on through its victim for the length of the line it skewers
           const dir = to.clone().sub(from).setY(0).normalize(), end = from.clone().addScaledVector(dir, W(UNITS.ballista!.line!.length)).setY(to.y);
-          this.shoot(new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.09, 0.09), basic(color)), from, end, now, 230, 0, false, () => { for (let i = 0; i < 5; i++) this.spark(end.x + rnd(0.6), 0.3, end.z + rnd(0.6), 0x6d6050, 500, 0.8, 2.2, rnd(2), 1.5, rnd(2), -4, performance.now()); });
+          this.shoot(new THREE.Mesh(this.geo("stake", () => new THREE.BoxGeometry(2.2, 0.09, 0.09)), basic(color)), from, end, now, 230, 0, false, () => { for (let i = 0; i < 5; i++) this.spark(end.x + rnd(0.6), 0.3, end.z + rnd(0.6), 0x6d6050, 500, 0.8, 2.2, rnd(2), 1.5, rnd(2), -4, performance.now()); });
           for (let i = 1; i <= 4; i++) this.spark(from.x + dir.x * i * 3, to.y, from.z + dir.z * i * 3, 0xdfe6ff, 200 + i * 40, 0.5, 0.1, 0, 0, 0, 0, now);
         } else if (kind === "lightning") lightning(from, to, color);
         else if (kind === "beam") {
           const hq = e.unit === "hq"; if (hq) from.set(W(e.x1), 8 * this.hqScale, midZ(this.lanes) + 8.4 * this.hqScale); else from.y = 4.9;
-          this.shoot(new THREE.Mesh(new THREE.CylinderGeometry(hq ? 0.09 : 0.06, hq ? 0.09 : 0.06, 1, 5), bright(TEAM[e.team].glow)), from, to, now, hq ? 200 : 180, 0, true);
+          this.shoot(new THREE.Mesh(this.rod(hq ? 0.09 : 0.06, 5), bright(TEAM[e.team].glow)), from, to, now, hq ? 200 : 180, 0, true);
           this.spark(to.x, to.y, to.z, TEAM[e.team].glow, hq ? 260 : 200, hq ? 1.2 : 0.6, hq ? 3 : 1.5, 0, 0, 0, 0, now);
         } else {
           const big = e.unit === "colossus" || e.unit === "headsman" || e.unit === "penitent" || e.unit === "titan" || e.unit === "ogre" || e.unit === "rider";
@@ -528,7 +692,7 @@ export class Renderer {
         this.flash = now;
       } else if (e.t === "bolt") {
         // one volley of a Storm of Wrath: it strikes every enemy soldier, and the sky shows it on a handful of them, in the caster's colour
-        const foes = s.units.filter(u => u.team !== e.team && !UNITS[u.type]!.structure), n = Math.min(foes.length, 16), tint = TEAM[e.team].glow;
+        const foes = s.units.filter(u => u.team !== e.team && !UNITS[u.type]!.structure), n = Math.min(foes.length, this.lite ? 8 : 16), tint = TEAM[e.team].glow;
         if (n) this.flash = now;
         for (let i = 0; i < n; i++) {
           const u = foes[Math.floor(((i + Math.random()) * foes.length) / n)]!; lane = u.lane;
@@ -536,7 +700,7 @@ export class Renderer {
           let a = top;
           for (let k = 1; k <= 7; k++) {
             const b = top.clone().lerp(to, k / 7); if (k < 7) b.add(new THREE.Vector3(rnd(2.6), 0, rnd(2.6)));
-            this.shoot(new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 1, 4), bright(k % 3 ? 0xe8ecff : tint)), a, b, now, 230, 0, true); a = b;
+            this.shoot(new THREE.Mesh(this.rod(0.11, 4), bright(k % 3 ? 0xe8ecff : tint)), a, b, now, 230, 0, true); a = b;
           }
           this.spark(to.x, to.y, to.z, 0xffffff, 260, 2.6, 0.4, 0, 0, 0, 0, now);
           for (let k = 0; k < 5; k++) this.spark(to.x, 0.3, to.z, tint, 380 + Math.random() * 200, 0.6, 0.1, rnd(7), 2 + Math.random() * 3, rnd(7), -9, now);
@@ -572,7 +736,7 @@ export class Renderer {
       } else if (e.t === "heal") {
         const v = this.units.get(e.id); if (v) v.lastAttack = now;
         const from = new THREE.Vector3(W(e.x1), 1.3, Zy(e.y1)), to = new THREE.Vector3(W(e.x2), 0.7, Zy(e.y2));
-        this.shoot(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1, 5), new THREE.MeshBasicMaterial({ color: new THREE.Color(PAL.heal).multiplyScalar(1.6), transparent: true, toneMapped: false })), from, to, now, 260, 0, true);
+        this.shoot(new THREE.Mesh(this.rod(0.035, 5), new THREE.MeshBasicMaterial({ color: new THREE.Color(PAL.heal).multiplyScalar(1.6), transparent: true, toneMapped: false })), from, to, now, 260, 0, true);
         for (let i = 0; i < 4; i++) this.spark(to.x + rnd(0.6), 0.3 + Math.random() * 0.6, to.z + rnd(0.6), PAL.heal, 600 + Math.random() * 300, 0.45, 0.08, 0, 1.4, 0, 0, now);
       } else if (e.t === "death") {
         // taken by a Deadly Fog: the breath leaves him as a pale green wisp
@@ -608,8 +772,11 @@ export class Renderer {
       const ring = new THREE.Mesh(new THREE.RingGeometry(def.aura / UNIT_SCALE - 0.5, def.aura / UNIT_SCALE, 48), this.halo);
       ring.rotation.x = -Math.PI / 2; ring.position.y = 0.2; root.add(ring);
     }
+    // phones: soldiers and keepers lay a soft blot on the ground instead of casting a shadow; towers still cast theirs
+    const blot = this.lite && !UNITS[type]?.structure ? Math.max(0.55, Math.min(2.6, bodyReach(def) * 0.8)) : 0;
+    if (blot) root.traverse(o => { o.castShadow = false; });
     this.scene.add(root);
-    return { root, rig, legs, weapon, parts, def, type, team, lastAttack: -1e9, born: now, yaw: 0, walk: 0, alt: 0 };
+    return { root, rig, legs, weapon, parts, def, type, team, lastAttack: -1e9, born: now, yaw: 0, walk: 0, alt: 0, blot };
   }
   private makeBuilding(unit: string, team: TeamId): THREE.Group {
     const g = new THREE.Group(), c = chantryModel(team), whole = wholeModel(unit, team);
@@ -721,6 +888,17 @@ export class Renderer {
       if (s.tick < u.dotUntil && Math.random() < dt * 0.012) this.spark(view.root.position.x + (Math.random() - 0.5) * 0.5, view.alt + 0.6 + Math.random() * 1.2, view.root.position.z + (Math.random() - 0.5) * 0.5, 0xff7a1a, 420, 0.5, 0.1, 0, 1.6, 0, 0, now);
       if (s.tick < u.slowUntil && Math.random() < dt * 0.009) this.spark(view.root.position.x + (Math.random() - 0.5) * 0.7, view.alt + 0.2 + Math.random() * 0.5, view.root.position.z + (Math.random() - 0.5) * 0.7, PAL.frost, 520, 0.5, 0.9, 0, 0.3, 0, 0, now);
     }
+    if (this.blobs) { // one call draws every soldier's shadow blot
+      let n = 0;
+      const cap = this.blobs.instanceMatrix.count;
+      for (const view of this.units.values()) {
+        if (!view.blot || n >= cap) continue;
+        const k = Math.abs(view.root.scale.y), r = view.blot * k * Math.max(0.35, 1 - view.alt / 12);
+        this.blobPos.set(view.root.position.x, 0.07, view.root.position.z); this.blobSize.set(r, r, r);
+        this.blobs.setMatrixAt(n++, this.blobAt.compose(this.blobPos, this.blobTurn, this.blobSize));
+      }
+      this.blobs.count = n; this.blobs.instanceMatrix.clearUpdateRanges(); this.blobs.instanceMatrix.addUpdateRange(0, n * 16); this.blobs.instanceMatrix.needsUpdate = true;
+    }
     for (const [id, view] of this.units) if (!seen.has(id) && view.type === "vulture") { // its errand done, it comes apart into ash and ghost-light
       this.units.delete(id); this.scene.remove(view.root);
       const at = view.root.position;
@@ -771,11 +949,13 @@ export class Renderer {
         for (const f of sh.flames) { (f.material as THREE.MeshBasicMaterial).color.set(col).multiplyScalar(1.15); f.visible = b.owner !== null; }
         for (const r of sh.runes) (r.material as THREE.MeshBasicMaterial).color.set(col).multiplyScalar(b.owner === null ? 0.25 : 0.9);
         for (const l of sh.lights) l.color.set(col);
+        for (const q of sh.pools) (q.material as THREE.MeshBasicMaterial).color.set(col);
       }
       sh.flames.forEach((f, k) => {
         const flick = 0.85 + Math.sin(now * 0.02 + i * 2 + k * 3) * 0.1 + Math.sin(now * 0.047 + i + k) * 0.08;
         f.scale.set(flick, flick * (1 + Math.sin(now * 0.013 + i + k) * 0.15), flick);
-        sh.lights[k]!.intensity = b.owner === null ? 0 : 40 * flick;
+        if (sh.lights[k]) sh.lights[k]!.intensity = b.owner === null ? 0 : 40 * flick;
+        if (sh.pools[k]) (sh.pools[k]!.material as THREE.MeshBasicMaterial).opacity = b.owner === null ? 0 : 0.3 * flick;
         sh.runes[k]!.rotation.z = now * 0.00012 * (k ? 1 : -1);
       });
     });
@@ -823,17 +1003,10 @@ export class Renderer {
 
     // particles and projectiles
     const sec = dt / 1000;
-    this.particles = this.particles.filter(p => {
-      const t = (now - p.born) / p.life;
-      if (t >= 1) { this.scene.remove(p.sprite); p.sprite.material.dispose(); return false; }
-      p.vy += p.grav * sec;
-      p.sprite.position.x += p.vx * sec; p.sprite.position.y = Math.max(0.1, p.sprite.position.y + p.vy * sec); p.sprite.position.z += p.vz * sec;
-      p.sprite.scale.setScalar(p.s0 + (p.s1 - p.s0) * t); p.sprite.material.opacity = 1 - t * t;
-      return true;
-    });
+    this.sparks.update(now, sec);
     this.shots = this.shots.filter(sh => {
       const t = (now - sh.born) / sh.life;
-      if (t >= 1) { this.scene.remove(sh.mesh); sh.onEnd?.(); return false; }
+      if (t >= 1) { this.dropShot(sh.mesh); sh.onEnd?.(); return false; }
       if (sh.beam) {
         const d = sh.to.clone().sub(sh.from), len = d.length();
         sh.mesh.position.copy(sh.from).addScaledVector(d, 0.5); sh.mesh.scale.set(1, len, 1);
@@ -847,7 +1020,8 @@ export class Renderer {
       return true;
     });
 
-    if (QUALITY[this.quality]!.bloom) this.composer.render(); else this.renderer.render(this.scene, this.camera);
+    if (this.lite) this.renderer.shadowMap.needsUpdate = this.frameNo++ % 2 === 0;
+    if (this.ladder[this.quality]!.bloom) this.composer.render(); else this.renderer.render(this.scene, this.camera);
     this.pace(dt);
 
     // health bars on a crisp 2D overlay

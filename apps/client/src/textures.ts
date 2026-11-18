@@ -65,6 +65,11 @@ export function glowTexture(): HTMLCanvasElement {
   return tile(64, 64, c => { const g = c.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, "rgba(255,255,255,1)"); g.addColorStop(0.4, "rgba(255,255,255,0.45)"); g.addColorStop(1, "rgba(255,255,255,0)"); c.fillStyle = g; c.fillRect(0, 0, 64, 64); });
 }
 
+/** The soft dark blot a soldier leaves on the ground on a phone, where it casts no real shadow. */
+export function blobTexture(): HTMLCanvasElement {
+  return tile(64, 64, c => { const g = c.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, "rgba(0,0,0,0.62)"); g.addColorStop(0.55, "rgba(0,0,0,0.36)"); g.addColorStop(1, "rgba(0,0,0,0)"); c.fillStyle = g; c.fillRect(0, 0, 64, 64); });
+}
+
 /** Rune circle laid on the ground under a shrine; white so it can be tinted. */
 export function runeTexture(): HTMLCanvasElement {
   return tile(512, 512, c => {

@@ -14,6 +14,8 @@ import { AI, INVEST, KEEPERS, RESEARCH, LANE_WIDTH, MAP, MAX_TIER, MERC_ORDER, R
 import type { GameState, PlayerState } from "@lw/sim";
 import { TEAM } from "./models";
 import { LANE_GAP, LANE_PITCH, LANE_W, fieldZ } from "./layout";
+import { profile } from "./device";
+import type { Profile } from "./device";
 
 /** DOM overlay. Reads GameState, raises intents through callbacks. No rules here. */
 export interface HudActions {
@@ -92,6 +94,16 @@ const SIGIL = {
   fog: `<svg class="sigil" viewBox="0 0 32 32" aria-hidden="true"><path d="M11 13.5a5 5 0 0 1 10 0v2.5l-1.6 1.5h-6.8L11 16z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="14" cy="13.6" r="1.3" fill="currentColor"/><circle cx="18" cy="13.6" r="1.3" fill="currentColor"/><path d="M4 21.5c3-1.8 5-1.8 8 0s5 1.8 8 0 5-1.8 8 0M6 26c3-1.8 5-1.8 8 0s5 1.8 8 0 4-1.6 6-.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
 };
 
+/** Line icons for the touch rail of a phone or a foldable (hidden on the regular HUD). */
+const icon = (d: string) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICON = {
+  vult: icon("M2 9.5c3.2-.8 6 .4 8 3.2.6-1.5 1.2-2.4 2-2.4s1.4.9 2 2.4c2-2.8 4.8-4 8-3.2-2.8 1-4.8 3-5.8 5.8l-2-.8L12 17l-2.2-2.5-2 .8C6.8 12.5 4.8 10.5 2 9.5z"),
+  tele: icon("M6.5 21V10.5a5.5 5.5 0 0 1 11 0V21M4 21h16M12 17.5V9.5M9.2 12.2 12 9.4l2.8 2.8"),
+  home: icon("M12 2.5v4M10.2 4.2h3.6M5.5 21v-8.5L12 7l6.5 5.5V21M3.5 21h17M10 21v-3.5a2 2 0 0 1 4 0V21"),
+  cancel: icon("M6.5 6.5l11 11M17.5 6.5l-11 11"),
+  menu: icon("M4.5 7h15M4.5 12h15M4.5 17h15"),
+};
+
 export function createHud(root: HTMLElement, portraits: Record<string, string>, act: HudActions, hostedAccounts = false) {
   root.innerHTML = `
   <div id="top">
@@ -103,11 +115,11 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
         <div class="hp foe"><div class="cap"><span>Enemy cathedral</span><b id="hq1t" class="num"></b></div><div class="glass"><i id="hq1"></i></div></div>
       </div>
     </div>
-    <div class="tools"><span id="clock" class="num">0:00</span><button id="pause" title="Pause (P)">❚❚</button>${[1, 2, 4].map(n => `<button data-speed="${n}" title="Game speed ×${n}">${ROMAN[n]}</button>`).join("")}<button id="mute" title="Sound">♪</button></div>
+    <div class="tools"><span id="clock" class="num">0:00</span><button id="pause" title="Pause (P)">❚❚</button>${[1, 2, 4].map(n => `<button data-speed="${n}" title="Game speed ×${n}">${ROMAN[n]}</button>`).join("")}<button id="mute" title="Sound">♪</button><button id="menuBtn" aria-label="Game menu" aria-expanded="false">${ICON.menu}</button></div>
   </div>
   <div id="dock">
   <div id="tip"></div>
-  <div id="touchbar"><button id="tbVult">Vultures</button><button id="tbTele">Teleport</button><button id="tbHome">Cathedral</button><button id="tbCancel">Cancel</button></div>
+  <div id="touchbar"><button id="tbVult">${ICON.vult}<span class="lbl">Vultures</span></button><button id="tbTele">${ICON.tele}<span class="lbl">Teleport</span></button><button id="tbHome">${ICON.home}<span class="lbl">Cathedral</span></button><button id="tbCancel">${ICON.cancel}<span class="lbl">Cancel</span></button></div>
   <div id="bar">
     <div id="keepers">${KEEPERS.map((k, i) => `<button class="keeper" data-keeper="${i}" aria-label="${k.name}"><img src="${portraits[k.id] ?? ""}" alt=""><span class="key">${i + 1}</span><b>${k.name}</b></button>`).join("")}</div>
     <div id="build">
@@ -237,6 +249,20 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   $("pause").onclick = () => act.togglePause();
   $("mute").onclick = () => { $("mute").classList.toggle("on", !act.toggleMute()); };
   $("mute").classList.add("on");
+  $("menuBtn").onclick = () => { const open = $("top").querySelector(".tools")!.classList.toggle("open"); $("menuBtn").setAttribute("aria-expanded", String(open)); };
+
+  // Phones and opened foldables wear their own layout (hud.css, "phone" and "fold"); the Sexton's powers then join the touch rail.
+  let current: Profile = null;
+  const applyProfile = () => {
+    const p = profile(), tall = innerHeight > innerWidth;
+    root.classList.toggle("phone", p === "phone"); root.classList.toggle("fold", p === "fold"); root.classList.toggle("tall", !!p && tall);
+    const home = p ? $("touchbar") : $("side"), powers = $("powers");
+    if (powers.parentElement !== home) home.append(powers);
+    if (!p) $("top").querySelector(".tools")!.classList.remove("open");
+    current = p;
+  };
+  applyProfile();
+  addEventListener("resize", applyProfile);
   $("research").onclick = () => act.research();
   $("storm").onclick = () => act.storm();
   $("fog").onclick = () => act.fog();
@@ -247,14 +273,19 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   };
 
   const mini = $<HTMLCanvasElement>("minimap");
+  // its size is watched rather than read each frame: reading it right after the HUD's own changes would force a layout every frame
+  let miniW = 0, miniH = 0;
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(entries => { for (const e of entries) miniW = e.contentRect.width; }).observe(mini);
   const pan = (e: PointerEvent) => { const r = mini.getBoundingClientRect(); act.panTo((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height); };
   mini.onpointerdown = e => { mini.setPointerCapture(e.pointerId); pan(e); };
   mini.onpointermove = e => { if (e.buttons & 1) pan(e); };
 
   let toastTimer = 0;
   const set = (id: string, text: string) => { const el = $(id); if (el.textContent !== text) el.textContent = text; };
-  const tip = (markup: string | null) => {
+  /** `brief`: the note of something already chosen; a phone shows only its title and what to do next. */
+  const tip = (markup: string | null, brief = false) => {
     const el = $("tip");
+    el.classList.toggle("brief", !!markup && brief);
     if (markup && touch) markup = markup.replace(/Esc or right-click to cancel\./, "Cancel stops it.").replace(/ Esc to cancel\./, "").replace(/Right-click sends him walking/, "With no unit chosen, a tap on the ground sends him walking")
       .replace(/Press \d or click him/, "Tap him").replace(/Press T, then click,/, "Tap Teleport, then the ground,").replace(/ \(or Shift\+3\)/, "").replace(/ \(Del\)/, "").replace(/\bClick\b/g, "Tap").replace(/\bclick\b/g, "tap").replace(/\bclicking\b/g, "tapping");
     el.classList.toggle("show", !!markup);
@@ -264,8 +295,8 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   /** The whole battlefield from above: every lane, its shrines, towers, armies and keepers, and a frame for what the screen shows. */
   function drawMinimap(s: GameState, v: HudView): void {
     const [f0, f1] = fieldZ(s.laneCount), depth = f1 - f0;
-    const w = mini.clientWidth, want = Math.round(Math.min(190, 30 + 46 * s.laneCount) * Math.min(1, w / 220)), dpr = devicePixelRatio || 1;
-    if (mini.clientHeight !== want) mini.style.height = `${want}px`;
+    const w = miniW || mini.clientWidth, want = Math.round(Math.min(190, 30 + 46 * s.laneCount) * Math.min(1, w / 220)), dpr = devicePixelRatio || 1;
+    if (miniH !== want) { miniH = want; mini.style.height = `${want}px`; root.style.setProperty("--maph", `${want}px`); }
     const h = want;
     if (mini.width !== Math.round(w * dpr) || mini.height !== Math.round(h * dpr)) { mini.width = Math.round(w * dpr); mini.height = Math.round(h * dpr); }
     const c = mini.getContext("2d")!;
@@ -310,6 +341,8 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
   let account: UserIdentity | undefined;
   return {
     actions: act,
+    /** The touch layout worn now, if any (it changes when a foldable is opened or closed). */
+    get profile(): Profile { return current; },
     toast(msg: string): void {
       const el = $("toast"); el.textContent = msg; el.classList.add("show");
       clearTimeout(toastTimer); toastTimer = window.setTimeout(() => el.classList.remove("show"), 2600);
@@ -688,9 +721,9 @@ export function createHud(root: HTMLElement, portraits: Record<string, string>, 
           <p class="hint">${!open ? `Sealed until ${RITE[d.tier]}.` : studying === unit ? "Your scholars are studying it now."
             : !known ? `Click to study it: ${study.cost} gold, ${secs(study.ticks)} seconds.${p.research ? " Your scholars are busy until the current work is done." : ""}`
             : d.tier > top ? "Only the Undertaker can raise it."
-            : v.selectedUnit === unit ? "Click anywhere free on your ground: your keeper walks there and raises it. Keep clicking to queue more. Esc to cancel." : `Its chantry musters ${d.count ? ["", "one", "two", "three"][d.count] : "one"} each wave.`}</p>${open && !known && studying !== unit ? go(`Study · ${study.cost}`) : ""}`);
+            : v.selectedUnit === unit ? "Click anywhere free on your ground: your keeper walks there and raises it. Keep clicking to queue more. Esc to cancel." : `Its chantry musters ${d.count ? ["", "one", "two", "three"][d.count] : "one"} each wave.`}</p>${open && !known && studying !== unit ? go(`Study · ${study.cost}`) : ""}`, !hover && unit === v.selectedUnit && peek !== unit);
       } else if (b) tip(`<h3>${UNITS[b.unit]!.name} chantry</h3><p>Musters at every toll of the bell. Health <b>${b.hp}</b> of ${chantryHp(b.unit)}: enemy soldiers who reach it with nobody left to fight will tear it down.</p>${abilityLines(b.unit)}<p class="stats">${statLine(b.unit)}</p>
-          <button id="sell">Tear down · refund ${sellRefund(b.unit, b.produced, b.hp)} (Del)</button>`);
+          <button id="sell">Tear down · refund ${sellRefund(b.unit, b.produced, b.hp)} (Del)</button>`, true);
       else tip(null);
 
       drawMinimap(s, v);
